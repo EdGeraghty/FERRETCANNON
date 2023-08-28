@@ -1,0 +1,50 @@
+plugins {
+    kotlin("jvm") version "1.9.22"
+    application
+}
+
+group = "family.geraghty.ed.yolo.ferretcannon"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation(kotlin("stdlib"))
+    testImplementation(kotlin("test"))
+    implementation("io.ktor:ktor-server-netty:2.3.8")
+    implementation("io.ktor:ktor-server-core:2.3.8")
+    implementation("io.ktor:ktor-server-content-negotiation:2.3.8")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.8")
+    implementation("io.ktor:ktor-server-websockets:2.3.8")
+    implementation("io.ktor:ktor-server-auth:2.3.8")
+    implementation("io.ktor:ktor-server-auth-jwt:2.3.8")
+    implementation("io.ktor:ktor-client-core:2.3.8")
+    implementation("io.ktor:ktor-client-cio:2.3.8")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.8")
+    implementation("org.xerial:sqlite-jdbc:3.42.0.0")
+    implementation("org.jetbrains.exposed:exposed-core:0.41.1")
+    implementation("org.jetbrains.exposed:exposed-dao:0.41.1")
+    implementation("org.jetbrains.exposed:exposed-jdbc:0.41.1")
+    implementation("net.i2p.crypto:eddsa:0.3.0") // For ed25519 signatures
+    // Add more KTor modules as needed for Matrix spec
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+application {
+    mainClass.set("MainKt")
+}
+
+tasks.jar {
+    manifest {
+        attributes["Main-Class"] = "MainKt"
+    }
+}
