@@ -22,6 +22,12 @@ object Events : Table("events") {
 
 object Rooms : Table("rooms") {
     val roomId = varchar("room_id", 255).uniqueIndex()
+    val creator = varchar("creator", 255)
+    val name = varchar("name", 255).nullable()
+    val topic = text("topic").nullable()
+    val visibility = varchar("visibility", 50).default("private")
+    val roomVersion = varchar("room_version", 50).default("9")
+    val isDirect = bool("is_direct").default(false)
     val currentState = text("current_state") // JSON map of state
     val stateGroups = text("state_groups") // JSON map of state groups for resolution
     val published = bool("published").default(false) // Whether room is published in directory

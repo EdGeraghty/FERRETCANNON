@@ -22,7 +22,7 @@ fun Application.wellKnownRoutes() {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
 
-                    call.respond(mapOf("m.server" to "localhost:8080"))
+                    call.respond(mapOf("m.server" to "localhost:9090"))
                 }
 
                 get("/client") {
@@ -38,10 +38,10 @@ fun Application.wellKnownRoutes() {
 
                     call.respond(mapOf(
                         "m.homeserver" to mapOf(
-                            "base_url" to "https://localhost:8080"
+                            "base_url" to "https://localhost:9090"
                         ),
                         "m.identity_server" to mapOf(
-                            "base_url" to "https://localhost:8080" // Using same server for identity in this implementation
+                            "base_url" to "https://localhost:9090" // Using same server for identity in this implementation
                         )
                     ))
                 }

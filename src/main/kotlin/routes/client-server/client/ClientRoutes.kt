@@ -14,6 +14,8 @@ import models.Events
 import models.Rooms
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import kotlinx.serialization.json.*
 import utils.users
 import utils.typingMap
@@ -848,7 +850,7 @@ fun Application.clientRoutes() {
                             when (type) {
                                 "m.login.password" -> {
                                     if (password == null) {
-                                        call.respond(HttpStatus
+                                        call.respond(HttpStatusCode.BadRequest, mapOf(
                                             "errcode" to "M_MISSING_PARAM",
                                             "error" to "Missing 'password' parameter"
                                         ))
@@ -1771,7 +1773,30 @@ fun Application.clientRoutes() {
                                         it[Events.type] = event["type"] as String
                                         it[Events.sender] = event["sender"] as String
                                         it[Events.stateKey] = event["state_key"] as String?
-                                        it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(event["content"] as Map<String, Any>))
+                                        it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject((event["content"] as Map<String, Any>).mapValues { (_, value) ->
+                                        when (value) {
+                                            is String -> JsonPrimitive(value)
+                                            is Number -> JsonPrimitive(value)
+                                            is Boolean -> JsonPrimitive(value)
+                                            is Map<*, *> -> JsonObject((value as Map<String, Any>).mapValues { (_, v) ->
+                                                when (v) {
+                                                    is String -> JsonPrimitive(v)
+                                                    is Number -> JsonPrimitive(v)
+                                                    is Boolean -> JsonPrimitive(v)
+                                                    else -> JsonPrimitive(v.toString())
+                                                }
+                                            })
+                                            is List<*> -> JsonArray(value.map { item ->
+                                                when (item) {
+                                                    is String -> JsonPrimitive(item)
+                                                    is Number -> JsonPrimitive(item)
+                                                    is Boolean -> JsonPrimitive(item)
+                                                    else -> JsonPrimitive(item.toString())
+                                                }
+                                            })
+                                            else -> JsonPrimitive(value.toString())
+                                        }
+                                    }))
                                         it[Events.originServerTs] = event["origin_server_ts"] as Long
                                         it[Events.prevEvents] = "[]"
                                         it[Events.authEvents] = "[]"
@@ -1852,7 +1877,7 @@ fun Application.clientRoutes() {
                                     it[Events.type] = "m.room.member"
                                     it[Events.sender] = userId
                                     it[Events.stateKey] = userId
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to "join")))
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to JsonPrimitive("join"))))
                                     it[Events.originServerTs] = System.currentTimeMillis()
                                     it[Events.prevEvents] = "[]"
                                     it[Events.authEvents] = "[]"
@@ -1915,7 +1940,7 @@ fun Application.clientRoutes() {
                                     it[Events.type] = "m.room.member"
                                     it[Events.sender] = userId
                                     it[Events.stateKey] = userId
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to "leave")))
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to JsonPrimitive("leave"))))
                                     it[Events.originServerTs] = System.currentTimeMillis()
                                     it[Events.prevEvents] = "[]"
                                     it[Events.authEvents] = "[]"
@@ -2403,7 +2428,7 @@ fun Application.clientRoutes() {
                                     it[Events.type] = "m.room.redaction"
                                     it[Events.sender] = userId
                                     it[Events.stateKey] = null
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("reason" to reason).filterValues { it != null }))
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("reason" to reason).filterValues { it != null }.mapValues { JsonPrimitive(it.value) }))
                                     it[Events.originServerTs] = System.currentTimeMillis()
                                     it[Events.prevEvents] = "[]"
                                     it[Events.authEvents] = "[]"
@@ -2608,7 +2633,7 @@ fun Application.clientRoutes() {
                                     it[Events.type] = "m.room.member"
                                     it[Events.sender] = userId
                                     it[Events.stateKey] = inviteeUserId
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to "invite")))
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to JsonPrimitive("invite"))))
                                     it[Events.originServerTs] = System.currentTimeMillis()
                                     it[Events.prevEvents] = "[]"
                                     it[Events.authEvents] = "[]"
@@ -2687,10 +2712,10 @@ fun Application.clientRoutes() {
                                     it[Events.type] = "m.room.member"
                                     it[Events.sender] = userId
                                     it[Events.stateKey] = targetUserId
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf(
-                                        "membership" to "leave",
-                                        "reason" to reason
-                                    ).filterValues { it != null }))
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(buildMap {
+                                        put("membership", JsonPrimitive("leave"))
+                                        reason?.let { put("reason", JsonPrimitive(it)) }
+                                    }))
                                     it[Events.originServerTs] = System.currentTimeMillis()
                                     it[Events.prevEvents] = "[]"
                                     it[Events.authEvents] = "[]"
@@ -2769,10 +2794,10 @@ fun Application.clientRoutes() {
                                     it[Events.type] = "m.room.member"
                                     it[Events.sender] = userId
                                     it[Events.stateKey] = targetUserId
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf(
-                                        "membership" to "ban",
-                                        "reason" to reason
-                                    ).filterValues { it != null }))
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(buildMap {
+                                        put("membership", JsonPrimitive("ban"))
+                                        reason?.let { put("reason", JsonPrimitive(it)) }
+                                    }))
                                     it[Events.originServerTs] = System.currentTimeMillis()
                                     it[Events.prevEvents] = "[]"
                                     it[Events.authEvents] = "[]"

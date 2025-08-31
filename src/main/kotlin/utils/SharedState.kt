@@ -16,6 +16,9 @@ val oneTimeKeys = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>() 
 val crossSigningKeys = mutableMapOf<String, Map<String, Any?>>() // userId -> cross-signing key data
 val deviceListStreamIds = mutableMapOf<String, Long>() // userId -> stream_id for device list updates
 
+// Server key storage for federation
+val serverKeys = mutableMapOf<String, Map<String, Any?>>() // serverName -> server key data
+
 // Simple in-memory user store for demo purposes
 val users = mutableMapOf<String, String>() // userId to accessToken
 

@@ -52,8 +52,9 @@ fun main() {
     val federationServer = "localhost:8080" // TODO: Make configurable
     
     try {
-        embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
-            println("Configuring server...")
+        println("About to create embedded server")
+        embeddedServer(Netty, port = 9090, host = "0.0.0.0") {
+            println("Inside embeddedServer block")
 
             // Install CORS for client-server API
             install(CORS) {
@@ -124,13 +125,23 @@ fun main() {
                         clients.remove(session)
                     }
                 }
+                println("Basic routes set up")
             }
+            println("About to call clientRoutes()")
             clientRoutes()
+            println("clientRoutes() completed")
+            println("About to call federationRoutes()")
             federationRoutes()
+            println("federationRoutes() completed")
+            println("About to call keyRoutes()")
             keyRoutes()
+            println("keyRoutes() completed")
+            println("About to call wellKnownRoutes()")
             wellKnownRoutes()
+            println("wellKnownRoutes() completed")
             println("Server configuration complete")
         }.start(wait = true)
+        println("Server.start() completed")
     } catch (e: Exception) {
         println("Error starting server: ${e.message}")
         e.printStackTrace()
