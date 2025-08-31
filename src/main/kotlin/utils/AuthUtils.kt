@@ -290,4 +290,73 @@ object AuthUtils {
         // For now, return a mock user ID for demo purposes
         return if (token.startsWith("login_")) "@login_user:localhost" else null
     }
+
+    /**
+     * Validates password strength requirements
+     * @param password The password to validate
+     * @return Pair of (isValid, errorMessage) where errorMessage is null if valid
+     */
+    fun validatePasswordStrength(password: String): Pair<Boolean, String?> {
+        // Minimum length requirement
+        if (password.length < 8) {
+            return Pair(false, "Password must be at least 8 characters long")
+        }
+
+        // Maximum length to prevent DoS attacks
+        if (password.length > 128) {
+            return Pair(false, "Password must be no more than 128 characters long")
+        }
+
+        // Check for at least one uppercase letter
+        if (!password.any { it.isUpperCase() }) {
+            return Pair(false, "Password must contain at least one uppercase letter")
+        }
+
+        // Check for at least one lowercase letter
+        if (!password.any { it.isLowerCase() }) {
+            return Pair(false, "Password must contain at least one lowercase letter")
+        }
+
+        // Check for at least one digit
+        if (!password.any { it.isDigit() }) {
+            return Pair(false, "Password must contain at least one number")
+        }
+
+        // Check for at least one special character
+        val specialChars = "!@#\$%^&*()_+-=[]{}|;:,.<>?/~`"
+        if (!password.any { specialChars.contains(it) }) {
+            return Pair(false, "Password must contain at least one special character (!@#\$%^&*()_+-=[]{}|;:,.<>?/~`}")
+        }
+
+        // Check for common weak passwords
+        val commonPasswords = listOf(
+            "password", "123456", "123456789", "qwerty", "abc123",
+            "password123", "admin", "letmein", "welcome", "monkey",
+            "1234567890", "iloveyou", "princess", "rockyou", "1234567",
+            "12345678", "password1", "123123", "football", "baseball"
+        )
+
+        if (commonPasswords.contains(password.lowercase())) {
+            return Pair(false, "Password is too common. Please choose a more unique password")
+        }
+
+        // Check for repeated characters (more than 3 in a row)
+        if (Regex("(.)\\1{3,}").containsMatchIn(password)) {
+            return Pair(false, "Password cannot contain more than 3 repeated characters in a row")
+        }
+
+        // Check for sequential characters (like 123, abc, etc.)
+        val sequentialPatterns = listOf(
+            "012", "123", "234", "345", "456", "567", "678", "789", "890",
+            "abc", "bcd", "cde", "def", "efg", "fgh", "ghi", "hij", "ijk",
+            "jkl", "klm", "lmn", "mno", "nop", "opq", "pqr", "qrs", "rst",
+            "stu", "tuv", "uvw", "vwx", "wxy", "xyz"
+        )
+
+        if (sequentialPatterns.any { password.lowercase().contains(it) }) {
+            return Pair(false, "Password cannot contain sequential characters")
+        }
+
+        return Pair(true, null)
+    }
 }

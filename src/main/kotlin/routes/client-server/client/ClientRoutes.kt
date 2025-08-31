@@ -30,6 +30,9 @@ import kotlin.time.Duration.Companion.minutes
 import models.AccountData
 import io.ktor.websocket.Frame
 import utils.MediaStorage
+import models.Users
+import models.AccessTokens
+import org.mindrot.jbcrypt.BCrypt
 
 fun Application.clientRoutes() {
     // Request size limiting - simplified version
@@ -1087,6 +1090,18 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
+                            // Validate password strength for non-guest users
+                            if (!isGuest && password != null) {
+                                val (isValid, errorMessage) = AuthUtils.validatePasswordStrength(password)
+                                if (!isValid) {
+                                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                                        "errcode" to "M_WEAK_PASSWORD",
+                                        "error" to errorMessage
+                                    ))
+                                    return@post
+                                }
+                            }
+
                             // Generate access token (unless inhibited)
                             val accessToken = if (!inhibitLogin) {
                                 val finalDeviceId = deviceId ?: "device_${System.currentTimeMillis()}"
@@ -1275,6 +1290,118 @@ fun Application.clientRoutes() {
                             }
 
                             // Store avatar URL (in real implementation, update user profile in database)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== ACCOUNT MANAGEMENT =====
+
+                    // POST /account/password - Change password
+                    post("/account/password") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val auth = json["auth"]?.jsonObject
+                            val newPassword = json["new_password"]?.jsonPrimitive?.content
+
+                            if (newPassword == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing new_password parameter"
+                                ))
+                                return@post
+                            }
+
+                            // Validate new password strength
+                            val passwordValidation = AuthUtils.validatePasswordStrength(newPassword)
+                            if (!passwordValidation.first) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to passwordValidation.second
+                                ))
+                                return@post
+                            }
+
+                            // Handle User-Interactive Authentication (UIA)
+                            if (auth == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_PARAM",
+                                    "error" to "Missing authentication data",
+                                    "flows" to listOf(
+                                        mapOf(
+                                            "stages" to listOf("m.login.password")
+                                        )
+                                    ),
+                                    "params" to emptyMap<String, Any>(),
+                                    "session" to "session_${System.currentTimeMillis()}"
+                                ))
+                                return@post
+                            }
+
+                            // Validate current password authentication
+                            val authType = auth["type"]?.jsonPrimitive?.content
+                            val authUser = auth["user"]?.jsonPrimitive?.content ?: userId
+                            val authPassword = auth["password"]?.jsonPrimitive?.content
+
+                            if (authType != "m.login.password" || authPassword == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Invalid authentication data"
+                                ))
+                                return@post
+                            }
+
+                            // Verify current password
+                            val user = transaction {
+                                Users.select { Users.userId eq userId }.singleOrNull()
+                            }
+
+                            if (user == null) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "User not found"
+                                ))
+                                return@post
+                            }
+
+                            val currentPasswordHash = user[Users.passwordHash]
+                            if (!BCrypt.checkpw(authPassword, currentPasswordHash)) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Invalid password"
+                                ))
+                                return@post
+                            }
+
+                            // Update password in database
+                            val newPasswordHash = AuthUtils.hashPassword(newPassword)
+                            transaction {
+                                Users.update({ Users.userId eq userId }) {
+                                    it[Users.passwordHash] = newPasswordHash
+                                }
+                            }
+
+                            // Invalidate all existing access tokens for security
+                            transaction {
+                                AccessTokens.deleteWhere { AccessTokens.userId eq userId }
+                            }
+
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
                         } catch (e: Exception) {
