@@ -29,8 +29,7 @@ import routes.server_server.federation.federationRoutes
 import routes.server_server.key.keyRoutes
 import routes.discovery.wellknown.wellKnownRoutes
 import io.ktor.server.plugins.cors.routing.*
-import io.ktor.server.plugins.ratelimit.*
-import kotlin.time.Duration.Companion.minutes
+// import io.ktor.server.plugins.multipart.*
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -69,12 +68,12 @@ fun main() {
                 anyHost() // In production, specify allowed origins
             }
 
-            // Install rate limiting
-            install(RateLimit) {
-                global {
-                    rateLimiter(limit = 300, refillPeriod = 1.minutes) // 300 requests per minute
-                }
-            }
+            // Install rate limiting (simplified for now)
+            // install(io.ktor.server.plugins.ratelimit.RateLimit) {
+            //     global {
+            //         rateLimiter(limit = 300, refillPeriod = java.time.Duration.ofMinutes(1)) // 300 requests per minute
+            //     }
+            // }
 
             // Request size limiting - simplified version
             intercept(ApplicationCallPipeline.Call) {
@@ -97,6 +96,9 @@ fun main() {
                 maxFrameSize = Long.MAX_VALUE
                 masking = false
             }
+            // install(Multipart) {
+            //     maxPartSize = 10 * 1024 * 1024 // 10MB
+            // }
             
             // Call route setup functions on the application
             println("About to call clientRoutes()")

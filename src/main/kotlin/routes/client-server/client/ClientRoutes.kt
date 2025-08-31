@@ -10,6 +10,9 @@ import io.ktor.server.auth.jwt.*
 import io.ktor.util.*
 import io.ktor.server.plugins.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.request.*
+import io.ktor.http.content.*
+import io.ktor.http.content.PartData
 import models.Events
 import models.Rooms
 import org.jetbrains.exposed.sql.*
@@ -25,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.time.Duration.Companion.minutes
 import models.AccountData
 import io.ktor.websocket.Frame
+import utils.MediaStorage
 
 fun Application.clientRoutes() {
     // Request size limiting - simplified version
@@ -2813,6 +2817,1377 @@ fun Application.clientRoutes() {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
                                 "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== CONTENT REPOSITORY =====
+
+                    // POST /upload - Upload media
+                    post("/upload") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val multipart = call.receiveMultipart()
+                            var filename: String? = null
+                            var contentType: String? = null
+                            var content: ByteArray? = null
+
+                            multipart.forEachPart { part ->
+                                when (part) {
+                                    is PartData.FileItem -> {
+                                        filename = part.originalFileName
+                                        contentType = part.contentType?.toString()
+                                        content = part.streamProvider().use { it.readBytes() }
+                                    }
+                                    is PartData.FormItem -> {
+                                        // Handle form fields if needed
+                                    }
+                                    is PartData.BinaryChannelItem -> {
+                                        // Handle binary channel items if needed
+                                    }
+                                    else -> {
+                                        // Handle other part types
+                                    }
+                                }
+                                part.dispose()
+                            }
+
+                            if (content == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "No file provided"
+                                ))
+                                return@post
+                            }
+
+                            // Generate media ID
+                            val mediaId = "media_${System.currentTimeMillis()}_${content.hashCode()}"
+
+                            // Store media
+                            val success = MediaStorage.storeMedia(mediaId, content!!, contentType ?: "application/octet-stream", filename)
+                            if (!success) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                    "errcode" to "M_UNKNOWN",
+                                    "error" to "Failed to store media"
+                                ))
+                                return@post
+                            }
+
+                            // Return MXC URI
+                            val mxcUri = "mxc://localhost/$mediaId"
+                            call.respond(mapOf("content_uri" to mxcUri))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /download/{serverName}/{mediaId} - Download media
+                    get("/download/{serverName}/{mediaId}") {
+                        try {
+                            val serverName = call.parameters["serverName"]
+                            val mediaId = call.parameters["mediaId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (serverName == null || mediaId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing serverName or mediaId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Check if media exists
+                            if (!MediaStorage.mediaExists(mediaId)) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Media not found"
+                                ))
+                                return@get
+                            }
+
+                            // Get media content
+                            val (content, contentType) = MediaStorage.getMedia(mediaId)
+                            if (content == null || contentType == null) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                    "errcode" to "M_UNKNOWN",
+                                    "error" to "Failed to retrieve media"
+                                ))
+                                return@get
+                            }
+
+                            // Get metadata
+                            val metadata = MediaStorage.getMediaMetadata(mediaId)
+
+                            // Return multipart response as per spec
+                            val boundary = "boundary_${System.currentTimeMillis()}"
+
+                            // Create metadata part
+                            val metadataMap = mapOf(
+                                "content_uri" to "mxc://$serverName/$mediaId",
+                                "content_type" to contentType,
+                                "content_length" to content.size
+                            )
+
+                            val metadataJson = Json.encodeToString(JsonObject.serializer(), JsonObject(metadataMap.mapValues { JsonPrimitive(it.value.toString()) }))
+
+                            // Create the multipart response
+                            val multipartContent = """
+--$boundary
+Content-Type: application/json
+
+$metadataJson
+--$boundary
+Content-Type: $contentType
+
+${String(content, Charsets.UTF_8)}
+--$boundary--
+                            """.trimIndent()
+
+                            call.respondText(
+                                contentType = ContentType.MultiPart.Mixed.withParameter("boundary", boundary),
+                                text = multipartContent
+                            )
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /thumbnail/{serverName}/{mediaId} - Get media thumbnail
+                    get("/thumbnail/{serverName}/{mediaId}") {
+                        try {
+                            val serverName = call.parameters["serverName"]
+                            val mediaId = call.parameters["mediaId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (serverName == null || mediaId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing serverName or mediaId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Parse query parameters
+                            val width = call.request.queryParameters["width"]?.toIntOrNull()
+                            val height = call.request.queryParameters["height"]?.toIntOrNull()
+                            val method = call.request.queryParameters["method"] ?: "scale"
+                            val animated = call.request.queryParameters["animated"]?.toBoolean() ?: false
+                            val timeoutMs = call.request.queryParameters["timeout_ms"]?.toLongOrNull() ?: 20000L
+
+                            // Validate required parameters
+                            if (width == null || height == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing width or height parameter"
+                                ))
+                                return@get
+                            }
+
+                            // Validate method parameter
+                            if (method !in setOf("crop", "scale")) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Invalid method parameter"
+                                ))
+                                return@get
+                            }
+
+                            // Validate dimensions
+                            if (width <= 0 || height <= 0 || width > 1000 || height > 1000) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Invalid dimensions"
+                                ))
+                                return@get
+                            }
+
+                            // Check if media exists
+                            if (!MediaStorage.mediaExists(mediaId)) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Media not found"
+                                ))
+                                return@get
+                            }
+
+                            // Generate thumbnail
+                            val thumbnailData = MediaStorage.generateThumbnail(mediaId, width, height, method)
+                            if (thumbnailData == null) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                    "errcode" to "M_UNKNOWN",
+                                    "error" to "Failed to generate thumbnail"
+                                ))
+                                return@get
+                            }
+
+                            // Return multipart response as per spec
+                            val boundary = "boundary_${System.currentTimeMillis()}"
+
+                            // Create metadata part
+                            val metadata = mapOf(
+                                "content_uri" to "mxc://$serverName/$mediaId",
+                                "content_type" to "image/jpeg",
+                                "content_length" to thumbnailData.size,
+                                "width" to width,
+                                "height" to height,
+                                "method" to method,
+                                "animated" to animated
+                            )
+
+                            val metadataJson = Json.encodeToString(JsonObject.serializer(), JsonObject(metadata.mapValues { JsonPrimitive(it.value.toString()) }))
+
+                            // Create the multipart response
+                            val multipartContent = """
+--$boundary
+Content-Type: application/json
+
+$metadataJson
+--$boundary
+Content-Type: image/jpeg
+
+${String(thumbnailData, Charsets.UTF_8)}
+--$boundary--
+                            """.trimIndent()
+
+                            call.respondText(
+                                contentType = ContentType.MultiPart.Mixed.withParameter("boundary", boundary),
+                                text = multipartContent
+                            )
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /config - Get upload configuration
+                    get("/config") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Return upload configuration
+                            val config = mapOf(
+                                "upload_size" to mapOf(
+                                    "max_upload_size" to 10485760L, // 10MB
+                                    "max_image_size" to 10485760L,
+                                    "max_avatar_size" to 1048576L, // 1MB
+                                    "max_thumbnail_size" to 1048576L
+                                ),
+                                "thumbnail_sizes" to listOf(
+                                    mapOf("width" to 32, "height" to 32, "method" to "crop"),
+                                    mapOf("width" to 96, "height" to 96, "method" to "crop"),
+                                    mapOf("width" to 320, "height" to 240, "method" to "scale"),
+                                    mapOf("width" to 640, "height" to 480, "method" to "scale"),
+                                    mapOf("width" to 800, "height" to 600, "method" to "scale")
+                                )
+                            )
+
+                            call.respond(config)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== PUSH NOTIFICATIONS =====
+
+                    // GET /pushrules/ - Get push rules
+                    get("/pushrules/") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get user's push rules (simplified - in real implementation, query push rules table)
+                            val pushRules = mapOf(
+                                "global" to mapOf(
+                                    "override" to emptyList<Map<String, Any>>(),
+                                    "underride" to emptyList<Map<String, Any>>(),
+                                    "sender" to emptyList<Map<String, Any>>(),
+                                    "room" to emptyList<Map<String, Any>>(),
+                                    "content" to listOf(
+                                        mapOf(
+                                            "rule_id" to "content",
+                                            "default" to true,
+                                            "enabled" to true,
+                                            "conditions" to listOf(
+                                                mapOf(
+                                                    "kind" to "event_match",
+                                                    "key" to "content.body",
+                                                    "pattern" to "*"
+                                                )
+                                            ),
+                                            "actions" to listOf(
+                                                mapOf(
+                                                    "set_tweak" to "highlight",
+                                                    "value" to false
+                                                ),
+                                                mapOf(
+                                                    "set_tweak" to "sound",
+                                                    "value" to "default"
+                                                ),
+                                                "notify"
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+
+                            call.respond(pushRules)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /pushrules/global/{kind}/{ruleId} - Get specific push rule
+                    get("/pushrules/global/{kind}/{ruleId}") {
+                        try {
+                            val kind = call.parameters["kind"]
+                            val ruleId = call.parameters["ruleId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (kind == null || ruleId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing kind or ruleId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get specific push rule (simplified)
+                            if (kind == "content" && ruleId == "content") {
+                                val pushRule = mapOf(
+                                    "rule_id" to "content",
+                                    "default" to true,
+                                    "enabled" to true,
+                                    "conditions" to listOf(
+                                        mapOf(
+                                            "kind" to "event_match",
+                                            "key" to "content.body",
+                                            "pattern" to "*"
+                                        )
+                                    ),
+                                    "actions" to listOf(
+                                        mapOf(
+                                            "set_tweak" to "highlight",
+                                            "value" to false
+                                        ),
+                                        mapOf(
+                                            "set_tweak" to "sound",
+                                            "value" to "default"
+                                        ),
+                                        "notify"
+                                    )
+                                )
+                                call.respond(pushRule)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Push rule not found"
+                                ))
+                            }
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /pushrules/global/{kind}/{ruleId} - Set push rule
+                    put("/pushrules/global/{kind}/{ruleId}") {
+                        try {
+                            val kind = call.parameters["kind"]
+                            val ruleId = call.parameters["ruleId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (kind == null || ruleId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing kind or ruleId parameter"
+                                ))
+                                return@put
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
+
+                            val request = call.receiveText()
+                            val pushRule = Json.parseToJsonElement(request).jsonObject
+
+                            // Validate push rule structure
+                            val conditions = pushRule["conditions"]?.jsonArray
+                            val actions = pushRule["actions"]?.jsonArray
+
+                            if (conditions == null || actions == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing conditions or actions"
+                                ))
+                                return@put
+                            }
+
+                            // Store push rule (simplified - acknowledge request)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // DELETE /pushrules/global/{kind}/{ruleId} - Delete push rule
+                    delete("/pushrules/global/{kind}/{ruleId}") {
+                        try {
+                            val kind = call.parameters["kind"]
+                            val ruleId = call.parameters["ruleId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (kind == null || ruleId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing kind or ruleId parameter"
+                                ))
+                                return@delete
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@delete
+                            }
+
+                            // Delete push rule (simplified - acknowledge request)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /admin/server_version - Get server version
+                    get("/admin/server_version") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Check if user is admin (simplified - check if user ID contains 'admin')
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@get
+                            }
+
+                            val serverVersion = mapOf(
+                                "server_version" to "1.0.0",
+                                "python_version" to "Kotlin/JVM"
+                            )
+
+                            call.respond(serverVersion)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /admin/whois/{userId} - Get user information
+                    post("/admin/whois/{userId}") {
+                        try {
+                            val targetUserId = call.parameters["userId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (targetUserId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@post
+                            }
+
+                            // Get user information (simplified)
+                            val userInfo = mapOf(
+                                "user_id" to targetUserId,
+                                "devices" to mapOf(
+                                    "device_1" to mapOf(
+                                        "sessions" to listOf(
+                                            mapOf(
+                                                "connections" to listOf(
+                                                    mapOf(
+                                                        "ip" to "127.0.0.1",
+                                                        "last_seen" to System.currentTimeMillis(),
+                                                        "user_agent" to "FERRETCANNON/1.0.0"
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+
+                            call.respond(userInfo)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /admin/server_notice/{userId} - Send server notice
+                    post("/admin/server_notice/{userId}") {
+                        try {
+                            val targetUserId = call.parameters["userId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (targetUserId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val content = json["content"]?.jsonObject
+
+                            if (content == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing content"
+                                ))
+                                return@post
+                            }
+
+                            // Send server notice (simplified - acknowledge request)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /admin/registration_tokens - Get registration tokens
+                    get("/admin/registration_tokens") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@get
+                            }
+
+                            // Get registration tokens (simplified)
+                            val tokens = listOf(
+                                mapOf(
+                                    "token" to "abc123",
+                                    "uses_allowed" to null,
+                                    "pending" to 0,
+                                    "completed" to 1,
+                                    "expiry_time" to null
+                                )
+                            )
+
+                            call.respond(mapOf("registration_tokens" to tokens))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /admin/registration_tokens - Create registration token
+                    post("/admin/registration_tokens") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val usesAllowed = json["uses_allowed"]?.jsonPrimitive?.int
+                            val expiryTime = json["expiry_time"]?.jsonPrimitive?.long
+
+                            // Generate token
+                            val token = "token_${System.currentTimeMillis()}"
+
+                            val tokenInfo = mapOf(
+                                "token" to token,
+                                "uses_allowed" to usesAllowed,
+                                "pending" to 0,
+                                "completed" to 0,
+                                "expiry_time" to expiryTime
+                            )
+
+                            call.respond(tokenInfo)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // DELETE /admin/registration_tokens/{token} - Delete registration token
+                    delete("/admin/registration_tokens/{token}") {
+                        try {
+                            val token = call.parameters["token"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (token == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing token parameter"
+                                ))
+                                return@delete
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@delete
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@delete
+                            }
+
+                            // Delete token (simplified - acknowledge request)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /admin/deactivate/{userId} - Deactivate user
+                    post("/admin/deactivate/{userId}") {
+                        try {
+                            val targetUserId = call.parameters["userId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (targetUserId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@post
+                            }
+
+                            // Deactivate user (simplified - acknowledge request)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /admin/rooms/{roomId} - Get room information
+                    get("/admin/rooms/{roomId}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@get
+                            }
+
+                            // Get room information (simplified)
+                            val roomInfo = mapOf(
+                                "room_id" to roomId,
+                                "name" to "Test Room",
+                                "topic" to "Test topic",
+                                "canonical_alias" to "#test:localhost",
+                                "joined_members" to 1,
+                                "joined_local_members" to 1,
+                                "version" to "9",
+                                "creator" to "@test:localhost",
+                                "encryption" to null,
+                                "federatable" to true,
+                                "public" to false,
+                                "join_rules" to "invite",
+                                "guest_access" to "forbidden",
+                                "history_visibility" to "shared",
+                                "state_events" to 5
+                            )
+
+                            call.respond(roomInfo)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // DELETE /admin/rooms/{roomId} - Delete room
+                    delete("/admin/rooms/{roomId}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@delete
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@delete
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@delete
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val block = json["block"]?.jsonPrimitive?.boolean ?: false
+                            val purge = json["purge"]?.jsonPrimitive?.boolean ?: true
+
+                            // Delete room (simplified - acknowledge request)
+                            call.respond(mapOf(
+                                "delete_id" to "delete_${System.currentTimeMillis()}",
+                                "kicked_users" to emptyList<String>(),
+                                "failed_to_kick_users" to emptyList<String>(),
+                                "local_aliases" to emptyList<String>()
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== THIRD-PARTY NETWORKS =====
+
+                    // GET /thirdparty/protocols - Get available protocols
+                    get("/thirdparty/protocols") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get available protocols (simplified)
+                            val protocols = mapOf(
+                                "irc" to mapOf(
+                                    "user_fields" to listOf("username", "irc_server"),
+                                    "location_fields" to listOf("irc_server", "irc_channel"),
+                                    "icon" to "mxc://localhost/irc_icon",
+                                    "field_types" to mapOf(
+                                        "username" to mapOf("regexp" to "[^@]+", "placeholder" to "username"),
+                                        "irc_server" to mapOf("regexp" to "irc\\..*", "placeholder" to "irc.example.com"),
+                                        "irc_channel" to mapOf("regexp" to "#.*", "placeholder" to "#channel")
+                                    ),
+                                    "instances" to listOf(
+                                        mapOf(
+                                            "desc" to "Example IRC network",
+                                            "icon" to "mxc://localhost/irc_icon",
+                                            "fields" to mapOf("irc_server" to "irc.example.com"),
+                                            "network_id" to "example"
+                                        )
+                                    )
+                                )
+                            )
+
+                            call.respond(protocols)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /thirdparty/protocol/{protocol} - Get protocol metadata
+                    get("/thirdparty/protocol/{protocol}") {
+                        try {
+                            val protocol = call.parameters["protocol"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (protocol == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing protocol parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get protocol metadata (simplified)
+                            if (protocol == "irc") {
+                                val protocolInfo = mapOf(
+                                    "user_fields" to listOf("username", "irc_server"),
+                                    "location_fields" to listOf("irc_server", "irc_channel"),
+                                    "icon" to "mxc://localhost/irc_icon",
+                                    "field_types" to mapOf(
+                                        "username" to mapOf("regexp" to "[^@]+", "placeholder" to "username"),
+                                        "irc_server" to mapOf("regexp" to "irc\\..*", "placeholder" to "irc.example.com"),
+                                        "irc_channel" to mapOf("regexp" to "#.*", "placeholder" to "#channel")
+                                    ),
+                                    "instances" to listOf(
+                                        mapOf(
+                                            "desc" to "Example IRC network",
+                                            "icon" to "mxc://localhost/irc_icon",
+                                            "fields" to mapOf("irc_server" to "irc.example.com"),
+                                            "network_id" to "example"
+                                        )
+                                    )
+                                )
+                                call.respond(protocolInfo)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Protocol not found"
+                                ))
+                            }
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /thirdparty/user/{protocol} - Get user by protocol
+                    get("/thirdparty/user/{protocol}") {
+                        try {
+                            val protocol = call.parameters["protocol"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (protocol == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing protocol parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            val fields = call.request.queryParameters.entries().associate { it.key to it.value.first() }
+
+                            // Get user by protocol (simplified)
+                            val users = listOf(
+                                mapOf(
+                                    "userid" to "@irc_user:localhost",
+                                    "protocol" to protocol,
+                                    "fields" to fields
+                                )
+                            )
+
+                            call.respond(users)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /thirdparty/location/{protocol} - Get location by protocol
+                    get("/thirdparty/location/{protocol}") {
+                        try {
+                            val protocol = call.parameters["protocol"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (protocol == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing protocol parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            val fields = call.request.queryParameters.entries().associate { it.key to it.value.first() }
+
+                            // Get location by protocol (simplified)
+                            val locations = listOf(
+                                mapOf(
+                                    "alias" to "#irc_channel:localhost",
+                                    "protocol" to protocol,
+                                    "fields" to fields
+                                )
+                            )
+
+                            call.respond(locations)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /thirdparty/location - Get all locations
+                    get("/thirdparty/location") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get all locations (simplified)
+                            val locations = listOf(
+                                mapOf(
+                                    "alias" to "#irc_channel:localhost",
+                                    "protocol" to "irc",
+                                    "fields" to mapOf("irc_server" to "irc.example.com", "irc_channel" to "#channel")
+                                )
+                            )
+
+                            call.respond(locations)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== OAUTH 2.0 API =====
+
+                    // GET /oauth2/authorize - OAuth 2.0 authorization
+                    get("/oauth2/authorize") {
+                        try {
+                            val responseType = call.request.queryParameters["response_type"]
+                            val clientId = call.request.queryParameters["client_id"]
+                            val redirectUri = call.request.queryParameters["redirect_uri"]
+                            val scope = call.request.queryParameters["scope"]
+                            val state = call.request.queryParameters["state"]
+
+                            // Validate required parameters
+                            if (responseType != "code") {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "unsupported_response_type",
+                                    "error_description" to "Only 'code' response type is supported"
+                                ))
+                                return@get
+                            }
+
+                            if (clientId == null || redirectUri == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Missing client_id or redirect_uri"
+                                ))
+                                return@get
+                            }
+
+                            // In a real implementation, this would show an authorization page
+                            // For demo purposes, we'll redirect with an authorization code
+                            val authCode = "auth_code_${System.currentTimeMillis()}"
+
+                            val redirectUrl = if (state != null) {
+                                "$redirectUri?code=$authCode&state=$state"
+                            } else {
+                                "$redirectUri?code=$authCode"
+                            }
+
+                            call.respondRedirect(redirectUrl)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "error" to "server_error",
+                                "error_description" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /oauth2/token - OAuth 2.0 token exchange
+                    post("/oauth2/token") {
+                        try {
+                            val grantType = call.receiveParameters()["grant_type"]
+                            val code = call.receiveParameters()["code"]
+                            val redirectUri = call.receiveParameters()["redirect_uri"]
+                            val clientId = call.receiveParameters()["client_id"]
+                            val clientSecret = call.receiveParameters()["client_secret"]
+
+                            // Validate grant type
+                            if (grantType != "authorization_code") {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "unsupported_grant_type",
+                                    "error_description" to "Only 'authorization_code' grant type is supported"
+                                ))
+                                return@post
+                            }
+
+                            if (code == null || redirectUri == null || clientId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Missing required parameters"
+                                ))
+                                return@post
+                            }
+
+                            // In a real implementation, validate the authorization code
+                            // For demo purposes, generate tokens
+                            val accessToken = "access_token_${System.currentTimeMillis()}"
+                            val refreshToken = "refresh_token_${System.currentTimeMillis()}"
+
+                            call.respond(mapOf(
+                                "access_token" to accessToken,
+                                "token_type" to "Bearer",
+                                "expires_in" to 3600,
+                                "refresh_token" to refreshToken,
+                                "scope" to "openid profile"
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "error" to "server_error",
+                                "error_description" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /oauth2/userinfo - OAuth 2.0 user info
+                    post("/oauth2/userinfo") {
+                        try {
+                            val authHeader = call.request.headers["Authorization"]
+                            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "error" to "invalid_token",
+                                    "error_description" to "Missing or invalid access token"
+                                ))
+                                return@post
+                            }
+
+                            val accessToken = authHeader.substringAfter("Bearer ")
+
+                            // In a real implementation, validate the access token
+                            // For demo purposes, return user info
+                            call.respond(mapOf(
+                                "sub" to "@test:localhost",
+                                "name" to "Test User",
+                                "preferred_username" to "test",
+                                "profile" to "https://localhost/profile/@test:localhost",
+                                "picture" to "https://localhost/avatar/@test:localhost"
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "error" to "server_error",
+                                "error_description" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /oauth2/revoke - OAuth 2.0 token revocation
+                    post("/oauth2/revoke") {
+                        try {
+                            val token = call.receiveParameters()["token"]
+                            val tokenTypeHint = call.receiveParameters()["token_type_hint"]
+
+                            if (token == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Missing token parameter"
+                                ))
+                                return@post
+                            }
+
+                            // In a real implementation, revoke the token
+                            // For demo purposes, acknowledge the request
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "error" to "server_error",
+                                "error_description" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /oauth2/introspect - OAuth 2.0 token introspection
+                    post("/oauth2/introspect") {
+                        try {
+                            val token = call.receiveParameters()["token"]
+                            val tokenTypeHint = call.receiveParameters()["token_type_hint"]
+
+                            if (token == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Missing token parameter"
+                                ))
+                                return@post
+                            }
+
+                            // In a real implementation, introspect the token
+                            // For demo purposes, return token info
+                            call.respond(mapOf(
+                                "active" to true,
+                                "client_id" to "client_123",
+                                "username" to "@test:localhost",
+                                "scope" to "openid profile",
+                                "token_type" to "Bearer",
+                                "exp" to (System.currentTimeMillis() / 1000 + 3600),
+                                "iat" to (System.currentTimeMillis() / 1000),
+                                "sub" to "@test:localhost"
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "error" to "server_error",
+                                "error_description" to "Internal server error"
                             ))
                         }
                     }

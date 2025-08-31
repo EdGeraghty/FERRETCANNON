@@ -25,6 +25,7 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:2.3.8")
     implementation("io.ktor:ktor-server-cors:2.3.8")
     implementation("io.ktor:ktor-server-rate-limit:2.3.8")
+    implementation("io.ktor:ktor-server-plugins:2.3.8")
     implementation("org.xerial:sqlite-jdbc:3.42.0.0")
     implementation("org.jetbrains.exposed:exposed-core:0.41.1")
     implementation("org.jetbrains.exposed:exposed-dao:0.41.1")

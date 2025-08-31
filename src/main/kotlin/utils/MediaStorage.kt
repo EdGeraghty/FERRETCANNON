@@ -80,6 +80,42 @@ object MediaStorage {
     }
 
     /**
+     * Store media content with filename
+     */
+    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, filename: String?): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Validate file size
+                if (content.size > MAX_FILE_SIZE) {
+                    println("Media file too large: ${content.size} bytes")
+                    return@withContext false
+                }
+
+                // Generate file path
+                val filePath = getMediaFilePath(mediaId)
+
+                // Write file
+                Files.write(filePath, content)
+
+                // Store metadata
+                val metadata = MediaMetadata(
+                    mediaId = mediaId,
+                    contentType = contentType,
+                    size = content.size,
+                    uploadedAt = System.currentTimeMillis(),
+                    filename = filename
+                )
+                mediaCache[mediaId] = metadata
+
+                true
+            } catch (e: Exception) {
+                println("Error storing media $mediaId: ${e.message}")
+                false
+            }
+        }
+    }
+
+    /**
      * Retrieve media content
      */
     suspend fun getMedia(mediaId: String): Pair<ByteArray?, String?> {
@@ -232,5 +268,6 @@ data class MediaMetadata(
     val mediaId: String,
     val contentType: String,
     val size: Int,
-    val uploadedAt: Long
+    val uploadedAt: Long,
+    val filename: String? = null
 )

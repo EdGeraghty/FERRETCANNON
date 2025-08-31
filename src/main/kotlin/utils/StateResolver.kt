@@ -77,8 +77,8 @@ class StateResolver {
                 val type = authEvent["type"]?.jsonPrimitive?.content
                 if (type == "m.room.power_levels") {
                     val content = authEvent["content"]?.jsonObject
-                    val users = content?.get("users")?.jsonObject
-                    return users?.get(sender)?.jsonPrimitive?.int ?: 0
+                    val usersPowerLevels = content?.get("users")?.jsonObject
+                    return usersPowerLevels?.get(sender)?.jsonPrimitive?.int ?: 0
                 }
             }
         }
@@ -199,8 +199,8 @@ class StateResolver {
     }
 
     private fun getUserPowerLevel(userId: String, powerLevels: JsonObject): Int {
-        val users = powerLevels["users"]?.jsonObject ?: return 0
-        return users[userId]?.jsonPrimitive?.int ?: powerLevels["users_default"]?.jsonPrimitive?.int ?: 0
+        val usersPowerLevels = powerLevels["users"]?.jsonObject ?: return 0
+        return usersPowerLevels[userId]?.jsonPrimitive?.int ?: powerLevels["users_default"]?.jsonPrimitive?.int ?: 0
     }
 
     private fun getRequiredPowerLevel(eventType: String, powerLevels: JsonObject): Int {
