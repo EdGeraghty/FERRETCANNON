@@ -26,10 +26,8 @@ import org.jetbrains.exposed.sql.SchemaUtils
 import java.time.Duration
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
+import utils.AuthUtils
 import utils.connectedClients
-import utils.presenceMap
-import utils.receiptsMap
-import utils.typingMap
 import routes.client_server.client.clientRoutes
 import routes.server_server.federation.federationRoutes
 import routes.server_server.key.keyRoutes
@@ -52,6 +50,13 @@ fun main() {
     Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
     transaction {
         SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates)
+        
+        // Create a test user for development
+        val testUserExists = Users.select { Users.username eq "testuser" }.count() > 0
+        if (!testUserExists) {
+            utils.AuthUtils.createUser("testuser", "TestPass123!", "Test User")
+            println("Created test user: testuser with password: TestPass123!")
+        }
     }
     
     val federationServer = "localhost:8080" // TODO: Make configurable

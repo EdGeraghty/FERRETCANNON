@@ -825,6 +825,7 @@ fun Application.clientRoutes() {
                     // Login endpoint
                     post("/login") {
                         try {
+
                             // Validate content type
                             val contentType = call.request.contentType()
                             if (contentType != ContentType.Application.Json) {
@@ -939,17 +940,13 @@ fun Application.clientRoutes() {
                             // Store user session in database
                             // Access token is already stored by AuthUtils.createAccessToken()
 
-                            call.respond(mapOf(
+                            val responseMap = mapOf(
                                 "user_id" to userId,
                                 "access_token" to accessToken,
                                 "home_server" to "localhost:8080",
-                                "device_id" to finalDeviceId,
-                                "well_known" to mapOf(
-                                    "m.homeserver" to mapOf(
-                                        "base_url" to "https://localhost:8080"
-                                    )
-                                )
-                            ))
+                                "device_id" to finalDeviceId
+                            )
+                            call.respond(responseMap)
                         } catch (e: Exception) {
                             when (e) {
                                 is kotlinx.serialization.SerializationException -> {
@@ -1471,15 +1468,8 @@ fun Application.clientRoutes() {
                                 return@get
                             }
 
-                            // Get user's devices (simplified - in real implementation, query device table)
-                            val devices = listOf(
-                                mapOf(
-                                    "device_id" to "device_1",
-                                    "display_name" to "Main Device",
-                                    "last_seen_ip" to "127.0.0.1",
-                                    "last_seen_ts" to System.currentTimeMillis()
-                                )
-                            )
+                            // Get user's devices from database
+                            val devices = AuthUtils.getUserDevices(userId)
 
                             call.respond(mapOf("devices" to devices))
 
@@ -1513,13 +1503,17 @@ fun Application.clientRoutes() {
                                 return@get
                             }
 
-                            // Get device info (simplified)
-                            val device = mapOf(
-                                "device_id" to deviceId,
-                                "display_name" to "Device",
-                                "last_seen_ip" to "127.0.0.1",
-                                "last_seen_ts" to System.currentTimeMillis()
-                            )
+                            // Get user's devices and find the specific device
+                            val devices = AuthUtils.getUserDevices(userId)
+                            val device = devices.find { it["device_id"] == deviceId }
+
+                            if (device == null) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Device not found"
+                                ))
+                                return@get
+                            }
 
                             call.respond(device)
 
@@ -1557,7 +1551,21 @@ fun Application.clientRoutes() {
                             val json = Json.parseToJsonElement(request).jsonObject
                             val displayName = json["display_name"]?.jsonPrimitive?.content
 
-                            // Update device display name (simplified)
+                            // Verify device belongs to user
+                            val devices = AuthUtils.getUserDevices(userId)
+                            val deviceExists = devices.any { it["device_id"] == deviceId }
+
+                            if (!deviceExists) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Device not found"
+                                ))
+                                return@put
+                            }
+
+                            // Update device display name in database
+                            AuthUtils.updateDeviceDisplayName(userId, deviceId, displayName)
+
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
                         } catch (e: Exception) {
@@ -1609,7 +1617,31 @@ fun Application.clientRoutes() {
                                 return@delete
                             }
 
-                            // Validate authentication (simplified)
+                            // Verify device belongs to user
+                            val devices = AuthUtils.getUserDevices(userId)
+                            val deviceExists = devices.any { it["device_id"] == deviceId }
+
+                            if (!deviceExists) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Device not found"
+                                ))
+                                return@delete
+                            }
+
+                            // Validate authentication (simplified - in production, validate password)
+                            val authType = auth["type"]?.jsonPrimitive?.content
+                            if (authType != "m.login.password") {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_UNKNOWN",
+                                    "error" to "Unsupported authentication type"
+                                ))
+                                return@delete
+                            }
+
+                            // Delete device and all its access tokens from database
+                            AuthUtils.deleteDevice(userId, deviceId)
+
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
                         } catch (e: Exception) {
