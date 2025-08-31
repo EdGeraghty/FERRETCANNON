@@ -34,7 +34,7 @@ dependencies {
     implementation("dnsjava:dnsjava:3.5.2") // For DNS SRV record lookup
     implementation("com.github.jai-imageio:jai-imageio-core:1.4.0") // For image processing
     implementation("org.imgscalr:imgscalr-lib:4.2") // For image scaling/thumbnail generation
-    // Add more KTor modules as needed for Matrix spec
+    implementation("org.mindrot:jbcrypt:0.4") // For password hashing
 }
 
 tasks.test {

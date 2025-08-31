@@ -51,8 +51,8 @@ object ServerKeys {
         results["Empty Object"] = signatureEmpty == expectedEmpty
 
         // Test 2: JSON object with data
-        val canonicalData = "{\"one\":1,\"two\":\"Two\"}"
-        val signatureData = signWithKey(canonicalData.toByteArray(Charsets.UTF_8), testPrivateKey)
+        val canonical4444 = "{\"one\":1,\"two\":\"Two\"}"
+        val signatureData = signWithKey(canonical4444.toByteArray(Charsets.UTF_8), testPrivateKey)
         val expectedData = "KqmLSbO39/Bzb0QIYE82zqLwsA+PDzYIpIRA2sRQ4sL53+sN6/fpNSoqE7BP7vBZhG6kYdD13EIMJpvhJI+6Bw"
         results["Data Object"] = signatureData == expectedData
 

@@ -20,7 +20,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import kotlinx.serialization.json.*
-import utils.users
+import utils.AuthUtils
 import utils.typingMap
 import utils.connectedClients
 import utils.ServerKeys
@@ -47,10 +47,10 @@ fun Application.clientRoutes() {
     install(Authentication) {
         bearer("matrix-auth") {
             authenticate { tokenCredential ->
-                // Simple token validation - in real implementation, validate against DB
-                val userId = users.entries.find { it.value == tokenCredential.token }?.key
-                if (userId != null) {
-                    UserIdPrincipal(userId)
+                // Use new database-backed authentication
+                val result = AuthUtils.validateAccessToken(tokenCredential.token)
+                if (result != null) {
+                    UserIdPrincipal(result.first)
                 } else {
                     null
                 }
@@ -66,17 +66,15 @@ fun Application.clientRoutes() {
                          call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
 
         if (accessToken != null) {
-            // Validate token format and lookup user
-            val userId = users.entries.find { it.value == accessToken }?.key
+            // Validate token using new authentication system
+            val result = AuthUtils.validateAccessToken(accessToken)
 
-            if (userId != null) {
+            if (result != null) {
+                val (userId, deviceId) = result
                 // Store authenticated user information
                 call.attributes.put(AttributeKey("matrix-user"), UserIdPrincipal(userId))
                 call.attributes.put(AttributeKey("matrix-token"), accessToken)
                 call.attributes.put(AttributeKey("matrix-user-id"), userId)
-
-                // Extract device ID from token (in a real implementation, this would be stored separately)
-                val deviceId = accessToken.substringAfter("token_").substringAfter("_").let { "device_$it" }
                 call.attributes.put(AttributeKey("matrix-device-id"), deviceId)
             } else {
                 // Invalid token - will be handled by individual endpoints
@@ -861,11 +859,13 @@ fun Application.clientRoutes() {
                                         ))
                                         return@post
                                     }
-                                    // Simple authentication - in real implementation, verify password hash
-                                    if (password != "pass") {
+
+                                    // Authenticate user with database
+                                    val authenticatedUser = AuthUtils.authenticateUser(userId, password)
+                                    if (authenticatedUser == null) {
                                         call.respond(HttpStatusCode.Forbidden, mapOf(
                                             "errcode" to "M_FORBIDDEN",
-                                            "error" to "Invalid password"
+                                            "error" to "Invalid username or password"
                                         ))
                                         return@post
                                     }
@@ -913,12 +913,12 @@ fun Application.clientRoutes() {
                                 }
                             }
 
-                            // Generate access token
-                            val accessToken = "token_${userId}_${System.currentTimeMillis()}"
+                            // Generate access token and store session
                             val finalDeviceId = deviceId ?: "device_${System.currentTimeMillis()}"
+                            val accessToken = AuthUtils.createAccessToken(userId, finalDeviceId)
 
-                            // Store user session
-                            users[userId] = accessToken
+                            // Store user session in database
+                            // Access token is already stored by AuthUtils.createAccessToken()
 
                             call.respond(mapOf(
                                 "user_id" to userId,
@@ -1017,7 +1017,8 @@ fun Application.clientRoutes() {
                             val guestAccessToken = json["guest_access_token"]?.jsonPrimitive?.content
                             if (guestAccessToken != null && !isGuest) {
                                 // Validate guest access token
-                                val guestUserId = users.entries.find { it.value == guestAccessToken }?.key
+                                val guestUserPair = AuthUtils.validateAccessToken(guestAccessToken)
+                                val guestUserId = guestUserPair?.first
                                 if (guestUserId == null || !guestUserId.startsWith("@guest_")) {
                                     call.respond(HttpStatusCode.BadRequest, mapOf(
                                         "errcode" to "M_INVALID_PARAM",
@@ -1068,8 +1069,8 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
-                            // Check if username is available (in real implementation, check database)
-                            if (users.containsKey("@$finalUsername:localhost")) {
+                            // Check if username is available using AuthUtils
+                            if (!AuthUtils.isUsernameAvailable(finalUsername)) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
                                     "errcode" to "M_USER_IN_USE",
                                     "error" to "Username already taken"
@@ -1086,24 +1087,29 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
-                            // Generate user ID
-                            val userId = "@$finalUsername:localhost"
-
                             // Generate access token (unless inhibited)
                             val accessToken = if (!inhibitLogin) {
-                                "token_${finalUsername}_${System.currentTimeMillis()}"
+                                val finalDeviceId = deviceId ?: "device_${System.currentTimeMillis()}"
+                                // Create user first
+                                val userId = AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest)
+                                // Create access token for the user
+                                AuthUtils.createAccessToken(userId, finalDeviceId)
                             } else {
+                                // For inhibited login, still create the user but don't create access token
+                                AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest)
                                 null
                             }
 
                             val finalDeviceId = deviceId ?: "device_${System.currentTimeMillis()}"
 
-                            // Store user (in real implementation, store in database)
+                            // Store user session in database if login is not inhibited
                             if (accessToken != null) {
-                                users[userId] = accessToken
+                                val userId = "@$finalUsername:localhost"
+                                // Access token is already stored by AuthUtils.createAccessToken()
                             }
 
                             // Prepare response
+                            val userId = "@$finalUsername:localhost"
                             val response = mutableMapOf<String, Any>(
                                 "user_id" to userId,
                                 "home_server" to "localhost:8080",

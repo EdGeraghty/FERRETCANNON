@@ -49,3 +49,39 @@ object AccountData : Table("account_data") {
 
     override val primaryKey = PrimaryKey(userId, type, roomId)
 }
+
+object Users : Table("users") {
+    val userId = varchar("user_id", 255).uniqueIndex()
+    val username = varchar("username", 255).uniqueIndex()
+    val passwordHash = varchar("password_hash", 255)
+    val displayName = varchar("display_name", 255).nullable()
+    val avatarUrl = varchar("avatar_url", 500).nullable()
+    val isGuest = bool("is_guest").default(false)
+    val deactivated = bool("deactivated").default(false)
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val lastSeen = long("last_seen").default(System.currentTimeMillis())
+}
+
+object AccessTokens : Table("access_tokens") {
+    val token = varchar("token", 255).uniqueIndex()
+    val userId = varchar("user_id", 255)
+    val deviceId = varchar("device_id", 255)
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val expiresAt = long("expires_at").nullable() // null = never expires
+    val lastUsed = long("last_used").default(System.currentTimeMillis())
+    val userAgent = varchar("user_agent", 500).nullable()
+    val ipAddress = varchar("ip_address", 45).nullable() // IPv6 compatible
+
+    override val primaryKey = PrimaryKey(token)
+}
+
+object Devices : Table("devices") {
+    val userId = varchar("user_id", 255)
+    val deviceId = varchar("device_id", 255)
+    val displayName = varchar("display_name", 255).nullable()
+    val lastSeen = long("last_seen").default(System.currentTimeMillis())
+    val ipAddress = varchar("ip_address", 45).nullable()
+    val userAgent = varchar("user_agent", 500).nullable()
+
+    override val primaryKey = PrimaryKey(userId, deviceId)
+}

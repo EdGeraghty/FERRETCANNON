@@ -13,6 +13,9 @@ import models.Events
 import models.Rooms
 import models.StateGroups
 import models.AccountData
+import models.Users
+import models.AccessTokens
+import models.Devices
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -45,7 +48,7 @@ fun main() {
     // Database setup
     Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
     transaction {
-        SchemaUtils.create(Events, Rooms, StateGroups, AccountData)
+        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices)
     }
     
     val federationServer = "localhost:8080" // TODO: Make configurable
