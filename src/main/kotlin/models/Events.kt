@@ -85,3 +85,40 @@ object Devices : Table("devices") {
 
     override val primaryKey = PrimaryKey(userId, deviceId)
 }
+
+object OAuthAuthorizationCodes : Table("oauth_auth_codes") {
+    val code = varchar("code", 255).uniqueIndex()
+    val clientId = varchar("client_id", 255)
+    val userId = varchar("user_id", 255)
+    val redirectUri = varchar("redirect_uri", 500)
+    val scope = varchar("scope", 500)
+    val state = varchar("state", 255).nullable()
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val expiresAt = long("expires_at")
+    val used = bool("used").default(false)
+
+    override val primaryKey = PrimaryKey(code)
+}
+
+object OAuthAccessTokens : Table("oauth_access_tokens") {
+    val accessToken = varchar("access_token", 255).uniqueIndex()
+    val refreshToken = varchar("refresh_token", 255).uniqueIndex()
+    val clientId = varchar("client_id", 255)
+    val userId = varchar("user_id", 255)
+    val scope = varchar("scope", 500)
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val expiresAt = long("expires_at")
+    val refreshTokenExpiresAt = long("refresh_token_expires_at").nullable()
+
+    override val primaryKey = PrimaryKey(accessToken)
+}
+
+object OAuthStates : Table("oauth_states") {
+    val state = varchar("state", 255).uniqueIndex()
+    val providerId = varchar("provider_id", 255)
+    val redirectUri = varchar("redirect_uri", 500).nullable()
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val expiresAt = long("expires_at")
+
+    override val primaryKey = PrimaryKey(state)
+}

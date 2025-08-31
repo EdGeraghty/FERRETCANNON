@@ -33,6 +33,9 @@ import utils.MediaStorage
 import models.Users
 import models.AccessTokens
 import org.mindrot.jbcrypt.BCrypt
+import utils.OAuthService
+import utils.OAuthConfig
+import utils.OAuthProvider
 
 fun Application.clientRoutes() {
     // Request size limiting - simplified version
@@ -836,7 +839,7 @@ fun Application.clientRoutes() {
                             val json = Json.parseToJsonElement(request).jsonObject
 
                             // Validate required fields
-                            val userId = json["user"]?.jsonPrimitive?.content
+                            var userId = json["user"]?.jsonPrimitive?.content
                             val password = json["password"]?.jsonPrimitive?.content
                             val token = json["token"]?.jsonPrimitive?.content
                             val appServiceToken = json["access_token"]?.jsonPrimitive?.content
@@ -893,8 +896,21 @@ fun Application.clientRoutes() {
                                         ))
                                         return@post
                                     }
-                                    // In a real implementation, validate OAuth 2.0 token with provider
-                                    // For demo purposes, accept OAuth tokens
+
+                                    // Validate OAuth 2.0 token with OAuth service
+                                    val tokenValidation = OAuthService.validateAccessToken(oauth2Token)
+                                    if (tokenValidation == null) {
+                                        call.respond(HttpStatusCode.Forbidden, mapOf(
+                                            "errcode" to "M_FORBIDDEN",
+                                            "error" to "Invalid OAuth 2.0 token"
+                                        ))
+                                        return@post
+                                    }
+
+                                    val (oauthUserId, clientId, scope) = tokenValidation
+
+                                    // Use OAuth user ID as Matrix user ID
+                                    userId = oauthUserId
                                 }
                                 "m.login.application_service" -> {
                                     if (appServiceToken == null) {
@@ -1003,8 +1019,36 @@ fun Application.clientRoutes() {
                                         // For demo purposes, accept any password
                                     }
                                     "m.login.oauth2" -> {
-                                        // In a real implementation, validate OAuth token
-                                        // For demo purposes, accept OAuth auth
+                                        val oauth2Token = auth["token"]?.jsonPrimitive?.content
+                                        if (oauth2Token == null) {
+                                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                                                "errcode" to "M_INVALID_PARAM",
+                                                "error" to "Missing OAuth token in authentication data"
+                                            ))
+                                            return@post
+                                        }
+
+                                        // Validate OAuth 2.0 token
+                                        val tokenValidation = OAuthService.validateAccessToken(oauth2Token)
+                                        if (tokenValidation == null) {
+                                            call.respond(HttpStatusCode.Forbidden, mapOf(
+                                                "errcode" to "M_FORBIDDEN",
+                                                "error" to "Invalid OAuth 2.0 token"
+                                            ))
+                                            return@post
+                                        }
+
+                                        val (oauthUserId, clientId, scope) = tokenValidation
+
+                                        // Use OAuth user ID for registration
+                                        val finalUsername = json["username"]?.jsonPrimitive?.content ?: oauthUserId.substringAfter("@").substringBefore(":")
+                                        val finalUserId = "@$finalUsername:localhost"
+
+                                        // Check if user already exists
+                                        if (AuthUtils.isUsernameAvailable(finalUsername)) {
+                                            // Create user with OAuth credentials
+                                            AuthUtils.createUser(finalUsername, "", finalUsername, false)
+                                        }
                                     }
                                     else -> {
                                         call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4190,6 +4234,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             val redirectUri = call.request.queryParameters["redirect_uri"]
                             val scope = call.request.queryParameters["scope"]
                             val state = call.request.queryParameters["state"]
+                            val providerId = call.request.queryParameters["provider"]
 
                             // Validate required parameters
                             if (responseType != "code") {
@@ -4208,17 +4253,37 @@ ${String(thumbnailData, Charsets.UTF_8)}
                                 return@get
                             }
 
-                            // In a real implementation, this would show an authorization page
-                            // For demo purposes, we'll redirect with an authorization code
-                            val authCode = "auth_code_${System.currentTimeMillis()}"
-
-                            val redirectUrl = if (state != null) {
-                                "$redirectUri?code=$authCode&state=$state"
+                            // Get OAuth provider
+                            val provider = if (providerId != null) {
+                                OAuthConfig.getProvider(providerId)
                             } else {
-                                "$redirectUri?code=$authCode"
+                                OAuthConfig.getDefaultProvider()
                             }
 
-                            call.respondRedirect(redirectUrl)
+                            if (provider == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Invalid or unsupported OAuth provider"
+                                ))
+                                return@get
+                            }
+
+                            // Generate state for CSRF protection
+                            val oauthState = OAuthConfig.generateState()
+                            OAuthService.storeState(oauthState, provider.id, redirectUri)
+
+                            // Build authorization URL
+                            val authUrl = OAuthService.buildAuthorizationUrl(
+                                provider = provider,
+                                state = oauthState,
+                                additionalParams = mapOf(
+                                    "scope" to (scope ?: provider.scope),
+                                    "client_id" to clientId,
+                                    "redirect_uri" to redirectUri
+                                )
+                            )
+
+                            call.respondRedirect(authUrl)
 
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -4236,36 +4301,123 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             val redirectUri = call.receiveParameters()["redirect_uri"]
                             val clientId = call.receiveParameters()["client_id"]
                             val clientSecret = call.receiveParameters()["client_secret"]
+                            val refreshToken = call.receiveParameters()["refresh_token"]
 
                             // Validate grant type
-                            if (grantType != "authorization_code") {
+                            if (grantType != "authorization_code" && grantType != "refresh_token") {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
                                     "error" to "unsupported_grant_type",
-                                    "error_description" to "Only 'authorization_code' grant type is supported"
+                                    "error_description" to "Only 'authorization_code' and 'refresh_token' grant types are supported"
                                 ))
                                 return@post
                             }
 
-                            if (code == null || redirectUri == null || clientId == null) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "error" to "invalid_request",
-                                    "error_description" to "Missing required parameters"
-                                ))
-                                return@post
+                            when (grantType) {
+                                "authorization_code" -> {
+                                    if (code == null || redirectUri == null || clientId == null) {
+                                        call.respond(HttpStatusCode.BadRequest, mapOf(
+                                            "error" to "invalid_request",
+                                            "error_description" to "Missing required parameters"
+                                        ))
+                                        return@post
+                                    }
+
+                                    // Validate authorization code
+                                    val codeValidation = OAuthService.validateAuthorizationCode(code)
+                                    if (codeValidation == null) {
+                                        call.respond(HttpStatusCode.BadRequest, mapOf(
+                                            "error" to "invalid_grant",
+                                            "error_description" to "Invalid or expired authorization code"
+                                        ))
+                                        return@post
+                                    }
+
+                                    val (userId, storedClientId, scope) = codeValidation
+
+                                    // Validate client ID matches
+                                    if (clientId != storedClientId) {
+                                        call.respond(HttpStatusCode.BadRequest, mapOf(
+                                            "error" to "invalid_client",
+                                            "error_description" to "Client ID mismatch"
+                                        ))
+                                        return@post
+                                    }
+
+                                    // Get OAuth provider for this user (simplified - assume default provider)
+                                    val provider = OAuthConfig.getDefaultProvider()
+                                    if (provider == null) {
+                                        call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                            "error" to "server_error",
+                                            "error_description" to "OAuth provider not configured"
+                                        ))
+                                        return@post
+                                    }
+
+                                    // Exchange code for tokens (simplified - generate tokens directly)
+                                    val accessToken = OAuthConfig.generateAccessToken()
+                                    val refreshTokenValue = OAuthConfig.generateRefreshToken()
+
+                                    // Store tokens
+                                    OAuthService.storeAccessToken(
+                                        accessToken = accessToken,
+                                        refreshToken = refreshTokenValue,
+                                        clientId = clientId,
+                                        userId = userId,
+                                        scope = scope,
+                                        expiresIn = 3600L // 1 hour
+                                    )
+
+                                    call.respond(mapOf(
+                                        "access_token" to accessToken,
+                                        "token_type" to "Bearer",
+                                        "expires_in" to 3600,
+                                        "refresh_token" to refreshTokenValue,
+                                        "scope" to scope
+                                    ))
+                                }
+
+                                "refresh_token" -> {
+                                    if (refreshToken == null || clientId == null) {
+                                        call.respond(HttpStatusCode.BadRequest, mapOf(
+                                            "error" to "invalid_request",
+                                            "error_description" to "Missing refresh_token or client_id"
+                                        ))
+                                        return@post
+                                    }
+
+                                    // Get provider and refresh token
+                                    val provider = OAuthConfig.getDefaultProvider()
+                                    if (provider == null) {
+                                        call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                            "error" to "server_error",
+                                            "error_description" to "OAuth provider not configured"
+                                        ))
+                                        return@post
+                                    }
+
+                                    // Generate new tokens
+                                    val newAccessToken = OAuthConfig.generateAccessToken()
+                                    val newRefreshToken = OAuthConfig.generateRefreshToken()
+
+                                    // Store new tokens (simplified - in real implementation, update existing)
+                                    OAuthService.storeAccessToken(
+                                        accessToken = newAccessToken,
+                                        refreshToken = newRefreshToken,
+                                        clientId = clientId,
+                                        userId = "@test:localhost", // Simplified
+                                        scope = "openid profile",
+                                        expiresIn = 3600L
+                                    )
+
+                                    call.respond(mapOf(
+                                        "access_token" to newAccessToken,
+                                        "token_type" to "Bearer",
+                                        "expires_in" to 3600,
+                                        "refresh_token" to newRefreshToken,
+                                        "scope" to "openid profile"
+                                    ))
+                                }
                             }
-
-                            // In a real implementation, validate the authorization code
-                            // For demo purposes, generate tokens
-                            val accessToken = "access_token_${System.currentTimeMillis()}"
-                            val refreshToken = "refresh_token_${System.currentTimeMillis()}"
-
-                            call.respond(mapOf(
-                                "access_token" to accessToken,
-                                "token_type" to "Bearer",
-                                "expires_in" to 3600,
-                                "refresh_token" to refreshToken,
-                                "scope" to "openid profile"
-                            ))
 
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -4289,15 +4441,28 @@ ${String(thumbnailData, Charsets.UTF_8)}
 
                             val accessToken = authHeader.substringAfter("Bearer ")
 
-                            // In a real implementation, validate the access token
-                            // For demo purposes, return user info
-                            call.respond(mapOf(
-                                "sub" to "@test:localhost",
-                                "name" to "Test User",
-                                "preferred_username" to "test",
-                                "profile" to "https://localhost/profile/@test:localhost",
-                                "picture" to "https://localhost/avatar/@test:localhost"
-                            ))
+                            // Validate access token
+                            val tokenValidation = OAuthService.validateAccessToken(accessToken)
+                            if (tokenValidation == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "error" to "invalid_token",
+                                    "error_description" to "Invalid or expired access token"
+                                ))
+                                return@post
+                            }
+
+                            val (userId, clientId, scope) = tokenValidation
+
+                            // Get user profile information (simplified)
+                            val userInfo = mapOf(
+                                "sub" to userId,
+                                "name" to userId.substringAfter("@").substringBefore(":"),
+                                "preferred_username" to userId.substringAfter("@").substringBefore(":"),
+                                "profile" to "https://localhost/profile/$userId",
+                                "picture" to "https://localhost/avatar/$userId"
+                            )
+
+                            call.respond(userInfo)
 
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -4321,8 +4486,9 @@ ${String(thumbnailData, Charsets.UTF_8)}
                                 return@post
                             }
 
-                            // In a real implementation, revoke the token
-                            // For demo purposes, acknowledge the request
+                            // Revoke the token
+                            OAuthService.revokeToken(token)
+
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
                         } catch (e: Exception) {
@@ -4347,18 +4513,23 @@ ${String(thumbnailData, Charsets.UTF_8)}
                                 return@post
                             }
 
-                            // In a real implementation, introspect the token
-                            // For demo purposes, return token info
-                            call.respond(mapOf(
-                                "active" to true,
-                                "client_id" to "client_123",
-                                "username" to "@test:localhost",
-                                "scope" to "openid profile",
-                                "token_type" to "Bearer",
-                                "exp" to (System.currentTimeMillis() / 1000 + 3600),
-                                "iat" to (System.currentTimeMillis() / 1000),
-                                "sub" to "@test:localhost"
-                            ))
+                            // Validate access token
+                            val tokenValidation = OAuthService.validateAccessToken(token)
+                            if (tokenValidation != null) {
+                                val (userId, clientId, scope) = tokenValidation
+                                call.respond(mapOf(
+                                    "active" to true,
+                                    "client_id" to clientId,
+                                    "username" to userId,
+                                    "scope" to scope,
+                                    "token_type" to "Bearer",
+                                    "exp" to (System.currentTimeMillis() / 1000 + 3600),
+                                    "iat" to (System.currentTimeMillis() / 1000),
+                                    "sub" to userId
+                                ))
+                            } else {
+                                call.respond(mapOf("active" to false))
+                            }
 
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -4366,6 +4537,165 @@ ${String(thumbnailData, Charsets.UTF_8)}
                                 "error_description" to "Internal server error"
                             ))
                         }
+                    }
+
+                    // ===== OAUTH CALLBACK ENDPOINTS =====
+
+                    // GET /oauth2/callback/{provider} - OAuth provider callback
+                    get("/oauth2/callback/{provider}") {
+                        try {
+                            val providerId = call.parameters["provider"]
+                            val code = call.request.queryParameters["code"]
+                            val state = call.request.queryParameters["state"]
+                            val error = call.request.queryParameters["error"]
+                            val errorDescription = call.request.queryParameters["error_description"]
+
+                            if (providerId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Missing provider parameter"
+                                ))
+                                return@get
+                            }
+
+                            // Handle OAuth errors
+                            if (error != null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to error,
+                                    "error_description" to (errorDescription ?: "OAuth provider error")
+                                ))
+                                return@get
+                            }
+
+                            if (code == null || state == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Missing authorization code or state"
+                                ))
+                                return@get
+                            }
+
+                            // Validate state for CSRF protection
+                            val storedProviderId = OAuthService.validateState(state)
+                            if (storedProviderId == null || storedProviderId != providerId) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_state",
+                                    "error_description" to "Invalid or expired state parameter"
+                                ))
+                                return@get
+                            }
+
+                            // Get OAuth provider
+                            val provider = OAuthConfig.getProvider(providerId)
+                            if (provider == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "error" to "invalid_request",
+                                    "error_description" to "Invalid OAuth provider"
+                                ))
+                                return@get
+                            }
+
+                            // Exchange authorization code for access token
+                            val tokenResult = OAuthService.exchangeCodeForToken(
+                                provider = provider,
+                                code = code,
+                                redirectUri = provider.redirectUri
+                            )
+
+                            if (tokenResult.isFailure) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                    "error" to "server_error",
+                                    "error_description" to "Failed to exchange authorization code for token"
+                                ))
+                                return@get
+                            }
+
+                            val tokenResponse = tokenResult.getOrThrow()
+
+                            // Get user information from OAuth provider
+                            val userInfoResult = OAuthService.getUserInfo(provider, tokenResponse.access_token)
+                            if (userInfoResult.isFailure) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                    "error" to "server_error",
+                                    "error_description" to "Failed to get user information from OAuth provider"
+                                ))
+                                return@get
+                            }
+
+                            val userInfo = userInfoResult.getOrThrow()
+
+                            // Create or update Matrix user account
+                            val matrixUserId = "@${userInfo.email?.substringBefore("@") ?: userInfo.id ?: "oauth_user"}:localhost"
+
+                            // Check if user exists, create if not
+                            val existingUser = transaction {
+                                Users.select { Users.userId eq matrixUserId }.singleOrNull()
+                            }
+
+                            if (existingUser == null) {
+                                // Create new user
+                                AuthUtils.createUser(
+                                    username = userInfo.email?.substringBefore("@") ?: userInfo.id ?: "oauth_user",
+                                    password = "", // OAuth users don't have passwords
+                                    displayName = userInfo.name ?: userInfo.email ?: "OAuth User",
+                                    isGuest = false
+                                )
+                            }
+
+                            // Generate authorization code for Matrix client
+                            val matrixAuthCode = OAuthConfig.generateAuthorizationCode()
+                            OAuthService.storeAuthorizationCode(
+                                code = matrixAuthCode,
+                                clientId = "matrix_client", // Simplified
+                                userId = matrixUserId,
+                                redirectUri = "http://localhost:3000", // Simplified
+                                scope = tokenResponse.scope ?: "openid profile",
+                                state = state
+                            )
+
+                            // Redirect back to Matrix client with authorization code
+                            val redirectUrl = "http://localhost:3000?code=$matrixAuthCode&state=$state"
+                            call.respondRedirect(redirectUrl)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "error" to "server_error",
+                                "error_description" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /.well-known/oauth-authorization-server - OAuth discovery
+                    get("/.well-known/oauth-authorization-server") {
+                        call.respond(mapOf(
+                            "issuer" to "https://localhost:8080",
+                            "authorization_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/authorize",
+                            "token_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/token",
+                            "userinfo_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/userinfo",
+                            "revocation_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/revoke",
+                            "introspection_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/introspect",
+                            "jwks_uri" to "https://localhost:8080/_matrix/client/v3/oauth2/jwks",
+                            "scopes_supported" to listOf("openid", "profile", "email"),
+                            "response_types_supported" to listOf("code"),
+                            "grant_types_supported" to listOf("authorization_code", "refresh_token"),
+                            "token_endpoint_auth_methods_supported" to listOf("client_secret_post"),
+                            "code_challenge_methods_supported" to listOf("S256", "plain")
+                        ))
+                    }
+
+                    // GET /oauth2/jwks - JSON Web Key Set (simplified)
+                    get("/oauth2/jwks") {
+                        call.respond(mapOf(
+                            "keys" to listOf(
+                                mapOf(
+                                    "kty" to "RSA",
+                                    "use" to "sig",
+                                    "kid" to "rsa1",
+                                    "n" to "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtmUAmh9K8X1GYTAJwTDFb",
+                                    "e" to "AQAB"
+                                )
+                            )
+                        ))
                     }
                 }
             }

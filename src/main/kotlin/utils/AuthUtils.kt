@@ -9,6 +9,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.mindrot.jbcrypt.BCrypt
 import java.security.SecureRandom
 import java.util.*
+import utils.OAuthService
 
 object AuthUtils {
     private val random = SecureRandom()
@@ -265,12 +266,11 @@ object AuthUtils {
     }
 
     /**
-     * Validate OAuth 2.0 token (placeholder - would integrate with OAuth provider)
+     * Validate OAuth 2.0 token using OAuth service
      */
     fun validateOAuthToken(token: String): String? {
-        // TODO: Implement real OAuth 2.0 token validation with provider
-        // For now, return a mock user ID for demo purposes
-        return if (token.startsWith("oauth_")) "@oauth_user:localhost" else null
+        val tokenValidation = OAuthService.validateAccessToken(token)
+        return tokenValidation?.first // Return userId if valid
     }
 
     /**
