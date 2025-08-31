@@ -19,5 +19,5 @@ val deviceListStreamIds = mutableMapOf<String, Long>() // userId -> stream_id fo
 // Simple in-memory user store for demo purposes
 val users = mutableMapOf<String, String>() // userId to accessToken
 
-// Server key storage for federation
-val serverKeys = mutableMapOf<String, Map<String, Any?>>() // serverName -> key data
+// Guest user tracking
+val guestUsers = mutableSetOf<String>() // Set of guest user IDs
