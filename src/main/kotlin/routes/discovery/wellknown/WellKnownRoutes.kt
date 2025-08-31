@@ -4,13 +4,127 @@ import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import io.ktor.server.response.*
 import io.ktor.http.*
+import io.ktor.server.request.*
+import kotlinx.serialization.json.*
 
 fun Application.wellKnownRoutes() {
     routing {
         route("/.well-known") {
             route("/matrix") {
                 get("/server") {
+                    // Server discovery for federation
+                    // This tells other servers how to reach this server for federation
+                    // Set appropriate headers for discovery
+                    call.response.headers.append("Content-Type", "application/json")
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+                    call.response.headers.append("Access-Control-Allow-Methods", "GET")
+                    call.response.headers.append("Access-Control-Allow-Headers", "Content-Type")
+                    // Add caching headers for discovery
+                    call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
+
                     call.respond(mapOf("m.server" to "localhost:8080"))
+                }
+
+                get("/client") {
+                    // Client discovery for homeserver configuration
+                    // This tells clients how to connect to the homeserver
+                    // Set appropriate headers for discovery
+                    call.response.headers.append("Content-Type", "application/json")
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+                    call.response.headers.append("Access-Control-Allow-Methods", "GET")
+                    call.response.headers.append("Access-Control-Allow-Headers", "Content-Type")
+                    // Add caching headers for discovery
+                    call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+
+                    call.respond(mapOf(
+                        "m.homeserver" to mapOf(
+                            "base_url" to "https://localhost:8080"
+                        ),
+                        "m.identity_server" to mapOf(
+                            "base_url" to "https://localhost:8080" // Using same server for identity in this implementation
+                        )
+                    ))
+                }
+
+                // Basic identity server endpoints
+                get("/identity/v2") {
+                    // Identity server API discovery
+                    call.response.headers.append("Content-Type", "application/json")
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+                    call.response.headers.append("Cache-Control", "public, max-age=86400")
+
+                    call.respond(emptyMap<String, Any>()) // Empty response for basic implementation
+                }
+
+                get("/identity/v2/terms") {
+                    // Terms of service for identity server
+                    call.response.headers.append("Content-Type", "application/json")
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+
+                    call.respond(mapOf(
+                        "policies" to mapOf(
+                            "privacy_policy" to mapOf(
+                                "version" to "1.0",
+                                "en" to mapOf(
+                                    "name" to "Privacy Policy",
+                                    "url" to "https://localhost:8080/privacy"
+                                )
+                            ),
+                            "terms_of_service" to mapOf(
+                                "version" to "1.0",
+                                "en" to mapOf(
+                                    "name" to "Terms of Service",
+                                    "url" to "https://localhost:8080/terms"
+                                )
+                            )
+                        )
+                    ))
+                }
+
+                get("/identity/v2/hash_details") {
+                    // Hash details for 3PID lookups
+                    call.response.headers.append("Content-Type", "application/json")
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+                    call.response.headers.append("Cache-Control", "public, max-age=86400")
+
+                    call.respond(mapOf(
+                        "algorithms" to listOf("sha256"),
+                        "lookup_pepper" to "FERRETCANNON_IDENTITY_PEPPER"
+                    ))
+                }
+
+                post("/identity/v2/lookup") {
+                    // 3PID lookup endpoint
+                    call.response.headers.append("Content-Type", "application/json")
+                    call.response.headers.append("Access-Control-Allow-Origin", "*")
+
+                    try {
+                        val requestBody = call.receiveText()
+                        val requestJson = Json.parseToJsonElement(requestBody).jsonObject
+
+                        val addressesElement = requestJson["addresses"]
+                        val addresses = if (addressesElement is JsonArray) {
+                            addressesElement.map { it.jsonPrimitive.content }
+                        } else {
+                            emptyList<String>()
+                        }
+
+                        val algorithm = requestJson["algorithm"]?.jsonPrimitive?.content ?: "sha256"
+                        val pepper = requestJson["pepper"]?.jsonPrimitive?.content ?: "FERRETCANNON_IDENTITY_PEPPER"
+
+                        // In a real implementation, this would look up the addresses in a database
+                        // For now, return empty mappings
+                        val mappings = emptyMap<String, String>()
+
+                        call.respond(mapOf(
+                            "mappings" to mappings
+                        ))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf(
+                            "errcode" to "M_INVALID_PARAM",
+                            "error" to "Invalid request format"
+                        ))
+                    }
                 }
             }
         }

@@ -123,19 +123,64 @@ fun Application.federationV1Routes() {
                         ))
                     }
                     put("/send/{txnId}") {
-                        val txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest)
-                        val body = call.receiveText()
-                        val authHeader = call.request.headers["Authorization"]
-                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
-                            return@put
-                        }
-                        // Process transaction
-                        val result = processTransaction(body)
-                        if (result.containsKey("errcode")) {
-                            call.respond(HttpStatusCode.BadRequest, result)
-                        } else {
-                            call.respond(HttpStatusCode.OK, result)
+                        try {
+                            val txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf(
+                                "errcode" to "M_INVALID_PARAM",
+                                "error" to "Missing transaction ID"
+                            ))
+
+                            // Validate content type
+                            val contentType = call.request.contentType()
+                            if (contentType != ContentType.Application.Json) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_NOT_JSON",
+                                    "error" to "Content-Type must be application/json"
+                                ))
+                                return@put
+                            }
+
+                            val body = call.receiveText()
+
+                            // Validate request size
+                            if (body.length > 1024 * 1024) { // 1MB limit
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_TOO_LARGE",
+                                    "error" to "Request too large"
+                                ))
+                                return@put
+                            }
+
+                            val authHeader = call.request.headers["Authorization"]
+                            if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_UNAUTHORIZED",
+                                    "error" to "Invalid signature"
+                                ))
+                                return@put
+                            }
+
+                            // Process transaction
+                            val result = processTransaction(body)
+                            if (result.containsKey("errcode")) {
+                                call.respond(HttpStatusCode.BadRequest, result)
+                            } else {
+                                call.respond(HttpStatusCode.OK, result)
+                            }
+                        } catch (e: Exception) {
+                            when (e) {
+                                is kotlinx.serialization.SerializationException -> {
+                                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                                        "errcode" to "M_BAD_JSON",
+                                        "error" to "Invalid JSON"
+                                    ))
+                                }
+                                else -> {
+                                    call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                        "errcode" to "M_UNKNOWN",
+                                        "error" to "Internal server error"
+                                    ))
+                                }
+                            }
                         }
                     }
                     // Placeholder endpoints

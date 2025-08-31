@@ -33,3 +33,13 @@ object StateGroups : Table("state_groups") {
     val state = text("state") // JSON map of state for this group
     val events = text("events") // JSON array of event IDs in this group
 }
+
+object AccountData : Table("account_data") {
+    val userId = varchar("user_id", 255)
+    val type = varchar("type", 255)
+    val roomId = varchar("room_id", 255).nullable() // null for global account data
+    val content = text("content") // JSON content
+    val lastModified = long("last_modified").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId, type, roomId)
+}

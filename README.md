@@ -68,6 +68,54 @@ An LLM-only Kotlin/KTor implementation of a Matrix Server supporting the Matrix 
 - ✅ GET /_matrix/federation/v1/query/directory - Room alias resolution
 - ✅ GET /_matrix/federation/v1/query/profile - User profile information
 
+### Implemented Matrix Client-Server API Endpoints (v1.15)
+
+#### Authentication
+
+- ✅ GET /_matrix/client/v3/login - Get available login flows
+- ✅ POST /_matrix/client/v3/login - User authentication
+- ✅ GET /_matrix/client/v3/login/fallback - Login fallback page
+
+#### Server Capabilities
+
+- ✅ GET /_matrix/client/v3/capabilities - Server capabilities and feature support
+
+#### Account Data
+
+- ✅ GET /_matrix/client/v3/user/{userId}/account_data/{type} - Get global account data
+- ✅ PUT /_matrix/client/v3/user/{userId}/account_data/{type} - Set global account data
+- ✅ GET /_matrix/client/v3/user/{userId}/rooms/{roomId}/account_data/{type} - Get room-specific account data
+- ✅ PUT /_matrix/client/v3/user/{userId}/rooms/{roomId}/account_data/{type} - Set room-specific account data
+
+#### Synchronization
+
+- ✅ GET /_matrix/client/v3/sync - Client synchronization with account data support
+
+#### Real-time Communication
+
+- ✅ PUT /_matrix/client/v3/rooms/{roomId}/typing/{userId} - Send typing notifications
+- ✅ WebSocket /ws/room/{roomId} - Real-time room communication
+
+#### Server Administration
+
+- ✅ GET /_matrix/client/v3/admin/server_version - Get server version information
+- ✅ POST /_matrix/client/v3/admin/whois/{userId} - Get information about a user
+- ✅ POST /_matrix/client/v3/admin/server_notice/{userId} - Send server notice to user
+- ✅ GET /_matrix/client/v3/admin/registration_tokens - List registration tokens
+- ✅ POST /_matrix/client/v3/admin/registration_tokens/new - Create registration token
+- ✅ DELETE /_matrix/client/v3/admin/registration_tokens/{token} - Delete registration token
+- ✅ POST /_matrix/client/v3/admin/deactivate/{userId} - Deactivate user account
+- ✅ GET /_matrix/client/v3/admin/rooms/{roomId} - Get room information
+- ✅ DELETE /_matrix/client/v3/admin/rooms/{roomId} - Delete room
+
+#### Content Repository (Client-Server)
+
+- ✅ POST /_matrix/media/v3/upload - Upload media content
+- ✅ GET /_matrix/media/v3/download/{serverName}/{mediaId} - Download media content
+- ✅ GET /_matrix/media/v3/thumbnail/{serverName}/{mediaId} - Get media thumbnail
+- ✅ GET /_matrix/media/v3/config - Get media repository configuration
+- ✅ GET /_matrix/media/v3/preview_url - Preview URL metadata
+
 ## Getting Started
 
 1. Install Gradle if not already installed.

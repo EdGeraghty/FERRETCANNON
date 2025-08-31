@@ -12,6 +12,7 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import models.Events
 import models.Rooms
 import models.StateGroups
+import models.AccountData
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -27,6 +28,9 @@ import routes.client_server.client.clientRoutes
 import routes.server_server.federation.federationRoutes
 import routes.server_server.key.keyRoutes
 import routes.discovery.wellknown.wellKnownRoutes
+import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.ratelimit.*
+import kotlin.time.Duration.Companion.minutes
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -42,7 +46,7 @@ fun main() {
     // Database setup
     Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
     transaction {
-        SchemaUtils.create(Events, Rooms, StateGroups)
+        SchemaUtils.create(Events, Rooms, StateGroups, AccountData)
     }
     
     val federationServer = "localhost:8080" // TODO: Make configurable
@@ -50,6 +54,39 @@ fun main() {
     try {
         embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
             println("Configuring server...")
+
+            // Install CORS for client-server API
+            install(CORS) {
+                allowMethod(HttpMethod.Get)
+                allowMethod(HttpMethod.Post)
+                allowMethod(HttpMethod.Put)
+                allowMethod(HttpMethod.Delete)
+                allowHeader(HttpHeaders.Authorization)
+                allowHeader(HttpHeaders.ContentType)
+                allowHeader("X-Requested-With")
+                allowCredentials = true
+                anyHost() // In production, specify allowed origins
+            }
+
+            // Install rate limiting
+            install(RateLimit) {
+                global {
+                    rateLimiter(limit = 300, refillPeriod = 1.minutes) // 300 requests per minute
+                }
+            }
+
+            // Request size limiting - simplified version
+            intercept(ApplicationCallPipeline.Call) {
+                val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+                if (contentLength != null && contentLength > 1024 * 1024) { // 1MB limit
+                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                        "errcode" to "M_TOO_LARGE",
+                        "error" to "Request too large"
+                    ))
+                    finish()
+                }
+            }
+
             install(ContentNegotiation) {
                 json()
             }
