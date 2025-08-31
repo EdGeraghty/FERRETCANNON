@@ -53,7 +53,7 @@ fun main() {
     
     try {
         println("About to create embedded server")
-        embeddedServer(Netty, port = 9090, host = "0.0.0.0") {
+        embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
             println("Inside embeddedServer block")
 
             // Install CORS for client-server API
@@ -97,6 +97,22 @@ fun main() {
                 maxFrameSize = Long.MAX_VALUE
                 masking = false
             }
+            
+            // Call route setup functions on the application
+            println("About to call clientRoutes()")
+            clientRoutes()
+            println("clientRoutes() completed")
+            
+            println("About to call federationRoutes()")
+            federationRoutes()
+            println("federationRoutes() completed")
+            println("About to call keyRoutes()")
+            keyRoutes()
+            println("keyRoutes() completed")
+            println("About to call wellKnownRoutes()")
+            wellKnownRoutes()
+            println("wellKnownRoutes() completed")
+            
             routing {
                 println("Setting up routes...")
                 get("/") {
@@ -127,18 +143,6 @@ fun main() {
                 }
                 println("Basic routes set up")
             }
-            println("About to call clientRoutes()")
-            clientRoutes()
-            println("clientRoutes() completed")
-            println("About to call federationRoutes()")
-            federationRoutes()
-            println("federationRoutes() completed")
-            println("About to call keyRoutes()")
-            keyRoutes()
-            println("keyRoutes() completed")
-            println("About to call wellKnownRoutes()")
-            wellKnownRoutes()
-            println("wellKnownRoutes() completed")
             println("Server configuration complete")
         }.start(wait = true)
         println("Server.start() completed")

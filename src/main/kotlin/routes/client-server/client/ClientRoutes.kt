@@ -27,119 +27,56 @@ import models.AccountData
 import io.ktor.websocket.Frame
 
 fun Application.clientRoutes() {
-    // Request size limiting - simplified version
-    intercept(ApplicationCallPipeline.Call) {
-        val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-        if (contentLength != null && contentLength > 1024 * 1024) { // 1MB limit
-            call.respond(HttpStatusCode.BadRequest, mapOf(
-                "errcode" to "M_TOO_LARGE",
-                "error" to "Request too large"
-            ))
-            finish()
-        }
-    }
-
-    install(Authentication) {
-        bearer("matrix-auth") {
-            authenticate { tokenCredential ->
-                // Simple token validation - in real implementation, validate against DB
-                val userId = users.entries.find { it.value == tokenCredential.token }?.key
-                if (userId != null) {
-                    UserIdPrincipal(userId)
-                } else {
-                    null
-                }
-            }
-        }
-    }
-
-    // Enhanced authentication middleware for Matrix access tokens
-    intercept(ApplicationCallPipeline.Call) {
-        // Extract access token from multiple sources as per Matrix spec
-        val accessToken = call.request.queryParameters["access_token"] ?:
-                         call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
-                         call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
-
-        if (accessToken != null) {
-            // Validate token format and lookup user
-            val userId = users.entries.find { it.value == accessToken }?.key
-
-            if (userId != null) {
-                // Store authenticated user information
-                call.attributes.put(AttributeKey("matrix-user"), UserIdPrincipal(userId))
-                call.attributes.put(AttributeKey("matrix-token"), accessToken)
-                call.attributes.put(AttributeKey("matrix-user-id"), userId)
-
-                // Extract device ID from token (in a real implementation, this would be stored separately)
-                val deviceId = accessToken.substringAfter("token_").substringAfter("_").let { "device_$it" }
-                call.attributes.put(AttributeKey("matrix-device-id"), deviceId)
-            } else {
-                // Invalid token - will be handled by individual endpoints
-                call.attributes.put(AttributeKey("matrix-invalid-token"), accessToken)
-            }
-        } else {
-            // No token provided - will be handled by individual endpoints
-            call.attributes.put(AttributeKey("matrix-no-token"), true)
-        }
-    }
-
-    // Helper function for token validation and error responses
-    suspend fun ApplicationCall.validateAccessToken(): String? {
-        val accessToken = attributes.getOrNull(AttributeKey<String>("matrix-token"))
-        val invalidToken = attributes.getOrNull(AttributeKey<String>("matrix-invalid-token"))
-        val noToken = attributes.getOrNull(AttributeKey<Boolean>("matrix-no-token"))
-
-        return when {
-            noToken == true -> {
-                respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                null
-            }
-            invalidToken != null -> {
-                respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_UNKNOWN_TOKEN",
-                    "error" to "Unrecognised access token"
-                ))
-                null
-            }
-            accessToken == null -> {
-                respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                null
-            }
-            else -> accessToken
-        }
-    }
-
-    // Helper function to get authenticated user information
-    fun ApplicationCall.getAuthenticatedUser(): Triple<String, String, String>? {
-        val userId = attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
-        val deviceId = attributes.getOrNull(AttributeKey<String>("matrix-device-id"))
-        val token = attributes.getOrNull(AttributeKey<String>("matrix-token"))
-
-        return if (userId != null && deviceId != null && token != null) {
-            Triple(userId, deviceId, token)
-        } else null
-    }
-
     routing {
-        // Helper function to broadcast events to room clients
-        suspend fun broadcastEvent(roomId: String, event: Map<String, Any>) {
-            val message = Json.encodeToString(JsonObject.serializer(), JsonObject(event.mapValues { JsonPrimitive(it.value.toString()) }))
-            connectedClients[roomId]?.forEach { session ->
-                try {
-                    session.send(Frame.Text(message))
-                } catch (e: Exception) {
-                    // Client disconnected
-                }
+        // Request size limiting - simplified version
+        intercept(ApplicationCallPipeline.Call) {
+            val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+            if (contentLength != null && contentLength > 1024 * 1024) { // 1MB limit
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_TOO_LARGE",
+                    "error" to "Request too large"
+                ))
+                finish()
             }
         }
 
+        // Enhanced authentication middleware for Matrix access tokens
+        intercept(ApplicationCallPipeline.Call) {
+            // Extract access token from multiple sources as per Matrix spec
+            val accessToken = call.request.queryParameters["access_token"] ?:
+                             call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
+                             call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
+
+            if (accessToken != null) {
+                // Validate token format and lookup user
+                val userId = users.entries.find { it.value == accessToken }?.key
+
+                if (userId != null) {
+                    // Store authenticated user information
+                    call.attributes.put(AttributeKey("matrix-user"), UserIdPrincipal(userId))
+                    call.attributes.put(AttributeKey("matrix-token"), accessToken)
+                    call.attributes.put(AttributeKey("matrix-user-id"), userId)
+
+                    // Extract device ID from token (in a real implementation, this would be stored separately)
+                    val deviceId = accessToken.substringAfter("token_").substringAfter("_").let { "device_$it" }
+                    call.attributes.put(AttributeKey("matrix-device-id"), deviceId)
+                } else {
+                    // Invalid token - will be handled by individual endpoints
+                    call.attributes.put(AttributeKey("matrix-invalid-token"), accessToken)
+                }
+            } else {
+                // No token provided - will be handled by individual endpoints
+                call.attributes.put(AttributeKey("matrix-no-token"), true)
+            }
+        }
+
+        // Routes are defined within a routing block
         route("/_matrix") {
+            // GET /_matrix/client/versions - Get supported client-server API versions
+            get("/client/versions") {
+                call.respondText("""{"versions":["v1.15"],"unstable_features":{}}""", ContentType.Application.Json)
+            }
+
             route("/client") {
                 route("/v3") {
                     get("/login") {
@@ -2820,4 +2757,3 @@ fun Application.clientRoutes() {
             }
         }
     }
-}
