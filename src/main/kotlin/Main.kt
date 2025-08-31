@@ -27,6 +27,9 @@ import routes.client_server.client.clientRoutes
 import routes.server_server.federation.federationRoutes
 import routes.server_server.key.keyRoutes
 import routes.discovery.wellknown.wellKnownRoutes
+import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.ratelimit.*
+import kotlin.time.Duration.Companion.minutes
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -50,6 +53,39 @@ fun main() {
     try {
         embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
             println("Configuring server...")
+
+            // Install CORS for client-server API
+            install(CORS) {
+                allowMethod(HttpMethod.Get)
+                allowMethod(HttpMethod.Post)
+                allowMethod(HttpMethod.Put)
+                allowMethod(HttpMethod.Delete)
+                allowHeader(HttpHeaders.Authorization)
+                allowHeader(HttpHeaders.ContentType)
+                allowHeader("X-Requested-With")
+                allowCredentials = true
+                anyHost() // In production, specify allowed origins
+            }
+
+            // Install rate limiting
+            install(RateLimit) {
+                global {
+                    rateLimiter(limit = 300, refillPeriod = 1.minutes) // 300 requests per minute
+                }
+            }
+
+            // Request size limiting - simplified version
+            intercept(ApplicationCallPipeline.Call) {
+                val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+                if (contentLength != null && contentLength > 1024 * 1024) { // 1MB limit
+                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                        "errcode" to "M_TOO_LARGE",
+                        "error" to "Request too large"
+                    ))
+                    finish()
+                }
+            }
+
             install(ContentNegotiation) {
                 json()
             }
