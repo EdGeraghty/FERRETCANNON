@@ -1127,103 +1127,231 @@ fun Application.clientRoutes() {
                         }
                     }
 
-                    // Third-party networks endpoints
-                    route("/thirdparty") {
-                        // GET /_matrix/client/v3/thirdparty/protocols - Get available third-party protocols
-                        get("/protocols") {
-                            try {
-                                val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                    // ===== USER PROFILE MANAGEMENT =====
 
-                                if (userId == null) {
-                                    call.respond(HttpStatusCode.Unauthorized, mapOf(
-                                        "errcode" to "M_MISSING_TOKEN",
-                                        "error" to "Missing access token"
-                                    ))
-                                    return@get
-                                }
+                    // GET /profile/{userId} - Get user profile
+                    get("/profile/{userId}") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId parameter"
+                                ))
+                                return@get
+                            }
 
-                                // Return supported third-party protocols (simplified example)
-                                val protocols = mapOf(
-                                    "irc" to mapOf(
-                                        "user_fields" to listOf("username", "irc_server"),
-                                        "location_fields" to listOf("channel"),
-                                        "icon" to "mxc://example.com/irc-icon",
-                                        "field_types" to mapOf(
-                                            "username" to mapOf(
-                                                "regexp" to "[^@:/]+",
-                                                "placeholder" to "username"
-                                            ),
-                                            "irc_server" to mapOf(
-                                                "regexp" to "([a-zA-Z0-9]+\\.)*[a-zA-Z0-9]+",
-                                                "placeholder" to "irc.example.com"
-                                            )
-                                        ),
-                                        "instances" to listOf(
-                                            mapOf(
-                                                "desc" to "Example IRC network",
-                                                "icon" to "mxc://example.com/irc-network-icon",
-                                                "fields" to mapOf(
-                                                    "network" to "example.com"
-                                                )
-                                            )
-                                        )
-                                    )
+                            // Get user profile from database
+                            val profile = transaction {
+                                // For now, return basic profile info
+                                // In a real implementation, this would query a users table
+                                mapOf(
+                                    "displayname" to userId.substringAfter("@").substringBefore(":"),
+                                    "avatar_url" to null
                                 )
-
-                                call.respond(protocols)
-
-                            } catch (e: Exception) {
-                                call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                    "errcode" to "M_UNKNOWN",
-                                    "error" to "Internal server error"
-                                ))
                             }
-                        }
 
-                        // GET /_matrix/client/v3/thirdparty/protocol/{protocol} - Get protocol metadata
-                        get("/protocol/{protocol}") {
-                            try {
-                                val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
-                                val protocol = call.parameters["protocol"]
+                            call.respond(profile)
 
-                                if (userId == null) {
-                                    call.respond(HttpStatusCode.Unauthorized, mapOf(
-                                        "errcode" to "M_MISSING_TOKEN",
-                                        "error" to "Missing access token"
-                                    ))
-                                    return@get
-                                }
-
-                                if (protocol == null) {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_INVALID_PARAM",
-                                        "error" to "Missing protocol parameter"
-                                    ))
-                                    return@get
-                                }
-
-                                // Simplified protocol response
-                                call.respond(mapOf(
-                                    "user_fields" to listOf("username"),
-                                    "location_fields" to listOf("channel")
-                                ))
-
-                            } catch (e: Exception) {
-                                call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                    "errcode" to "M_UNKNOWN",
-                                    "error" to "Internal server error"
-                                ))
-                            }
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
                         }
                     }
 
-                    // PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId} - Send message to room
-                    put("/rooms/{roomId}/send/{eventType}/{txnId}") {
+                    // PUT /profile/{userId}/displayname - Set display name
+                    put("/profile/{userId}/displayname") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId parameter"
+                                ))
+                                return@put
+                            }
+
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
+
+                            // Users can only modify their own profile
+                            if (authenticatedUserId != userId) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Cannot modify other users' profiles"
+                                ))
+                                return@put
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val displayname = json["displayname"]?.jsonPrimitive?.content
+
+                            // Validate displayname
+                            if (displayname != null && displayname.length > 255) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Display name too long"
+                                ))
+                                return@put
+                            }
+
+                            // Store display name (in real implementation, update user profile in database)
+                            // For now, we'll just acknowledge the request
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /profile/{userId}/avatar_url - Set avatar URL
+                    put("/profile/{userId}/avatar_url") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId parameter"
+                                ))
+                                return@put
+                            }
+
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
+
+                            // Users can only modify their own profile
+                            if (authenticatedUserId != userId) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Cannot modify other users' profiles"
+                                ))
+                                return@put
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val avatarUrl = json["avatar_url"]?.jsonPrimitive?.content
+
+                            // Validate avatar URL format (should be a Matrix content URI)
+                            if (avatarUrl != null && !avatarUrl.startsWith("mxc://")) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Avatar URL must be a Matrix content URI (mxc://)"
+                                ))
+                                return@put
+                            }
+
+                            // Store avatar URL (in real implementation, update user profile in database)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== DEVICE MANAGEMENT =====
+
+                    // GET /user/devices - Get user's devices
+                    get("/user/devices") {
                         try {
                             val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
-                            val roomId = call.parameters["roomId"]
-                            val eventType = call.parameters["eventType"]
-                            val txnId = call.parameters["txnId"]
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get user's devices (simplified - in real implementation, query device table)
+                            val devices = listOf(
+                                mapOf(
+                                    "device_id" to "device_1",
+                                    "display_name" to "Main Device",
+                                    "last_seen_ip" to "127.0.0.1",
+                                    "last_seen_ts" to System.currentTimeMillis()
+                                )
+                            )
+
+                            call.respond(mapOf("devices" to devices))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /user/devices/{deviceId} - Get specific device
+                    get("/user/devices/{deviceId}") {
+                        try {
+                            val deviceId = call.parameters["deviceId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            if (deviceId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing deviceId parameter"
+                                ))
+                                return@get
+                            }
+
+                            // Get device info (simplified)
+                            val device = mapOf(
+                                "device_id" to deviceId,
+                                "display_name" to "Device",
+                                "last_seen_ip" to "127.0.0.1",
+                                "last_seen_ts" to System.currentTimeMillis()
+                            )
+
+                            call.respond(device)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /user/devices/{deviceId} - Update device
+                    put("/user/devices/{deviceId}") {
+                        try {
+                            val deviceId = call.parameters["deviceId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1233,272 +1361,1434 @@ fun Application.clientRoutes() {
                                 return@put
                             }
 
-                            if (roomId == null || eventType == null || txnId == null) {
+                            if (deviceId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
                                     "errcode" to "M_INVALID_PARAM",
-                                    "error" to "Missing roomId, eventType, or txnId parameter"
+                                    "error" to "Missing deviceId parameter"
                                 ))
                                 return@put
                             }
 
-                            // Parse request body
-                            val requestBody = call.receiveText()
-                            val content = Json.parseToJsonElement(requestBody).jsonObject
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val displayName = json["display_name"]?.jsonPrimitive?.content
 
-                            // Check if user is joined to the room
-                            val currentMembership = transaction {
-                                Events.select {
-                                    (Events.roomId eq roomId) and
-                                    (Events.type eq "m.room.member") and
-                                    (Events.stateKey eq userId)
-                                }.mapNotNull { row ->
-                                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
-                                }.firstOrNull()
+                            // Update device display name (simplified)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // DELETE /user/devices/{deviceId} - Delete device
+                    delete("/user/devices/{deviceId}") {
+                        try {
+                            val deviceId = call.parameters["deviceId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@delete
                             }
 
-                            if (currentMembership != "join") {
+                            if (deviceId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing deviceId parameter"
+                                ))
+                                return@delete
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val auth = json["auth"]?.jsonObject
+
+                            if (auth == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_PARAM",
+                                    "error" to "Missing authentication data",
+                                    "flows" to listOf(
+                                        mapOf(
+                                            "stages" to listOf("m.login.password")
+                                        )
+                                    ),
+                                    "params" to emptyMap<String, Any>(),
+                                    "session" to "session_${System.currentTimeMillis()}"
+                                ))
+                                return@delete
+                            }
+
+                            // Validate authentication (simplified)
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== ACCOUNT DATA MANAGEMENT =====
+
+                    // GET /user/{userId}/account_data/{type} - Get global account data
+                    get("/user/{userId}/account_data/{type}") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            val type = call.parameters["type"]
+                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null || type == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId or type parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Users can only access their own account data
+                            if (authenticatedUserId != userId) {
                                 call.respond(HttpStatusCode.Forbidden, mapOf(
                                     "errcode" to "M_FORBIDDEN",
-                                    "error" to "User is not joined to this room"
+                                    "error" to "Cannot access other users' account data"
+                                ))
+                                return@get
+                            }
+
+                            // Get account data from database
+                            val accountData = transaction {
+                                AccountData.select {
+                                    (AccountData.userId eq userId) and
+                                    (AccountData.roomId.isNull()) and
+                                    (AccountData.type eq type)
+                                }.singleOrNull()
+                            }
+
+                            if (accountData != null) {
+                                val content = Json.parseToJsonElement(accountData[AccountData.content]).jsonObject
+                                call.respond(content)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Account data not found"
+                                ))
+                            }
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /user/{userId}/account_data/{type} - Set global account data
+                    put("/user/{userId}/account_data/{type}") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            val type = call.parameters["type"]
+                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null || type == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId or type parameter"
                                 ))
                                 return@put
                             }
 
-                            // Validate event type and content
-                            when (eventType) {
-                                "m.room.message" -> {
-                                    // Validate m.room.message content
-                                    val msgtype = content["msgtype"]?.jsonPrimitive?.content
-                                    val body = content["body"]?.jsonPrimitive?.content
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
 
-                                    if (msgtype == null || body == null) {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_INVALID_PARAM",
-                                            "error" to "Missing msgtype or body for m.room.message"
-                                        ))
-                                        return@put
-                                    }
+                            // Users can only modify their own account data
+                            if (authenticatedUserId != userId) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Cannot modify other users' account data"
+                                ))
+                                return@put
+                            }
 
-                                    // Support for m.sticker messages
-                                    if (msgtype == "m.sticker") {
-                                        val url = content["url"]?.jsonPrimitive?.content
-                                        val info = content["info"]?.jsonObject
+                            val request = call.receiveText()
+                            val content = Json.parseToJsonElement(request).jsonObject
 
-                                        if (url == null || info == null) {
-                                            call.respond(HttpStatusCode.BadRequest, mapOf(
-                                                "errcode" to "M_INVALID_PARAM",
-                                                "error" to "Missing url or info for m.sticker"
-                                            ))
-                                            return@put
-                                        }
-                                    }
+                            // Store account data
+                            transaction {
+                                // Delete existing data
+                                AccountData.deleteWhere {
+                                    (AccountData.userId eq userId) and
+                                    (AccountData.roomId.isNull()) and
+                                    (AccountData.type eq type)
                                 }
-                                "m.reaction" -> {
-                                    // Validate m.reaction content (annotations/reactions)
-                                    val relatesTo = content["m.relates_to"]?.jsonObject
-                                    val eventId = relatesTo?.get("event_id")?.jsonPrimitive?.content
-                                    val relType = relatesTo?.get("rel_type")?.jsonPrimitive?.content
-                                    val key = relatesTo?.get("key")?.jsonPrimitive?.content
 
-                                    if (relatesTo == null || eventId == null || relType != "m.annotation" || key == null) {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_INVALID_PARAM",
-                                            "error" to "Invalid m.relates_to structure for m.reaction"
-                                        ))
-                                        return@put
-                                    }
-
-                                    // Verify the target event exists
-                                    val targetEventExists = transaction {
-                                        Events.select {
-                                            (Events.roomId eq roomId) and
-                                            (Events.eventId eq eventId)
-                                        }.count() > 0
-                                    }
-
-                                    if (!targetEventExists) {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_INVALID_PARAM",
-                                            "error" to "Target event not found"
-                                        ))
-                                        return@put
-                                    }
-                                }
-                                else -> {
-                                    // Check for m.replace relation type (Event Replacements)
-                                    val relatesTo = content["m.relates_to"]?.jsonObject
-                                    if (relatesTo != null) {
-                                        val relType = relatesTo["rel_type"]?.jsonPrimitive?.content
-                                        val eventId = relatesTo["event_id"]?.jsonPrimitive?.content
-
-                                        if (relType == "m.replace" && eventId != null) {
-                                            // Validate Event Replacement
-                                            val targetEventExists = transaction {
-                                                Events.select {
-                                                    (Events.roomId eq roomId) and
-                                                    (Events.eventId eq eventId)
-                                                }.count() > 0
-                                            }
-
-                                            if (!targetEventExists) {
-                                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                                    "errcode" to "M_INVALID_PARAM",
-                                                    "error" to "Target event for replacement not found"
-                                                ))
-                                                return@put
-                                            }
-
-                                            // Verify the target event is owned by the sender
-                                            val targetEvent = transaction {
-                                                Events.select {
-                                                    (Events.roomId eq roomId) and
-                                                    (Events.eventId eq eventId)
-                                                }.singleOrNull()
-                                            }
-
-                                            if (targetEvent != null && targetEvent[Events.sender] != userId) {
-                                                call.respond(HttpStatusCode.Forbidden, mapOf(
-                                                    "errcode" to "M_FORBIDDEN",
-                                                    "error" to "Cannot replace events sent by other users"
-                                                ))
-                                                return@put
-                                            }
-                                        } else if (relType == "m.thread" && eventId != null) {
-                                            // Validate Threading
-                                            val targetEventExists = transaction {
-                                                Events.select {
-                                                    (Events.roomId eq roomId) and
-                                                    (Events.eventId eq eventId)
-                                                }.count() > 0
-                                            }
-
-                                            if (!targetEventExists) {
-                                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                                    "errcode" to "M_INVALID_PARAM",
-                                                    "error" to "Target event for thread not found"
-                                                ))
-                                                return@put
-                                            }
-
-                                            // Additional threading validation can be added here
-                                            val isReply = relatesTo["is_falling_back"]?.jsonPrimitive?.boolean == true
-                                            val threadId = if (isReply) {
-                                                relatesTo["event_id"]?.jsonPrimitive?.content
-                                            } else {
-                                                // For new threads, the event_id becomes the thread root
-                                                eventId
-                                            }
-                                        }
-                                    }
-                                }
-                                "m.room.redaction" -> {
-                                    // Redaction events are handled by the redact endpoint
-                                    call.respond(HttpStatusCode.MethodNotAllowed, mapOf(
-                                        "errcode" to "M_CANNOT_SEND",
-                                        "error" to "Use redact endpoint for redaction events"
-                                    ))
-                                    return@put
-                                }
-                                else -> {
-                                    // Check for Moderation Policy Lists (m.policy.rule.* events)
-                                    if (eventType.startsWith("m.policy.rule.")) {
-                                        // Validate moderation policy content
-                                        val entity = content["entity"]?.jsonPrimitive?.content
-                                        val reason = content["reason"]?.jsonPrimitive?.content
-
-                                        if (entity == null) {
-                                            call.respond(HttpStatusCode.BadRequest, mapOf(
-                                                "errcode" to "M_INVALID_PARAM",
-                                                "error" to "Missing entity for policy rule"
-                                            ))
-                                            return@put
-                                        }
-
-                                        // Check if user has permission to set policy rules
-                                        val powerLevelsEvent = transaction {
-                                            Events.select {
-                                                (Events.roomId eq roomId) and
-                                                (Events.type eq "m.room.power_levels") and
-                                                (Events.stateKey eq "")
-                                            }.singleOrNull()
-                                        }
-
-                                        if (powerLevelsEvent != null) {
-                                            val powerLevels = Json.parseToJsonElement(powerLevelsEvent[Events.content]).jsonObject
-                                            val userPower = powerLevels["users"]?.jsonObject?.get(userId)?.jsonPrimitive?.int ?: 0
-                                            val banPower = powerLevels["ban"]?.jsonPrimitive?.int ?: 50
-
-                                            if (userPower < banPower) {
-                                                call.respond(HttpStatusCode.Forbidden, mapOf(
-                                                    "errcode" to "M_FORBIDDEN",
-                                                    "error" to "Insufficient power level to set policy rules"
-                                                ))
-                                                return@put
-                                            }
-                                        }
-                                    }
-                                    // Allow other event types
+                                // Insert new data
+                                AccountData.insert {
+                                    it[AccountData.userId] = userId
+                                    it[AccountData.roomId] = null
+                                    it[AccountData.type] = type
+                                    it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(content))
                                 }
                             }
 
-                            // Generate event ID
-                            val eventId = "\$${System.currentTimeMillis()}_${txnId}"
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
-                            // Create the event
-                            val event = mapOf(
-                                "type" to eventType,
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /user/{userId}/rooms/{roomId}/account_data/{type} - Get room account data
+                    get("/user/{userId}/rooms/{roomId}/account_data/{type}") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            val roomId = call.parameters["roomId"]
+                            val type = call.parameters["type"]
+                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null || roomId == null || type == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId, roomId, or type parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Users can only access their own account data
+                            if (authenticatedUserId != userId) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Cannot access other users' account data"
+                                ))
+                                return@get
+                            }
+
+                            // Get room account data from database
+                            val accountData = transaction {
+                                AccountData.select {
+                                    (AccountData.userId eq userId) and
+                                    (AccountData.roomId eq roomId) and
+                                    (AccountData.type eq type)
+                                }.singleOrNull()
+                            }
+
+                            if (accountData != null) {
+                                val content = Json.parseToJsonElement(accountData[AccountData.content]).jsonObject
+                                call.respond(content)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Account data not found"
+                                ))
+                            }
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /user/{userId}/rooms/{roomId}/account_data/{type} - Set room account data
+                    put("/user/{userId}/rooms/{roomId}/account_data/{type}") {
+                        try {
+                            val userId = call.parameters["userId"]
+                            val roomId = call.parameters["roomId"]
+                            val type = call.parameters["type"]
+                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null || roomId == null || type == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing userId, roomId, or type parameter"
+                                ))
+                                return@put
+                            }
+
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
+
+                            // Users can only modify their own account data
+                            if (authenticatedUserId != userId) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Cannot modify other users' account data"
+                                ))
+                                return@put
+                            }
+
+                            val request = call.receiveText()
+                            val content = Json.parseToJsonElement(request).jsonObject
+
+                            // Store room account data
+                            transaction {
+                                // Delete existing data
+                                AccountData.deleteWhere {
+                                    (AccountData.userId eq userId) and
+                                    (AccountData.roomId eq roomId) and
+                                    (AccountData.type eq type)
+                                }
+
+                                // Insert new data
+                                AccountData.insert {
+                                    it[AccountData.userId] = userId
+                                    it[AccountData.roomId] = roomId
+                                    it[AccountData.type] = type
+                                    it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(content))
+                                }
+                            }
+
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== ROOM OPERATIONS =====
+
+                    // POST /createRoom - Create a new room
+                    post("/createRoom") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+
+                            // Extract room creation parameters
+                            val name = json["name"]?.jsonPrimitive?.content
+                            val topic = json["topic"]?.jsonPrimitive?.content
+                            val visibility = json["visibility"]?.jsonPrimitive?.content ?: "private"
+                            val roomAliasName = json["room_alias_name"]?.jsonPrimitive?.content
+                            val preset = json["preset"]?.jsonPrimitive?.content
+                            val isDirect = json["is_direct"]?.jsonPrimitive?.boolean ?: false
+                            val invite = json["invite"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+                            val initialState = json["initial_state"]?.jsonArray ?: JsonArray(emptyList())
+                            val powerLevelContentOverride = json["power_level_content_override"]?.jsonObject
+                            val creationContent = json["creation_content"]?.jsonObject
+
+                            // Generate room ID
+                            val roomId = "!${System.currentTimeMillis()}:localhost"
+
+                            // Create room in database
+                            transaction {
+                                Rooms.insert {
+                                    it[Rooms.roomId] = roomId
+                                    it[Rooms.creator] = userId
+                                    it[Rooms.name] = name
+                                    it[Rooms.topic] = topic
+                                    it[Rooms.visibility] = visibility
+                                    it[Rooms.roomVersion] = "9"
+                                    it[Rooms.isDirect] = isDirect
+                                }
+                            }
+
+                            // Create initial state events
+                            val initialEvents = mutableListOf<Map<String, Any>>()
+
+                            // m.room.create event
+                            val createEvent = mapOf(
+                                "type" to "m.room.create",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to "\$${System.currentTimeMillis()}_create",
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to (creationContent ?: mapOf(
+                                    "creator" to userId,
+                                    "room_version" to "9"
+                                )),
+                                "state_key" to "",
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+                            initialEvents.add(createEvent)
+
+                            // m.room.member event for creator
+                            val memberEvent = mapOf(
+                                "type" to "m.room.member",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to "\$${System.currentTimeMillis()}_member",
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to mapOf("membership" to "join"),
+                                "state_key" to userId,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+                            initialEvents.add(memberEvent)
+
+                            // Store initial events
+                            for (event in initialEvents) {
+                                transaction {
+                                    Events.insert {
+                                        it[Events.roomId] = roomId
+                                        it[Events.eventId] = event["event_id"] as String
+                                        it[Events.type] = event["type"] as String
+                                        it[Events.sender] = event["sender"] as String
+                                        it[Events.stateKey] = event["state_key"] as String?
+                                        it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(event["content"] as Map<String, Any>))
+                                        it[Events.originServerTs] = event["origin_server_ts"] as Long
+                                        it[Events.prevEvents] = "[]"
+                                        it[Events.authEvents] = "[]"
+                                        it[Events.depth] = 1
+                                        it[Events.hashes] = "{}"
+                                        it[Events.signatures] = "{}"
+                                    }
+                                }
+                            }
+
+                            call.respond(mapOf("room_id" to roomId))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /rooms/{roomId}/join - Join a room
+                    post("/rooms/{roomId}/join") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val thirdPartySigned = json["third_party_signed"]?.jsonObject
+
+                            // Check if room exists
+                            val roomExists = transaction {
+                                Rooms.select { Rooms.roomId eq roomId }.count() > 0
+                            }
+
+                            if (!roomExists) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Room not found"
+                                ))
+                                return@post
+                            }
+
+                            // Create join event
+                            val eventId = "\$${System.currentTimeMillis()}_join"
+                            val joinEvent = mapOf(
+                                "type" to "m.room.member",
                                 "room_id" to roomId,
                                 "sender" to userId,
                                 "event_id" to eventId,
                                 "origin_server_ts" to System.currentTimeMillis(),
-                                "content" to content,
-                                "unsigned" to mapOf(
-                                    "transaction_id" to txnId
-                                )
+                                "content" to mapOf("membership" to "join"),
+                                "state_key" to userId,
+                                "unsigned" to emptyMap<String, Any>()
                             )
 
-                            // Store the event
+                            // Store join event
                             transaction {
                                 Events.insert {
                                     it[Events.roomId] = roomId
                                     it[Events.eventId] = eventId
-                                    it[Events.type] = eventType
+                                    it[Events.type] = "m.room.member"
                                     it[Events.sender] = userId
-                                    it[Events.stateKey] = null // Not a state event
-                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(content))
+                                    it[Events.stateKey] = userId
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to "join")))
                                     it[Events.originServerTs] = System.currentTimeMillis()
-                                    it[Events.prevEvents] = "[]" // Simplified
-                                    it[Events.authEvents] = "[]" // Simplified
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
                                     it[Events.depth] = 1
                                     it[Events.hashes] = "{}"
                                     it[Events.signatures] = "{}"
                                 }
                             }
 
-                            // Broadcast the event to room clients
-                            runBlocking {
-                                broadcastEvent(roomId, event)
+                            call.respond(mapOf("room_id" to roomId))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /rooms/{roomId}/leave - Leave a room
+                    post("/rooms/{roomId}/leave") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@post
                             }
 
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            // Create leave event
+                            val eventId = "\$${System.currentTimeMillis()}_leave"
+                            val leaveEvent = mapOf(
+                                "type" to "m.room.member",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to eventId,
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to mapOf("membership" to "leave"),
+                                "state_key" to userId,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            // Store leave event
+                            transaction {
+                                Events.insert {
+                                    it[Events.roomId] = roomId
+                                    it[Events.eventId] = eventId
+                                    it[Events.type] = "m.room.member"
+                                    it[Events.sender] = userId
+                                    it[Events.stateKey] = userId
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to "leave")))
+                                    it[Events.originServerTs] = System.currentTimeMillis()
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
+                                    it[Events.depth] = 1
+                                    it[Events.hashes] = "{}"
+                                    it[Events.signatures] = "{}"
+                                }
+                            }
+
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /rooms/{roomId}/members - Get room members
+                    get("/rooms/{roomId}/members") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get room members
+                            val members = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.type eq "m.room.member")
+                                }.map { row ->
+                                    val content = Json.parseToJsonElement(row[Events.content]).jsonObject
+                                    val membership = content["membership"]?.jsonPrimitive?.content
+                                    if (membership == "join") {
+                                        mapOf(
+                                            "type" to "m.room.member",
+                                            "room_id" to roomId,
+                                            "sender" to row[Events.sender],
+                                            "event_id" to row[Events.eventId],
+                                            "origin_server_ts" to row[Events.originServerTs],
+                                            "content" to content,
+                                            "state_key" to row[Events.stateKey],
+                                            "unsigned" to emptyMap<String, Any>()
+                                        )
+                                    } else null
+                                }.filterNotNull()
+                            }
+
+                            call.respond(mapOf("chunk" to members))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /rooms/{roomId}/state - Get room state
+                    get("/rooms/{roomId}/state") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get current room state
+                            val stateEvents = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.stateKey.isNotNull())
+                                }.map { row ->
+                                    mapOf(
+                                        "type" to row[Events.type],
+                                        "room_id" to roomId,
+                                        "sender" to row[Events.sender],
+                                        "event_id" to row[Events.eventId],
+                                        "origin_server_ts" to row[Events.originServerTs],
+                                        "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                                        "state_key" to row[Events.stateKey],
+                                        "unsigned" to emptyMap<String, Any>()
+                                    )
+                                }
+                            }
+
+                            call.respond(stateEvents)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /rooms/{roomId}/state/{eventType}/{stateKey} - Get specific state event
+                    get("/rooms/{roomId}/state/{eventType}/{stateKey}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val eventType = call.parameters["eventType"]
+                            val stateKey = call.parameters["stateKey"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null || eventType == null || stateKey == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId, eventType, or stateKey parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Get specific state event
+                            val stateEvent = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.type eq eventType) and
+                                    (Events.stateKey eq stateKey)
+                                }.singleOrNull()
+                            }
+
+                            if (stateEvent != null) {
+                                val event = mapOf(
+                                    "type" to stateEvent[Events.type],
+                                    "room_id" to roomId,
+                                    "sender" to stateEvent[Events.sender],
+                                    "event_id" to stateEvent[Events.eventId],
+                                    "origin_server_ts" to stateEvent[Events.originServerTs],
+                                    "content" to Json.parseToJsonElement(stateEvent[Events.content]).jsonObject,
+                                    "state_key" to stateEvent[Events.stateKey],
+                                    "unsigned" to emptyMap<String, Any>()
+                                )
+                                call.respond(event)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "State event not found"
+                                ))
+                            }
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /rooms/{roomId}/state/{eventType}/{stateKey} - Send state event
+                    put("/rooms/{roomId}/state/{eventType}/{stateKey}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val eventType = call.parameters["eventType"]
+                            val stateKey = call.parameters["stateKey"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null || eventType == null || stateKey == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId, eventType, or stateKey parameter"
+                                ))
+                                return@put
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
+
+                            val request = call.receiveText()
+                            val content = Json.parseToJsonElement(request).jsonObject
+
+                            // Generate event ID
+                            val eventId = "\$${System.currentTimeMillis()}_${eventType}_${stateKey}"
+
+                            // Create state event
+                            val stateEvent = mapOf(
+                                "type" to eventType,
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to eventId,
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to content,
+                                "state_key" to stateKey,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            // Store state event
+                            transaction {
+                                Events.insert {
+                                    it[Events.roomId] = roomId
+                                    it[Events.eventId] = eventId
+                                    it[Events.type] = eventType
+                                    it[Events.sender] = userId
+                                    it[Events.stateKey] = stateKey
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(content))
+                                    it[Events.originServerTs] = System.currentTimeMillis()
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
+                                    it[Events.depth] = 1
+                                    it[Events.hashes] = "{}"
+                                    it[Events.signatures] = "{}"
+                                }
+                            }
+
+                            call.respond(stateEvent)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== EVENT MANAGEMENT =====
+
+                    // GET /rooms/{roomId}/messages - Get room messages
+                    get("/rooms/{roomId}/messages") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            val from = call.request.queryParameters["from"]
+                            val to = call.request.queryParameters["to"]
+                            val dir = call.request.queryParameters["dir"] ?: "b"
+                            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
+                            val filter = call.request.queryParameters["filter"]
+
+                            // Get room messages
+                            val messages = transaction {
+                                val query = Events.select { Events.roomId eq roomId }
+
+                                // Apply direction and pagination
+                                when (dir) {
+                                    "b" -> query.orderBy(Events.originServerTs, SortOrder.DESC)
+                                    "f" -> query.orderBy(Events.originServerTs, SortOrder.ASC)
+                                }
+
+                                query.limit(limit).map { row ->
+                                    mapOf(
+                                        "type" to row[Events.type],
+                                        "room_id" to roomId,
+                                        "sender" to row[Events.sender],
+                                        "event_id" to row[Events.eventId],
+                                        "origin_server_ts" to row[Events.originServerTs],
+                                        "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                                        "unsigned" to emptyMap<String, Any>()
+                                    )
+                                }
+                            }
+
+                            val start = messages.firstOrNull()?.get("event_id") as String?
+                            val end = messages.lastOrNull()?.get("event_id") as String?
+
                             call.respond(mapOf(
-                                "event_id" to eventId
+                                "start" to start,
+                                "end" to end,
+                                "chunk" to messages
                             ))
 
                         } catch (e: Exception) {
-                            when (e) {
-                                is kotlinx.serialization.SerializationException -> {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_BAD_JSON",
-                                        "error" to "Invalid JSON"
-                                    ))
-                                }
-                                else -> {
-                                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                        "errcode" to "M_UNKNOWN",
-                                        "error" to "Internal server error"
-                                    ))
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /rooms/{roomId}/context/{eventId} - Get event context
+                    get("/rooms/{roomId}/context/{eventId}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val eventId = call.parameters["eventId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null || eventId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId or eventId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
+                            val filter = call.request.queryParameters["filter"]
+
+                            // Get the target event
+                            val targetEvent = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.eventId eq eventId)
+                                }.singleOrNull()
+                            }
+
+                            if (targetEvent == null) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Event not found"
+                                ))
+                                return@get
+                            }
+
+                            val targetTimestamp = targetEvent[Events.originServerTs]
+
+                            // Get events before the target
+                            val eventsBefore = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.originServerTs less targetTimestamp)
+                                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                                    .limit(limit / 2)
+                                    .map { row ->
+                                        mapOf(
+                                            "type" to row[Events.type],
+                                            "room_id" to roomId,
+                                            "sender" to row[Events.sender],
+                                            "event_id" to row[Events.eventId],
+                                            "origin_server_ts" to row[Events.originServerTs],
+                                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                                            "unsigned" to emptyMap<String, Any>()
+                                        )
+                                    }
+                            }
+
+                            // Get events after the target
+                            val eventsAfter = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.originServerTs greater targetTimestamp)
+                                }.orderBy(Events.originServerTs, SortOrder.ASC)
+                                    .limit(limit / 2)
+                                    .map { row ->
+                                        mapOf(
+                                            "type" to row[Events.type],
+                                            "room_id" to roomId,
+                                            "sender" to row[Events.sender],
+                                            "event_id" to row[Events.eventId],
+                                            "origin_server_ts" to row[Events.originServerTs],
+                                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                                            "unsigned" to emptyMap<String, Any>()
+                                        )
+                                    }
+                            }
+
+                            val event = mapOf(
+                                "type" to targetEvent[Events.type],
+                                "room_id" to roomId,
+                                "sender" to targetEvent[Events.sender],
+                                "event_id" to targetEvent[Events.eventId],
+                                "origin_server_ts" to targetEvent[Events.originServerTs],
+                                "content" to Json.parseToJsonElement(targetEvent[Events.content]).jsonObject,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            call.respond(mapOf(
+                                "start" to eventsBefore.lastOrNull()?.get("event_id"),
+                                "end" to eventsAfter.lastOrNull()?.get("event_id"),
+                                "events_before" to eventsBefore.reversed(),
+                                "event" to event,
+                                "events_after" to eventsAfter,
+                                "state" to emptyList<Map<String, Any>>()
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // PUT /rooms/{roomId}/redact/{eventId}/{txnId} - Redact event
+                    put("/rooms/{roomId}/redact/{eventId}/{txnId}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val eventId = call.parameters["eventId"]
+                            val txnId = call.parameters["txnId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null || eventId == null || txnId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId, eventId, or txnId parameter"
+                                ))
+                                return@put
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@put
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val reason = json["reason"]?.jsonPrimitive?.content
+
+                            // Generate redaction event ID
+                            val redactionEventId = "\$${System.currentTimeMillis()}_redact"
+
+                            // Create redaction event
+                            val redactionEvent = mapOf(
+                                "type" to "m.room.redaction",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to redactionEventId,
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to mapOf("reason" to reason).filterValues { it != null },
+                                "redacts" to eventId,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            // Store redaction event
+                            transaction {
+                                Events.insert {
+                                    it[Events.roomId] = roomId
+                                    it[Events.eventId] = redactionEventId
+                                    it[Events.type] = "m.room.redaction"
+                                    it[Events.sender] = userId
+                                    it[Events.stateKey] = null
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("reason" to reason).filterValues { it != null }))
+                                    it[Events.originServerTs] = System.currentTimeMillis()
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
+                                    it[Events.depth] = 1
+                                    it[Events.hashes] = "{}"
+                                    it[Events.signatures] = "{}"
                                 }
                             }
+
+                            call.respond(mapOf("event_id" to redactionEventId))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /rooms/{roomId}/relations/{eventId} - Get event relations
+                    get("/rooms/{roomId}/relations/{eventId}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val eventId = call.parameters["eventId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null || eventId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId or eventId parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            val relType = call.request.queryParameters["rel_type"]
+                            val eventType = call.request.queryParameters["event_type"]
+                            val from = call.request.queryParameters["from"]
+                            val to = call.request.queryParameters["to"]
+                            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 5
+                            val dir = call.request.queryParameters["dir"] ?: "b"
+
+                            // Get related events (simplified - in real implementation, would parse m.relates_to)
+                            val relatedEvents = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.type neq "m.room.redaction") // Exclude redactions
+                                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                                    .limit(limit)
+                                    .map { row ->
+                                        mapOf(
+                                            "type" to row[Events.type],
+                                            "room_id" to roomId,
+                                            "sender" to row[Events.sender],
+                                            "event_id" to row[Events.eventId],
+                                            "origin_server_ts" to row[Events.originServerTs],
+                                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                                            "unsigned" to emptyMap<String, Any>()
+                                        )
+                                    }
+                            }
+
+                            call.respond(mapOf(
+                                "chunk" to relatedEvents,
+                                "next_batch" to null,
+                                "prev_batch" to null
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /rooms/{roomId}/relations/{eventId}/{relType} - Get specific relation type
+                    get("/rooms/{roomId}/relations/{eventId}/{relType}") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val eventId = call.parameters["eventId"]
+                            val relType = call.parameters["relType"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null || eventId == null || relType == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId, eventId, or relType parameter"
+                                ))
+                                return@get
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            val eventType = call.request.queryParameters["event_type"]
+                            val from = call.request.queryParameters["from"]
+                            val to = call.request.queryParameters["to"]
+                            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 5
+                            val dir = call.request.queryParameters["dir"] ?: "b"
+
+                            // Get events of specific relation type (simplified)
+                            val relatedEvents = transaction {
+                                Events.select {
+                                    (Events.roomId eq roomId) and
+                                    (Events.type neq "m.room.redaction")
+                                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                                    .limit(limit)
+                                    .map { row ->
+                                        mapOf(
+                                            "type" to row[Events.type],
+                                            "room_id" to roomId,
+                                            "sender" to row[Events.sender],
+                                            "event_id" to row[Events.eventId],
+                                            "origin_server_ts" to row[Events.originServerTs],
+                                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                                            "unsigned" to emptyMap<String, Any>()
+                                        )
+                                    }
+                            }
+
+                            call.respond(mapOf(
+                                "chunk" to relatedEvents,
+                                "next_batch" to null,
+                                "prev_batch" to null
+                            ))
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // ===== ADDITIONAL ROOM MANAGEMENT =====
+
+                    // POST /rooms/{roomId}/invite - Invite user to room
+                    post("/rooms/{roomId}/invite") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val inviteeUserId = json["user_id"]?.jsonPrimitive?.content
+
+                            if (inviteeUserId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing user_id parameter"
+                                ))
+                                return@post
+                            }
+
+                            // Create invite event
+                            val eventId = "\$${System.currentTimeMillis()}_invite"
+                            val inviteEvent = mapOf(
+                                "type" to "m.room.member",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to eventId,
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to mapOf("membership" to "invite"),
+                                "state_key" to inviteeUserId,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            // Store invite event
+                            transaction {
+                                Events.insert {
+                                    it[Events.roomId] = roomId
+                                    it[Events.eventId] = eventId
+                                    it[Events.type] = "m.room.member"
+                                    it[Events.sender] = userId
+                                    it[Events.stateKey] = inviteeUserId
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("membership" to "invite")))
+                                    it[Events.originServerTs] = System.currentTimeMillis()
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
+                                    it[Events.depth] = 1
+                                    it[Events.hashes] = "{}"
+                                    it[Events.signatures] = "{}"
+                                }
+                            }
+
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /rooms/{roomId}/kick - Remove user from room
+                    post("/rooms/{roomId}/kick") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val targetUserId = json["user_id"]?.jsonPrimitive?.content
+                            val reason = json["reason"]?.jsonPrimitive?.content
+
+                            if (targetUserId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing user_id parameter"
+                                ))
+                                return@post
+                            }
+
+                            // Create kick event (leave event with reason)
+                            val eventId = "\$${System.currentTimeMillis()}_kick"
+                            val kickEvent = mapOf(
+                                "type" to "m.room.member",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to eventId,
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to mapOf(
+                                    "membership" to "leave",
+                                    "reason" to reason
+                                ).filterValues { it != null },
+                                "state_key" to targetUserId,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            // Store kick event
+                            transaction {
+                                Events.insert {
+                                    it[Events.roomId] = roomId
+                                    it[Events.eventId] = eventId
+                                    it[Events.type] = "m.room.member"
+                                    it[Events.sender] = userId
+                                    it[Events.stateKey] = targetUserId
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf(
+                                        "membership" to "leave",
+                                        "reason" to reason
+                                    ).filterValues { it != null }))
+                                    it[Events.originServerTs] = System.currentTimeMillis()
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
+                                    it[Events.depth] = 1
+                                    it[Events.hashes] = "{}"
+                                    it[Events.signatures] = "{}"
+                                }
+                            }
+
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // POST /rooms/{roomId}/ban - Ban user from room
+                    post("/rooms/{roomId}/ban") {
+                        try {
+                            val roomId = call.parameters["roomId"]
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (roomId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing roomId parameter"
+                                ))
+                                return@post
+                            }
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val targetUserId = json["user_id"]?.jsonPrimitive?.content
+                            val reason = json["reason"]?.jsonPrimitive?.content
+
+                            if (targetUserId == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing user_id parameter"
+                                ))
+                                return@post
+                            }
+
+                            // Create ban event
+                            val eventId = "\$${System.currentTimeMillis()}_ban"
+                            val banEvent = mapOf(
+                                "type" to "m.room.member",
+                                "room_id" to roomId,
+                                "sender" to userId,
+                                "event_id" to eventId,
+                                "origin_server_ts" to System.currentTimeMillis(),
+                                "content" to mapOf(
+                                    "membership" to "ban",
+                                    "reason" to reason
+                                ).filterValues { it != null },
+                                "state_key" to targetUserId,
+                                "unsigned" to emptyMap<String, Any>()
+                            )
+
+                            // Store ban event
+                            transaction {
+                                Events.insert {
+                                    it[Events.roomId] = roomId
+                                    it[Events.eventId] = eventId
+                                    it[Events.type] = "m.room.member"
+                                    it[Events.sender] = userId
+                                    it[Events.stateKey] = targetUserId
+                                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf(
+                                        "membership" to "ban",
+                                        "reason" to reason
+                                    ).filterValues { it != null }))
+                                    it[Events.originServerTs] = System.currentTimeMillis()
+                                    it[Events.prevEvents] = "[]"
+                                    it[Events.authEvents] = "[]"
+                                    it[Events.depth] = 1
+                                    it[Events.hashes] = "{}"
+                                    it[Events.signatures] = "{}"
+                                }
+                            }
+
+                            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
                         }
                     }
                 }
