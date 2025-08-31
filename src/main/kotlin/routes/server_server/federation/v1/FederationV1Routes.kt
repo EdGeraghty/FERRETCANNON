@@ -18,6 +18,7 @@ import utils.connectedClients
 import utils.presenceMap
 import utils.receiptsMap
 import utils.typingMap
+import utils.MediaStorage
 import utils.deviceKeys
 import utils.oneTimeKeys
 import utils.crossSigningKeys
@@ -44,7 +45,7 @@ fun checkServerACL(roomId: String, serverName: String): Boolean {
         val denyIpLiterals = aclEvent["deny_ip_literals"]?.jsonPrimitive?.boolean ?: false
 
         // Validate server name format
-        if (!isValidServerName(serverName)) {
+        if (!MatrixAuth.isValidServerName(serverName)) {
             println("Invalid server name format: $serverName")
             return false
         }
@@ -1711,6 +1712,7 @@ fun Application.federationV1Routes() {
                             }
                             if (selfSigningKeys.isNotEmpty()) {
                                 response["self_signing_keys"] = selfSigningKeys
+
                             }
 
                             call.respond(response)
@@ -1730,31 +1732,33 @@ fun Application.federationV1Routes() {
                         }
 
                         try {
-                            // Parse media ID from mxc://server/mediaId format
-                            // For now, we'll simulate media storage - in a real implementation,
-                            // this would look up the media in a database or file system
-
-                            // Check if media exists (placeholder - always return not found for now)
-                            val mediaExists = false // TODO: Implement actual media lookup
-                            val mediaData = ByteArray(0) // TODO: Load actual media data
-                            val contentType = "application/octet-stream" // TODO: Determine actual content type
-
-                            if (!mediaExists) {
+                            // Check if media exists
+                            if (!MediaStorage.mediaExists(mediaId)) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Media not found"))
                                 return@get
                             }
+
+                            // Get media content
+                            val (content, contentType) = MediaStorage.getMedia(mediaId)
+                            if (content == null || contentType == null) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to retrieve media"))
+                                return@get
+                            }
+
+                            // Get metadata
+                            val metadata = MediaStorage.getMediaMetadata(mediaId)
 
                             // Return multipart response as per spec
                             val boundary = "boundary_${System.currentTimeMillis()}"
 
                             // Create metadata part
-                            val metadata = mapOf(
+                            val metadataMap = mapOf(
                                 "content_uri" to "mxc://localhost/$mediaId",
                                 "content_type" to contentType,
-                                "content_length" to mediaData.size
+                                "content_length" to content.size
                             )
 
-                            val metadataJson = Json.encodeToString(JsonObject.serializer(), JsonObject(metadata.mapValues { JsonPrimitive(it.value.toString()) }))
+                            val metadataJson = Json.encodeToString(JsonObject.serializer(), JsonObject(metadataMap.mapValues { JsonPrimitive(it.value.toString()) }))
 
                             // Create the multipart response
                             val multipartContent = """
@@ -1765,7 +1769,7 @@ $metadataJson
 --$boundary
 Content-Type: $contentType
 
-${String(mediaData)}
+${String(content, Charsets.UTF_8)}
 --$boundary--
                             """.trimIndent()
 
@@ -1815,13 +1819,16 @@ ${String(mediaData)}
                                 return@get
                             }
 
-                            // Check if media exists (placeholder - always return not found for now)
-                            val mediaExists = false // TODO: Implement actual media lookup
-                            val thumbnailData = ByteArray(0) // TODO: Generate actual thumbnail
-                            val contentType = "image/jpeg" // TODO: Determine actual content type
-
-                            if (!mediaExists) {
+                            // Check if media exists
+                            if (!MediaStorage.mediaExists(mediaId)) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Media not found"))
+                                return@get
+                            }
+
+                            // Generate thumbnail
+                            val thumbnailData = MediaStorage.generateThumbnail(mediaId, width, height, method)
+                            if (thumbnailData == null) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to generate thumbnail"))
                                 return@get
                             }
 
@@ -1831,7 +1838,7 @@ ${String(mediaData)}
                             // Create metadata part
                             val metadata = mapOf(
                                 "content_uri" to "mxc://localhost/$mediaId",
-                                "content_type" to contentType,
+                                "content_type" to "image/jpeg",
                                 "content_length" to thumbnailData.size,
                                 "width" to width,
                                 "height" to height,
@@ -1848,9 +1855,9 @@ Content-Type: application/json
 
 $metadataJson
 --$boundary
-Content-Type: $contentType
+Content-Type: image/jpeg
 
-${String(thumbnailData)}
+${String(thumbnailData, Charsets.UTF_8)}
 --$boundary--
                             """.trimIndent()
 
@@ -1939,20 +1946,20 @@ fun processPDU(pdu: JsonElement): Map<String, String>? {
         // 12. Store the event
         transaction {
             Events.insert {
-                it[eventId] = eventId
+                it[Events.eventId] = eventId
                 it[Events.roomId] = roomId
-                it[type] = event["type"]?.jsonPrimitive?.content ?: ""
-                it[sender] = sender
-                it[content] = event["content"]?.toString() ?: ""
-                it[authEvents] = event["auth_events"]?.toString() ?: ""
-                it[prevEvents] = event["prev_events"]?.toString() ?: ""
-                it[depth] = event["depth"]?.jsonPrimitive?.int ?: 0
-                it[hashes] = event["hashes"]?.toString() ?: ""
-                it[signatures] = event["signatures"]?.toString() ?: ""
-                it[originServerTs] = event["origin_server_ts"]?.jsonPrimitive?.long ?: 0
-                it[stateKey] = event["state_key"]?.jsonPrimitive?.content
-                it[unsigned] = event["unsigned"]?.toString()
-                it[softFailed] = softFail
+                it[Events.type] = event["type"]?.jsonPrimitive?.content ?: ""
+                it[Events.sender] = sender
+                it[Events.content] = event["content"]?.toString() ?: ""
+                it[Events.authEvents] = event["auth_events"]?.toString() ?: ""
+                it[Events.prevEvents] = event["prev_events"]?.toString() ?: ""
+                it[Events.depth] = event["depth"]?.jsonPrimitive?.int ?: 0
+                it[Events.hashes] = event["hashes"]?.toString() ?: ""
+                it[Events.signatures] = event["signatures"]?.toString() ?: ""
+                it[Events.originServerTs] = event["origin_server_ts"]?.jsonPrimitive?.long ?: 0
+                it[Events.stateKey] = event["state_key"]?.jsonPrimitive?.content
+                it[Events.unsigned] = event["unsigned"]?.toString()
+                it[Events.softFailed] = softFail
                 it[outlier] = false
             }
         }

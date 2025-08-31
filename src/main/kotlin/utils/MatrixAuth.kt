@@ -268,4 +268,14 @@ object MatrixAuth {
         val hash = digest.digest(referenceData.toByteArray(Charsets.UTF_8))
         return Base64.getEncoder().encodeToString(hash)
     }
+
+    /**
+     * Validate a Matrix server name according to the specification
+     * Server names must be valid DNS names or IP addresses
+     */
+    fun isValidServerName(serverName: String): Boolean {
+        // Basic validation: check for valid hostname format
+        val hostnameRegex = "^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$".toRegex()
+        return hostnameRegex.matches(serverName) && serverName.length <= 253
+    }
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import java.net.InetAddress
 import java.net.UnknownHostException
+import org.xbill.DNS.*
 
 /**
  * Server Discovery utilities for Matrix federation
@@ -149,10 +150,57 @@ object ServerDiscovery {
     }
 
     private fun lookupSrvRecord(srvName: String): ServerConnectionDetails? {
-        // Note: In a real implementation, you would use a DNS library to lookup SRV records
-        // For now, we'll return null as we don't have DNS lookup capability
-        // This would need to be implemented with a proper DNS library
-        return null
+        return try {
+            // Create a DNS lookup for SRV records
+            val lookup = Lookup(srvName, Type.SRV)
+            val records = lookup.run()
+
+            if (records == null || records.isEmpty()) {
+                return null
+            }
+
+            // Find the SRV record with the lowest priority
+            var bestRecord: SRVRecord? = null
+            var bestPriority = Int.MAX_VALUE
+            var bestWeight = 0
+
+            for (record in records) {
+                if (record is SRVRecord) {
+                    val priority = record.priority
+                    val weight = record.weight
+
+                    if (priority < bestPriority || (priority == bestPriority && weight > bestWeight)) {
+                        bestRecord = record
+                        bestPriority = priority
+                        bestWeight = weight
+                    }
+                }
+            }
+
+            if (bestRecord == null) {
+                return null
+            }
+
+            // Resolve the target hostname to an IP address
+            val target = bestRecord.target.toString().removeSuffix(".")
+            val port = bestRecord.port
+
+            // Validate that we can resolve the target
+            val addresses = InetAddress.getAllByName(target)
+            if (addresses.isEmpty()) {
+                return null
+            }
+
+            ServerConnectionDetails(
+                host = target,
+                port = port,
+                tls = true,
+                hostHeader = target
+            )
+        } catch (e: Exception) {
+            println("Error looking up SRV record for $srvName: ${e.message}")
+            null
+        }
     }
 }
 

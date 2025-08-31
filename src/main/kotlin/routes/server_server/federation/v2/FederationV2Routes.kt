@@ -12,12 +12,14 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import models.Events
 import models.Rooms
 import utils.MatrixAuth
-import utils.stateResolver
+import utils.StateResolver
 import routes.server_server.federation.v1.checkServerACL
 import routes.server_server.federation.v1.extractServerNameFromAuth
 import routes.server_server.federation.v1.processPDU
 
 fun Application.federationV2Routes() {
+    val stateResolver = StateResolver()
+
     routing {
         route("/_matrix") {
             route("/federation") {

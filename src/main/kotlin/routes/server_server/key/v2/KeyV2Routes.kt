@@ -4,7 +4,8 @@ import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import io.ktor.server.response.*
 import io.ktor.http.HttpStatusCode
-import io.ktor.request.receiveText
+import io.ktor.server.request.*
+import io.ktor.server.request.receiveText
 import kotlinx.serialization.json.*
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -13,6 +14,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.runBlocking
 import utils.ServerKeys
+import utils.MatrixAuth
 
 fun Application.keyV2Routes() {
     val client = HttpClient(CIO)
@@ -69,7 +71,8 @@ fun Application.keyV2Routes() {
                                     for (keyId in globalServerKeys.keys) {
                                         val keyInfo = globalServerKeys[keyId]
                                         if (keyInfo != null) {
-                                            serverKeyData[keyId] = keyInfo
+                                            @Suppress("UNCHECKED_CAST")
+                                            serverKeyData[keyId] = keyInfo as Map<String, Any?>
                                         }
                                     }
                                 } else if (requestedKeysJson is JsonObject) {
@@ -79,7 +82,8 @@ fun Application.keyV2Routes() {
                                         val keyId = keyElement.jsonPrimitive.content
                                         val keyInfo = globalServerKeys[keyId]
                                         if (keyInfo != null) {
-                                            serverKeyData[keyId] = keyInfo
+                                            @Suppress("UNCHECKED_CAST")
+                                            serverKeyData[keyId] = keyInfo as Map<String, Any?>
                                         }
                                     }
                                 }
