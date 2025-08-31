@@ -23,6 +23,7 @@ import kotlinx.serialization.json.*
 import utils.users
 import utils.typingMap
 import utils.connectedClients
+import utils.ServerKeys
 import routes.server_server.federation.v1.broadcastEDU
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Duration.Companion.minutes
@@ -3375,6 +3376,48 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
                                 "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
+                    // GET /admin/crypto_test - Test cryptographic compliance with Matrix specification
+                    get("/admin/crypto_test") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Check if user is admin
+                            if (!userId.contains("admin")) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Insufficient permissions"
+                                ))
+                                return@get
+                            }
+
+                            // Run cryptographic test vectors
+                            val testResults = ServerKeys.testWithSpecificationSeed()
+
+                            val response = mapOf(
+                                "test_results" to testResults,
+                                "all_passed" to testResults.values.all { it },
+                                "matrix_specification_version" to "v1.15",
+                                "implementation_status" to if (testResults.values.all { it }) "COMPLIANT" else "NON_COMPLIANT"
+                            )
+
+                            call.respond(response)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error: ${e.message}"
                             ))
                         }
                     }

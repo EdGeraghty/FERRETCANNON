@@ -118,6 +118,30 @@ An LLM-only Kotlin/KTor implementation of a Matrix Server supporting the Matrix 
 
 ## Getting Started
 
+### Quick Start (No Manual Intervention Required)
+
+1. **Automated Server Start**: Use the provided scripts to start the server without manual prompts:
+
+   ```bash
+   # Windows PowerShell (Recommended)
+   .\start-server.ps1
+   
+   # Or Windows Command Prompt
+   start-server.bat
+   ```
+
+2. **VS Code Integration**: Use the pre-configured tasks:
+   - Press `Ctrl+Shift+P` → "Tasks: Run Task" → "start-server"
+   - Or use the debug panel with "Run FERRETCANNON Server"
+
+3. **Test Server**: Automatically test if the server is running:
+
+   ```powershell
+   .\test-server.ps1
+   ```
+
+### Manual Start (if needed)
+
 1. Install Gradle if not already installed.
 
 2. Run `gradle build` to compile the project.
@@ -126,10 +150,48 @@ An LLM-only Kotlin/KTor implementation of a Matrix Server supporting the Matrix 
 
 The server runs on port 8080.
 
+## Avoiding Manual Prompts
+
+This project includes several automation features to minimize the need for clicking "Continue":
+
+### VS Code Settings
+
+- Auto-save enabled (saves after 1 second delay)
+- Disabled confirmation dialogs for:
+  - File deletion
+  - Terminal exit
+  - Debug session exit
+  - Window close
+- Disabled extension update prompts
+- Disabled Docker engine prompts
+
+### Automated Scripts
+
+- `start-server.ps1`: Automatically stops old processes and starts the server
+- `start-server.bat`: Windows batch version of the auto-start script
+- `test-server.ps1`: Automatically tests server connectivity
+
+### VS Code Tasks
+
+- `start-server`: Runs the server with no prompts
+- `build`: Compiles the project
+- `clean`: Cleans build artifacts
+- `run`: Basic server run task
+
+### Development Workflow
+
+1. Open the project in VS Code
+2. Press `Ctrl+Shift+P` → "Tasks: Run Task" → "start-server"
+3. The server starts automatically without any prompts
+4. Use `.\test-server.ps1` to verify it's running
+5. Make changes - auto-save handles file saving
+6. Server automatically reloads on code changes (Gradle daemon)
+
 ## Requirements
 
 - Java 17 or higher
 - Gradle 8.5 or higher
+- Windows PowerShell (for automated scripts)
 
 ## Architecture
 

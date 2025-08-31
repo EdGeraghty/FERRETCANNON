@@ -77,21 +77,10 @@ object MatrixAuth {
             jsonMap["content"] = Json.parseToJsonElement(content)
         }
 
-        val canonicalJson = buildCanonicalJson(jsonMap)
+        val canonicalJson = canonicalizeJson(jsonMap)
 
         // Verify signature
         return verifySignature(canonicalJson, sig, publicKey)
-    }
-
-    private fun buildCanonicalJson(map: Map<String, Any>): String {
-        val sortedMap = map.toSortedMap()
-        return Json.encodeToString(JsonElement.serializer(), JsonObject(sortedMap.mapValues { (_, value) ->
-            when (value) {
-                is String -> JsonPrimitive(value)
-                is JsonElement -> value
-                else -> JsonPrimitive(value.toString())
-            }
-        }))
     }
 
     internal fun parseAuthorization(auth: String): Map<String, String>? {
@@ -128,7 +117,12 @@ object MatrixAuth {
             val verifyKeys = data["verify_keys"]?.jsonObject ?: return null
             val keyData = verifyKeys[keyId]?.jsonObject ?: return null
             val keyBase64 = keyData["key"]?.jsonPrimitive?.content ?: return null
-            val keyBytes = Base64.getDecoder().decode(keyBase64)
+            // Handle both padded and unpadded Base64 for compatibility
+            val keyBytes = try {
+                Base64.getDecoder().decode(keyBase64)
+            } catch (e: IllegalArgumentException) {
+                Base64.getDecoder().decode(keyBase64)
+            }
             val spec = EdDSAPublicKeySpec(keyBytes, null)
             EdDSAPublicKey(spec)
         } catch (e: Exception) {
@@ -178,12 +172,12 @@ object MatrixAuth {
         val senderServer = sender.substringAfter("@").substringAfter(":")
         val senderKey = fetchPublicKey(senderServer, "ed25519:key1") ?: return false // Assume key1
         val senderSig = signatures[sender]?.jsonObject?.get("ed25519:key1")?.jsonPrimitive?.content ?: return false
-        if (!verifySignature(buildCanonicalJson(event.toMap()), senderSig, senderKey)) return false
+        if (!verifySignature(canonicalizeJson(event.toMap()), senderSig, senderKey)) return false
 
         // Verify origin's signature
         val originKey = fetchPublicKey(origin, "ed25519:key1") ?: return false
         val originSig = signatures[origin]?.jsonObject?.get("ed25519:key1")?.jsonPrimitive?.content ?: return false
-        if (!verifySignature(buildCanonicalJson(event.toMap()), originSig, originKey)) return false
+        if (!verifySignature(canonicalizeJson(event.toMap()), originSig, originKey)) return false
 
         return true
     }
@@ -193,7 +187,12 @@ object MatrixAuth {
             val sig = Signature.getInstance("Ed25519", "EdDSA")
             sig.initVerify(publicKey)
             sig.update(data.toByteArray(Charsets.UTF_8))
-            val sigBytes = Base64.getDecoder().decode(signature)
+            // Handle both padded and unpadded Base64 for compatibility
+            val sigBytes = try {
+                Base64.getDecoder().decode(signature)
+            } catch (e: IllegalArgumentException) {
+                Base64.getDecoder().decode(signature)
+            }
             sig.verify(sigBytes)
         } catch (e: Exception) {
             false
@@ -205,38 +204,63 @@ object MatrixAuth {
         copy.remove("signatures")
         copy.remove("hashes")
         copy.remove("unsigned")
-        val canonical = buildCanonicalJson(copy)
+        val canonical = canonicalizeJson(copy)
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
-        return Base64.getEncoder().encodeToString(hash)
+        // Use unpadded Base64 as per Matrix specification appendices
+        return Base64.getEncoder().withoutPadding().encodeToString(hash)
     }
 
     fun canonicalizeJson(data: Any): String {
         return when (data) {
             is Map<*, *> -> {
-                val sortedMap = (data as Map<String, Any>).toSortedMap()
-                Json.encodeToString(JsonElement.serializer(), JsonObject(sortedMap.mapValues { (_, value) ->
-                    when (value) {
-                        is String -> JsonPrimitive(value)
-                        is Number -> JsonPrimitive(value)
-                        is Boolean -> JsonPrimitive(value)
-                        is JsonElement -> value
-                        is List<*> -> JsonArray(value.map { item ->
-                            when (item) {
-                                is String -> JsonPrimitive(item)
-                                is Number -> JsonPrimitive(item)
-                                is Boolean -> JsonPrimitive(item)
-                                is JsonElement -> item
-                                else -> JsonPrimitive(item.toString())
-                            }
-                        })
-                        is Map<*, *> -> Json.parseToJsonElement(canonicalizeJson(value))
-                        else -> JsonPrimitive(value.toString())
+                val sortedMap = (data as Map<String, Any>).toSortedMap(compareBy { it })
+                val jsonString = buildString {
+                    append("{")
+                    sortedMap.entries.forEachIndexed { index, (key, value) ->
+                        if (index > 0) append(",")
+                        append("\"$key\":")
+                        append(canonicalizeValue(value))
                     }
-                }))
+                    append("}")
+                }
+                jsonString
             }
-            is JsonObject -> buildCanonicalJson(data.toMap())
+            is JsonObject -> canonicalizeJson(data.toMap())
             else -> data.toString()
+        }
+    }
+
+    private fun canonicalizeValue(value: Any?): String {
+        return when (value) {
+            null -> "null"
+            is Boolean -> if (value) "true" else "false"
+            is Number -> {
+                // Ensure integers are in valid range and format without exponents
+                val num = value.toDouble()
+                if (num.isNaN() || num.isInfinite()) {
+                    throw IllegalArgumentException("Invalid number in JSON")
+                }
+                // Convert to long if it's a whole number, otherwise keep as is
+                if (num == num.toLong().toDouble()) {
+                    num.toLong().toString()
+                } else {
+                    throw IllegalArgumentException("Non-integer numbers not allowed in canonical JSON")
+                }
+            }
+            is String -> "\"${value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")}\""
+            is List<*> -> {
+                buildString {
+                    append("[")
+                    value.forEachIndexed { index, item ->
+                        if (index > 0) append(",")
+                        append(canonicalizeValue(item))
+                    }
+                    append("]")
+                }
+            }
+            is Map<*, *> -> canonicalizeJson(value)
+            else -> "\"${value.toString()}\""
         }
     }
 
@@ -277,5 +301,119 @@ object MatrixAuth {
         // Basic validation: check for valid hostname format
         val hostnameRegex = "^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$".toRegex()
         return hostnameRegex.matches(serverName) && serverName.length <= 253
+    }
+
+    /**
+     * Validate a Matrix user ID according to the specification
+     * User IDs must follow the format: @localpart:domain
+     */
+    fun isValidUserId(userId: String): Boolean {
+        if (!userId.startsWith("@") || userId.length > 255) return false
+
+        val parts = userId.substring(1).split(":", limit = 2)
+        if (parts.size != 2) return false
+
+        val localpart = parts[0]
+        val domain = parts[1]
+
+        // Localpart validation: must contain only a-z, 0-9, ., _, =, -, /, +
+        if (localpart.isEmpty()) return false
+        val localpartRegex = "^[a-z0-9._=/+-]+\$".toRegex(RegexOption.IGNORE_CASE)
+        if (!localpartRegex.matches(localpart)) return false
+
+        // Domain validation
+        return isValidServerName(domain)
+    }
+
+    /**
+     * Validate a Matrix room ID according to the specification
+     * Room IDs must follow the format: !opaque_id:domain or !opaque_id
+     */
+    fun isValidRoomId(roomId: String): Boolean {
+        if (!roomId.startsWith("!") || roomId.length > 255) return false
+
+        val parts = roomId.substring(1).split(":", limit = 2)
+        if (parts.isEmpty()) return false
+
+        val opaqueId = parts[0]
+
+        // Opaque ID must contain only valid characters and not be empty
+        if (opaqueId.isEmpty()) return false
+        val opaqueIdRegex = "^[0-9A-Za-z._~-]+\$".toRegex()
+        if (!opaqueIdRegex.matches(opaqueId)) return false
+
+        // If domain is present, validate it
+        if (parts.size == 2) {
+            val domain = parts[1]
+            return isValidServerName(domain)
+        }
+
+        return true
+    }
+
+    /**
+     * Validate a Matrix room alias according to the specification
+     * Room aliases must follow the format: #room_alias:domain
+     */
+    fun isValidRoomAlias(roomAlias: String): Boolean {
+        if (!roomAlias.startsWith("#") || roomAlias.length > 255) return false
+
+        val parts = roomAlias.substring(1).split(":", limit = 2)
+        if (parts.size != 2) return false
+
+        val alias = parts[0]
+        val domain = parts[1]
+
+        // Alias can contain any valid non-surrogate Unicode codepoints except : and NUL
+        if (alias.isEmpty() || alias.contains('\u0000') || alias.contains(':')) return false
+
+        // Domain validation
+        return isValidServerName(domain)
+    }
+
+    /**
+     * Validate a Matrix event ID according to the specification
+     * Event IDs must follow the format: $opaque_id or $opaque_id:domain
+     */
+    fun isValidEventId(eventId: String): Boolean {
+        if (!eventId.startsWith("\$") || eventId.length > 255) return false
+
+        val parts = eventId.substring(1).split(":", limit = 2)
+        if (parts.isEmpty()) return false
+
+        val opaqueId = parts[0]
+
+        // Opaque ID must contain only valid characters and not be empty
+        if (opaqueId.isEmpty()) return false
+        val opaqueIdRegex = "^[0-9A-Za-z._~-]+\$".toRegex()
+        if (!opaqueIdRegex.matches(opaqueId)) return false
+
+        // If domain is present, validate it
+        if (parts.size == 2) {
+            val domain = parts[1]
+            return isValidServerName(domain)
+        }
+
+        return true
+    }
+
+    /**
+     * Validate a Matrix key ID according to the specification
+     * Key IDs must follow the format: algorithm:identifier
+     */
+    fun isValidKeyId(keyId: String): Boolean {
+        val parts = keyId.split(":", limit = 2)
+        if (parts.size != 2) return false
+
+        val algorithm = parts[0]
+        val identifier = parts[1]
+
+        // Algorithm should be a valid namespaced identifier
+        val algorithmRegex = "^[a-z][a-z0-9._-]*\$".toRegex()
+        if (!algorithmRegex.matches(algorithm)) return false
+
+        // Identifier should contain only valid characters
+        val identifierRegex = "^[a-zA-Z0-9._~-]+\$".toRegex()
+        return identifierRegex.matches(identifier)
     }
 }

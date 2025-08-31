@@ -52,7 +52,7 @@ fun main() {
     
     try {
         println("About to create embedded server")
-        embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
+        val server = embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
             println("Inside embeddedServer block")
 
             // Install CORS for client-server API
@@ -146,12 +146,26 @@ fun main() {
                 println("Basic routes set up")
             }
             println("Server configuration complete")
-        }.start(wait = true)
-        println("Server.start() completed")
+        }
+        
+        println("About to start server...")
+        server.start(wait = false)
+        println("Server started successfully!")
+        
+        // Keep the main thread alive
+        println("Server is running on port 8080. Press Ctrl+C to stop.")
+        Runtime.getRuntime().addShutdownHook(Thread {
+            println("Shutting down server...")
+            server.stop(1000, 1000)
+        })
+        
+        // Wait indefinitely
+        Thread.currentThread().join()
+        
     } catch (e: Exception) {
         println("Error starting server: ${e.message}")
         e.printStackTrace()
     }
     
-    println("Server started successfully!")
+    println("Main function completed")
 }
