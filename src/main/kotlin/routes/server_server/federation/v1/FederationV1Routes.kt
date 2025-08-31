@@ -43,6 +43,12 @@ fun checkServerACL(roomId: String, serverName: String): Boolean {
         val allowIpLiterals = aclEvent["allow_ip_literals"]?.jsonPrimitive?.boolean ?: true
         val denyIpLiterals = aclEvent["deny_ip_literals"]?.jsonPrimitive?.boolean ?: false
 
+        // Validate server name format
+        if (!isValidServerName(serverName)) {
+            println("Invalid server name format: $serverName")
+            return false
+        }
+
         // Check if server is an IP literal
         val isIpLiteral = serverName.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$")) ||
                          serverName.matches(Regex("^\\[.*\\]$")) ||
@@ -104,7 +110,16 @@ fun Application.federationV1Routes() {
                 route("/v1") {
                     get("/version") {
                         // For now, skip auth for version, as per spec it's public
-                        call.respond(mapOf("server" to mapOf("name" to "FERRETCANNON", "version" to "1.0")))
+                        call.respond(mapOf(
+                            "server" to mapOf(
+                                "name" to "FERRETCANNON",
+                                "version" to "1.0.0"
+                            ),
+                            "spec_versions" to mapOf(
+                                "federation" to "v1.15",
+                                "client_server" to "v1.15"
+                            )
+                        ))
                     }
                     put("/send/{txnId}") {
                         val txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest)
@@ -360,7 +375,68 @@ fun Application.federationV1Routes() {
                         ))
                     }
                     get("/timestamp_to_event/{roomId}") {
-                        call.respond(HttpStatusCode.NotImplemented, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Endpoint not implemented"))
+                        val roomId = call.parameters["roomId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                        // Authenticate the request
+                        val authHeader = call.request.headers["Authorization"]
+                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            return@get
+                        }
+
+                        // Check Server ACL
+                        val serverName = extractServerNameFromAuth(authHeader)
+                        if (serverName != null && !checkServerACL(roomId, serverName)) {
+                            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+                            return@get
+                        }
+
+                        val ts = call.request.queryParameters["ts"]?.toLongOrNull()
+                        val dir = call.request.queryParameters["dir"] ?: "f"
+
+                        if (ts == null) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing or invalid ts parameter"))
+                            return@get
+                        }
+
+                        if (dir !in setOf("f", "b")) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid dir parameter"))
+                            return@get
+                        }
+
+                        try {
+                            // Find the event closest to the given timestamp
+                            val event = transaction {
+                                val query = Events.select { Events.roomId eq roomId }
+                                    .orderBy(if (dir == "f") Events.originServerTs else Events.originServerTs, if (dir == "f") SortOrder.ASC else SortOrder.DESC)
+
+                                if (dir == "f") {
+                                    // Forward direction: find first event at or after ts
+                                    query.andWhere { Events.originServerTs greaterEq ts }
+                                } else {
+                                    // Backward direction: find first event at or before ts
+                                    query.andWhere { Events.originServerTs lessEq ts }
+                                }
+
+                                query.firstOrNull()
+                            }
+
+                            if (event == null) {
+                                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "No event found near timestamp"))
+                                return@get
+                            }
+
+                            // Convert to event format
+                            val eventData = mapOf(
+                                "event_id" to event[Events.eventId],
+                                "origin_server_ts" to event[Events.originServerTs]
+                            )
+
+                            call.respond(eventData)
+                        } catch (e: Exception) {
+                            println("Timestamp to event error: ${e.message}")
+                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                        }
                     }
                     get("/make_join/{roomId}/{userId}") {
                         val roomId = call.parameters["roomId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
@@ -607,8 +683,6 @@ fun Application.federationV1Routes() {
                                 call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_CANNOT_KNOCK", "error" to "Room is public, use make_join instead"))
                                 return@get
                             }
-
-                            // Check if knocking is allowed (this would be in room settings, but for now assume it's allowed if not public)
 
                             // Get latest event for prev_events
                             val latestEvent = transaction {
@@ -1377,10 +1451,63 @@ fun Application.federationV1Routes() {
                         }
                     }
                     get("/query/profile") {
-                        call.respond(HttpStatusCode.NotImplemented, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Endpoint not implemented"))
+                        val userId = call.request.queryParameters["user_id"]
+                        val field = call.request.queryParameters["field"]
+
+                        if (userId == null) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing user_id parameter"))
+                            return@get
+                        }
+
+                        // Authenticate the request
+                        val authHeader = call.request.headers["Authorization"]
+                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            return@get
+                        }
+
+                        try {
+                            // Get user profile information
+                            val profile = getUserProfile(userId, field)
+                            if (profile != null) {
+                                call.respond(profile)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "User not found"))
+                            }
+                        } catch (e: Exception) {
+                            println("Query profile error: ${e.message}")
+                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                        }
                     }
                     get("/query/{queryType}") {
-                        call.respond(HttpStatusCode.NotImplemented, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Endpoint not implemented"))
+                        val queryType = call.parameters["queryType"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                        // Authenticate the request
+                        val authHeader = call.request.headers["Authorization"]
+                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            return@get
+                        }
+
+                        try {
+                            when (queryType) {
+                                "directory" -> {
+                                    // This is handled by the specific directory endpoint above
+                                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Use /query/directory endpoint"))
+                                }
+                                "profile" -> {
+                                    // This is handled by the specific profile endpoint above
+                                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Use /query/profile endpoint"))
+                                }
+                                else -> {
+                                    // Unknown query type
+                                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Unknown query type: $queryType"))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("Query error: ${e.message}")
+                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                        }
                     }
                     get("/openid/userinfo") {
                         val accessToken = call.request.queryParameters["access_token"]
@@ -1609,19 +1736,43 @@ fun Application.federationV1Routes() {
 
                             // Check if media exists (placeholder - always return not found for now)
                             val mediaExists = false // TODO: Implement actual media lookup
+                            val mediaData = ByteArray(0) // TODO: Load actual media data
+                            val contentType = "application/octet-stream" // TODO: Determine actual content type
 
                             if (!mediaExists) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Media not found"))
                                 return@get
                             }
 
-                            // TODO: Implement actual media retrieval and multipart response
-                            // According to spec, should return multipart/mixed with:
-                            // - First part: JSON metadata (currently empty object {})
-                            // - Second part: The actual media content or redirect URL
+                            // Return multipart response as per spec
+                            val boundary = "boundary_${System.currentTimeMillis()}"
 
-                            // For now, return a placeholder response
-                            call.respond(HttpStatusCode.NotImplemented, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Media storage not yet implemented"))
+                            // Create metadata part
+                            val metadata = mapOf(
+                                "content_uri" to "mxc://localhost/$mediaId",
+                                "content_type" to contentType,
+                                "content_length" to mediaData.size
+                            )
+
+                            val metadataJson = Json.encodeToString(JsonObject.serializer(), JsonObject(metadata.mapValues { JsonPrimitive(it.value.toString()) }))
+
+                            // Create the multipart response
+                            val multipartContent = """
+--$boundary
+Content-Type: application/json
+
+$metadataJson
+--$boundary
+Content-Type: $contentType
+
+${String(mediaData)}
+--$boundary--
+                            """.trimIndent()
+
+                            call.respondText(
+                                contentType = ContentType.MultiPart.Mixed.withParameter("boundary", boundary),
+                                text = multipartContent
+                            )
 
                         } catch (e: Exception) {
                             println("Media download error: ${e.message}")
@@ -1666,19 +1817,47 @@ fun Application.federationV1Routes() {
 
                             // Check if media exists (placeholder - always return not found for now)
                             val mediaExists = false // TODO: Implement actual media lookup
+                            val thumbnailData = ByteArray(0) // TODO: Generate actual thumbnail
+                            val contentType = "image/jpeg" // TODO: Determine actual content type
 
                             if (!mediaExists) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Media not found"))
                                 return@get
                             }
 
-                            // TODO: Implement actual thumbnail generation and multipart response
-                            // According to spec, should return multipart/mixed with:
-                            // - First part: JSON metadata (currently empty object {})
-                            // - Second part: The thumbnail content or redirect URL
+                            // Return multipart response as per spec
+                            val boundary = "boundary_${System.currentTimeMillis()}"
 
-                            // For now, return a placeholder response
-                            call.respond(HttpStatusCode.NotImplemented, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Thumbnail generation not yet implemented"))
+                            // Create metadata part
+                            val metadata = mapOf(
+                                "content_uri" to "mxc://localhost/$mediaId",
+                                "content_type" to contentType,
+                                "content_length" to thumbnailData.size,
+                                "width" to width,
+                                "height" to height,
+                                "method" to method,
+                                "animated" to animated
+                            )
+
+                            val metadataJson = Json.encodeToString(JsonObject.serializer(), JsonObject(metadata.mapValues { JsonPrimitive(it.value.toString()) }))
+
+                            // Create the multipart response
+                            val multipartContent = """
+--$boundary
+Content-Type: application/json
+
+$metadataJson
+--$boundary
+Content-Type: $contentType
+
+${String(thumbnailData)}
+--$boundary--
+                            """.trimIndent()
+
+                            call.respondText(
+                                contentType = ContentType.MultiPart.Mixed.withParameter("boundary", boundary),
+                                text = multipartContent
+                            )
 
                         } catch (e: Exception) {
                             println("Media thumbnail error: ${e.message}")
@@ -1698,28 +1877,56 @@ fun processPDU(pdu: JsonElement): Map<String, String>? {
         // 1. Check validity: has room_id
         if (event["room_id"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing room_id")
 
-        // 2. Check hash
+        val roomId = event["room_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing room_id")
+
+        // Validate room_id format
+        if (!roomId.startsWith("!") || !roomId.contains(":")) {
+            return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid room_id format")
+        }
+
+        // 2. Check validity: has sender
+        if (event["sender"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing sender")
+
+        val sender = event["sender"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing sender")
+
+        // Validate sender format
+        if (!sender.startsWith("@") || !sender.contains(":")) {
+            return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid sender format")
+        }
+
+        // 3. Check validity: has event_id
+        if (event["event_id"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing event_id")
+
+        val eventId = event["event_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing event_id")
+
+        // Validate event_id format
+        if (!eventId.startsWith("$")) {
+            return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid event_id format")
+        }
+
+        // 4. Check validity: has type
+        if (event["type"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing type")
+
+        // 5. Check hash
         if (!MatrixAuth.verifyEventHash(event)) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid hash")
 
-        // 3. Check signatures
+        // 6. Check signatures
         val sigValid = runBlocking { MatrixAuth.verifyEventSignatures(event) }
         if (!sigValid) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid signature")
 
-        val roomId = event["room_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing room_id")
-
-        // 4. Get auth state from auth_events
+        // 7. Get auth state from auth_events
         val authState = getAuthState(event, roomId)
 
-        // 5. Check auth based on auth_events
+        // 8. Check auth based on auth_events
         if (!stateResolver.checkAuthRules(event, authState)) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Auth check failed")
 
-        // 6. Get current state
+        // 9. Get current state
         val currentState = stateResolver.getResolvedState(roomId)
 
-        // 7. Check auth based on current state
+        // 10. Check auth based on current state
         val softFail = !stateResolver.checkAuthRules(event, currentState)
 
-        // 8. If state event, update current state
+        // 11. If state event, update current state
         if (event["state_key"] != null) {
             val newState = currentState.toMutableMap()
             val type = event["type"]?.jsonPrimitive?.content ?: ""
@@ -1729,13 +1936,13 @@ fun processPDU(pdu: JsonElement): Map<String, String>? {
             stateResolver.updateResolvedState(roomId, newState)
         }
 
-        // 9. Store the event
+        // 12. Store the event
         transaction {
             Events.insert {
-                it[eventId] = event["event_id"]?.jsonPrimitive?.content ?: ""
+                it[eventId] = eventId
                 it[Events.roomId] = roomId
                 it[type] = event["type"]?.jsonPrimitive?.content ?: ""
-                it[sender] = event["sender"]?.jsonPrimitive?.content ?: ""
+                it[sender] = sender
                 it[content] = event["content"]?.toString() ?: ""
                 it[authEvents] = event["auth_events"]?.toString() ?: ""
                 it[prevEvents] = event["prev_events"]?.toString() ?: ""
@@ -1757,9 +1964,9 @@ fun processPDU(pdu: JsonElement): Map<String, String>? {
 
         if (softFail) {
             // Mark as soft failed, don't relay
-            println("PDU soft failed: ${event["event_id"]}")
+            println("PDU soft failed: $eventId")
         } else {
-            println("PDU stored: ${event["event_id"]}")
+            println("PDU stored: $eventId")
         }
         null // Success
     } catch (e: Exception) {
@@ -2192,14 +2399,14 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 val messages = content["messages"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing messages")
 
                 // Process messages for each user
-                for ((targetUserId, userMessages) in messages) {
+                for (targetUserId in messages.keys) {
                     // Validate target user_id format
                     if (!targetUserId.startsWith("@") || !targetUserId.contains(":")) {
                         println("Invalid target user_id format: $targetUserId")
                         continue
                     }
 
-                    val userMessageMap = userMessages.jsonObject
+                    val userMessageMap = messages[targetUserId]?.jsonObject ?: continue
 
                     // Handle wildcard device (*) - send to all devices of the user
                     if (userMessageMap.containsKey("*")) {
@@ -2476,7 +2683,7 @@ fun getRoomInfo(roomId: String): Map<String, Any?>? {
         val guestCanJoin = joinRules == "public"
 
         // Get room type (for spaces)
-        val createEvent = currentState["m.room.create:"]
+        val createEvent = currentState["m.room.create."]
         val roomType = createEvent?.get("type")?.jsonPrimitive?.content
 
         mapOf<String, Any?>(
@@ -2526,6 +2733,69 @@ fun findRoomByAlias(roomAlias: String): String? {
         null // Alias not found
     } catch (e: Exception) {
         println("Error finding room by alias $roomAlias: ${e.message}")
+        null
+    }
+}
+
+fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
+    return try {
+        // In a real implementation, this would query a user profile database
+        // For now, return basic profile information
+        val profile = mutableMapOf<String, Any?>()
+
+        // Get user display name from current state of rooms the user is in
+        val displayName = transaction {
+            val rooms = Rooms.selectAll().map { it[Rooms.roomId] }
+            for (roomId in rooms) {
+                val currentState = stateResolver.getResolvedState(roomId)
+                val memberEvent = currentState["m.room.member:$userId"]
+                if (memberEvent != null) {
+                    val displayNameValue = memberEvent["displayname"]?.jsonPrimitive?.content
+                    if (displayNameValue != null) {
+                        return@transaction displayNameValue
+                    }
+                }
+            }
+            null
+        }
+
+        // Get user avatar from current state
+        val avatarUrl = transaction {
+            val rooms = Rooms.selectAll().map { it[Rooms.roomId] }
+            for (roomId in rooms) {
+                val currentState = stateResolver.getResolvedState(roomId)
+                val memberEvent = currentState["m.room.member:$userId"]
+                if (memberEvent != null) {
+                    val avatarValue = memberEvent["avatar_url"]?.jsonPrimitive?.content
+                    if (avatarValue != null) {
+                        return@transaction avatarValue
+                    }
+                }
+            }
+            null
+        }
+
+        when (field) {
+            null -> {
+                // Return all fields
+                if (displayName != null) profile["displayname"] = displayName
+                if (avatarUrl != null) profile["avatar_url"] = avatarUrl
+            }
+            "displayname" -> {
+                if (displayName != null) profile["displayname"] = displayName
+            }
+            "avatar_url" -> {
+                if (avatarUrl != null) profile["avatar_url"] = avatarUrl
+            }
+            else -> {
+                // Unknown field
+                return null
+            }
+        }
+
+        if (profile.isEmpty()) null else profile
+    } catch (e: Exception) {
+        println("Error getting user profile for $userId: ${e.message}")
         null
     }
 }

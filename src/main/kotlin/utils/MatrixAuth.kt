@@ -15,6 +15,10 @@ import java.security.MessageDigest
 import java.security.Signature
 import java.util.*
 import kotlinx.coroutines.runBlocking
+import javax.net.ssl.*
+import java.security.cert.X509Certificate
+import java.security.KeyStore
+import java.io.FileInputStream
 
 object MatrixAuth {
 
@@ -101,7 +105,24 @@ object MatrixAuth {
 
     private suspend fun fetchPublicKey(serverName: String, keyId: String): EdDSAPublicKey? {
         return try {
-            val response = client.get("https://$serverName/_matrix/key/v2/server")
+            // Use server discovery to resolve the server name
+            val connectionDetails = ServerDiscovery.resolveServerName(serverName)
+            if (connectionDetails == null) {
+                return null
+            }
+
+            val url = if (connectionDetails.tls) {
+                "https://${connectionDetails.host}:${connectionDetails.port}/_matrix/key/v2/server"
+            } else {
+                "http://${connectionDetails.host}:${connectionDetails.port}/_matrix/key/v2/server"
+            }
+
+            val response = client.get(url) {
+                header("Host", connectionDetails.hostHeader)
+                // Note: In a production implementation, you would configure the HTTP client
+                // with proper SSL context and certificate validation
+            }
+
             val json = response.body<String>()
             val data = Json.parseToJsonElement(json).jsonObject
             val verifyKeys = data["verify_keys"]?.jsonObject ?: return null
@@ -111,7 +132,40 @@ object MatrixAuth {
             val spec = EdDSAPublicKeySpec(keyBytes, null)
             EdDSAPublicKey(spec)
         } catch (e: Exception) {
+            println("Error fetching public key from $serverName: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Validate TLS certificate for a server
+     * This is a basic implementation - in production, you would use proper certificate validation
+     */
+    fun validateServerCertificate(serverName: String, certificate: X509Certificate?): Boolean {
+        if (certificate == null) return false
+
+        return try {
+            // Basic validation: check if certificate is valid for the server name
+            val certCN = certificate.subjectX500Principal.name
+            val certSANs = certificate.subjectAlternativeNames
+
+            // Check common name
+            if (certCN.contains("CN=$serverName")) {
+                return true
+            }
+
+            // Check subject alternative names
+            certSANs?.forEach { san ->
+                val (type, value) = san as List<*>
+                if (type == 2 && value == serverName) { // 2 = DNS name
+                    return true
+                }
+            }
+
+            false
+        } catch (e: Exception) {
+            println("Certificate validation error for $serverName: ${e.message}")
+            false
         }
     }
 
