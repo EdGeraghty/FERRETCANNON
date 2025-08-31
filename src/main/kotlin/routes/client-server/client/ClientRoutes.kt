@@ -825,7 +825,6 @@ fun Application.clientRoutes() {
                     // Login endpoint
                     post("/login") {
                         try {
-
                             // Validate content type
                             val contentType = call.request.contentType()
                             if (contentType != ContentType.Application.Json) {
@@ -839,14 +838,11 @@ fun Application.clientRoutes() {
                             val request = call.receiveText()
                             val json = Json.parseToJsonElement(request).jsonObject
 
-                            // Validate required fields
-                            var userId = json["user"]?.jsonPrimitive?.content
+                            // Extract login parameters
+                            val userId = json["user"]?.jsonPrimitive?.content
                             val password = json["password"]?.jsonPrimitive?.content
-                            val token = json["token"]?.jsonPrimitive?.content
-                            val appServiceToken = json["access_token"]?.jsonPrimitive?.content
                             val type = json["type"]?.jsonPrimitive?.content ?: "m.login.password"
                             val deviceId = json["device_id"]?.jsonPrimitive?.content
-                            val initialDeviceDisplayName = json["initial_device_display_name"]?.jsonPrimitive?.content
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -856,8 +852,8 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
-                            // Validate authentication based on type
-                            when (type) {
+                            // Authenticate based on type
+                            val authenticatedUserId = when (type) {
                                 "m.login.password" -> {
                                     if (password == null) {
                                         call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -866,63 +862,7 @@ fun Application.clientRoutes() {
                                         ))
                                         return@post
                                     }
-
-                                    // Authenticate user with database
-                                    val authenticatedUser = AuthUtils.authenticateUser(userId, password)
-                                    if (authenticatedUser == null) {
-                                        call.respond(HttpStatusCode.Forbidden, mapOf(
-                                            "errcode" to "M_FORBIDDEN",
-                                            "error" to "Invalid username or password"
-                                        ))
-                                        return@post
-                                    }
-                                }
-                                "m.login.token" -> {
-                                    if (token == null) {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_MISSING_PARAM",
-                                            "error" to "Missing 'token' parameter"
-                                        ))
-                                        return@post
-                                    }
-                                    // In a real implementation, validate the login token
-                                    // For now, accept any token for demo purposes
-                                }
-                                "m.login.oauth2" -> {
-                                    val oauth2Token = json["token"]?.jsonPrimitive?.content
-                                    if (oauth2Token == null) {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_MISSING_PARAM",
-                                            "error" to "Missing OAuth 2.0 token"
-                                        ))
-                                        return@post
-                                    }
-
-                                    // Validate OAuth 2.0 token with OAuth service
-                                    val tokenValidation = OAuthService.validateAccessToken(oauth2Token)
-                                    if (tokenValidation == null) {
-                                        call.respond(HttpStatusCode.Forbidden, mapOf(
-                                            "errcode" to "M_FORBIDDEN",
-                                            "error" to "Invalid OAuth 2.0 token"
-                                        ))
-                                        return@post
-                                    }
-
-                                    val (oauthUserId, clientId, scope) = tokenValidation
-
-                                    // Use OAuth user ID as Matrix user ID
-                                    userId = oauthUserId
-                                }
-                                "m.login.application_service" -> {
-                                    if (appServiceToken == null) {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_MISSING_PARAM",
-                                            "error" to "Missing 'access_token' parameter"
-                                        ))
-                                        return@post
-                                    }
-                                    // In a real implementation, validate the application service token
-                                    // For now, accept any token for demo purposes
+                                    AuthUtils.authenticateUser(userId, password)
                                 }
                                 else -> {
                                     call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -933,20 +873,38 @@ fun Application.clientRoutes() {
                                 }
                             }
 
-                            // Generate access token and store session
-                            val finalDeviceId = deviceId ?: "device_${System.currentTimeMillis()}"
-                            val accessToken = AuthUtils.createAccessToken(userId, finalDeviceId)
+                            if (authenticatedUserId == null) {
+                                call.respond(HttpStatusCode.Forbidden, mapOf(
+                                    "errcode" to "M_FORBIDDEN",
+                                    "error" to "Invalid username or password"
+                                ))
+                                return@post
+                            }
 
-                            // Store user session in database
-                            // Access token is already stored by AuthUtils.createAccessToken()
+                            // Generate device ID if not provided
+                            val finalDeviceId = deviceId ?: AuthUtils.generateDeviceId()
 
-                            val responseMap = mapOf(
-                                "user_id" to userId,
+                            // Extract device information from request headers
+                            val userAgent = call.request.headers["User-Agent"]
+                            val ipAddress = call.request.headers["X-Forwarded-For"]
+                                ?: call.request.headers["X-Real-IP"]
+                                ?: call.request.local.remoteHost
+
+                            // Create access token with device information
+                            val accessToken = AuthUtils.createAccessToken(
+                                authenticatedUserId,
+                                finalDeviceId,
+                                userAgent,
+                                ipAddress
+                            )
+
+                            // Return login response
+                            call.respond(mapOf(
+                                "user_id" to authenticatedUserId,
                                 "access_token" to accessToken,
                                 "home_server" to "localhost:8080",
                                 "device_id" to finalDeviceId
-                            )
-                            call.respond(responseMap)
+                            ))
                         } catch (e: Exception) {
                             when (e) {
                                 is kotlinx.serialization.SerializationException -> {
@@ -1145,11 +1103,18 @@ fun Application.clientRoutes() {
 
                             // Generate access token (unless inhibited)
                             val accessToken = if (!inhibitLogin) {
-                                val finalDeviceId = deviceId ?: "device_${System.currentTimeMillis()}"
+                                val finalDeviceId = deviceId ?: AuthUtils.generateDeviceId()
+
+                                // Extract device information from request headers
+                                val userAgent = call.request.headers["User-Agent"]
+                                val ipAddress = call.request.headers["X-Forwarded-For"]
+                                    ?: call.request.headers["X-Real-IP"]
+                                    ?: call.request.local.remoteHost
+
                                 // Create user first
                                 val userId = AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest)
-                                // Create access token for the user
-                                AuthUtils.createAccessToken(userId, finalDeviceId)
+                                // Create access token for the user with device information
+                                AuthUtils.createAccessToken(userId, finalDeviceId, userAgent, ipAddress)
                             } else {
                                 // For inhibited login, still create the user but don't create access token
                                 AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest)
@@ -1459,20 +1424,13 @@ fun Application.clientRoutes() {
                     get("/user/devices") {
                         try {
                             val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
-
-                            if (userId == null) {
-                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                ?: return@get call.respond(HttpStatusCode.Unauthorized, mapOf(
                                     "errcode" to "M_MISSING_TOKEN",
                                     "error" to "Missing access token"
                                 ))
-                                return@get
-                            }
 
-                            // Get user's devices from database
                             val devices = AuthUtils.getUserDevices(userId)
-
                             call.respond(mapOf("devices" to devices))
-
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
@@ -1503,20 +1461,13 @@ fun Application.clientRoutes() {
                                 return@get
                             }
 
-                            // Get user's devices and find the specific device
-                            val devices = AuthUtils.getUserDevices(userId)
-                            val device = devices.find { it["device_id"] == deviceId }
-
-                            if (device == null) {
-                                call.respond(HttpStatusCode.NotFound, mapOf(
+                            val device = AuthUtils.getUserDevice(userId, deviceId)
+                                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf(
                                     "errcode" to "M_NOT_FOUND",
                                     "error" to "Device not found"
                                 ))
-                                return@get
-                            }
 
                             call.respond(device)
-
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
@@ -1547,15 +1498,7 @@ fun Application.clientRoutes() {
                                 return@put
                             }
 
-                            val request = call.receiveText()
-                            val json = Json.parseToJsonElement(request).jsonObject
-                            val displayName = json["display_name"]?.jsonPrimitive?.content
-
-                            // Verify device belongs to user
-                            val devices = AuthUtils.getUserDevices(userId)
-                            val deviceExists = devices.any { it["device_id"] == deviceId }
-
-                            if (!deviceExists) {
+                            if (!AuthUtils.deviceBelongsToUser(userId, deviceId)) {
                                 call.respond(HttpStatusCode.NotFound, mapOf(
                                     "errcode" to "M_NOT_FOUND",
                                     "error" to "Device not found"
@@ -1563,11 +1506,12 @@ fun Application.clientRoutes() {
                                 return@put
                             }
 
-                            // Update device display name in database
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+                            val displayName = json["display_name"]?.jsonPrimitive?.content
+
                             AuthUtils.updateDeviceDisplayName(userId, deviceId, displayName)
-
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
-
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
@@ -1598,6 +1542,14 @@ fun Application.clientRoutes() {
                                 return@delete
                             }
 
+                            if (!AuthUtils.deviceBelongsToUser(userId, deviceId)) {
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "Device not found"
+                                ))
+                                return@delete
+                            }
+
                             val request = call.receiveText()
                             val json = Json.parseToJsonElement(request).jsonObject
                             val auth = json["auth"]?.jsonObject
@@ -1617,19 +1569,6 @@ fun Application.clientRoutes() {
                                 return@delete
                             }
 
-                            // Verify device belongs to user
-                            val devices = AuthUtils.getUserDevices(userId)
-                            val deviceExists = devices.any { it["device_id"] == deviceId }
-
-                            if (!deviceExists) {
-                                call.respond(HttpStatusCode.NotFound, mapOf(
-                                    "errcode" to "M_NOT_FOUND",
-                                    "error" to "Device not found"
-                                ))
-                                return@delete
-                            }
-
-                            // Validate authentication (simplified - in production, validate password)
                             val authType = auth["type"]?.jsonPrimitive?.content
                             if (authType != "m.login.password") {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1639,11 +1578,8 @@ fun Application.clientRoutes() {
                                 return@delete
                             }
 
-                            // Delete device and all its access tokens from database
                             AuthUtils.deleteDevice(userId, deviceId)
-
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
-
                         } catch (e: Exception) {
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",

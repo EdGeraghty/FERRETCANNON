@@ -42,13 +42,84 @@ object AuthUtils {
     }
 
     /**
-     * Generate a device ID
+     * Generate a device ID with proper format
      */
     fun generateDeviceId(): String {
         val bytes = ByteArray(16)
         random.nextBytes(bytes)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
+
+    /**
+     * Extract device information from user agent string
+     */
+    fun parseUserAgent(userAgent: String?): DeviceInfo {
+        if (userAgent.isNullOrBlank()) {
+            return DeviceInfo("Unknown", "Unknown", "Unknown", "Unknown")
+        }
+
+        val ua = userAgent.lowercase()
+
+        // Detect browser
+        val browser = when {
+            ua.contains("chrome") && !ua.contains("edg") -> "Chrome"
+            ua.contains("firefox") -> "Firefox"
+            ua.contains("safari") && !ua.contains("chrome") -> "Safari"
+            ua.contains("edg") -> "Edge"
+            ua.contains("opera") -> "Opera"
+            ua.contains("brave") -> "Brave"
+            else -> "Unknown"
+        }
+
+        // Extract browser version
+        val browserVersion = when (browser) {
+            "Chrome" -> extractVersion(ua, "chrome/([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+\\.[0-9]+)")
+            "Firefox" -> extractVersion(ua, "firefox/([0-9]+\\.[0-9]+)")
+            "Safari" -> extractVersion(ua, "version/([0-9]+\\.[0-9]+)")
+            "Edge" -> extractVersion(ua, "edg/([0-9]+\\.[0-9]+)")
+            "Opera" -> extractVersion(ua, "opr/([0-9]+\\.[0-9]+)")
+            else -> "Unknown"
+        }
+
+        // Detect OS
+        val os = when {
+            ua.contains("windows") -> "Windows"
+            ua.contains("mac os x") || ua.contains("macos") -> "macOS"
+            ua.contains("linux") -> "Linux"
+            ua.contains("android") -> "Android"
+            ua.contains("ios") || ua.contains("iphone") || ua.contains("ipad") -> "iOS"
+            else -> "Unknown"
+        }
+
+        // Detect device type
+        val deviceType = when {
+            ua.contains("mobile") || ua.contains("android") || ua.contains("iphone") -> "mobile"
+            ua.contains("tablet") || ua.contains("ipad") -> "tablet"
+            ua.contains("windows") || ua.contains("mac os x") || ua.contains("linux") -> "desktop"
+            else -> "unknown"
+        }
+
+        return DeviceInfo(browser, browserVersion, os, deviceType)
+    }
+
+    /**
+     * Extract version from user agent string using regex
+     */
+    private fun extractVersion(userAgent: String, pattern: String): String {
+        val regex = Regex(pattern)
+        val match = regex.find(userAgent)
+        return match?.groupValues?.get(1) ?: "Unknown"
+    }
+
+    /**
+     * Data class for device information
+     */
+    data class DeviceInfo(
+        val browser: String,
+        val browserVersion: String,
+        val os: String,
+        val deviceType: String
+    )
 
     /**
      * Validate and get user from access token
@@ -127,7 +198,7 @@ object AuthUtils {
     }
 
     /**
-     * Create access token for user
+     * Create access token for user with enhanced device information
      */
     fun createAccessToken(
         userId: String,
@@ -138,6 +209,10 @@ object AuthUtils {
         val token = generateAccessToken()
 
         transaction {
+            // Parse device information from user agent
+            val deviceInfo = parseUserAgent(userAgent)
+
+            // Store access token
             AccessTokens.insert {
                 it[AccessTokens.token] = token
                 it[AccessTokens.userId] = userId
@@ -146,23 +221,36 @@ object AuthUtils {
                 it[AccessTokens.ipAddress] = ipAddress
             }
 
-            // Ensure device exists
+            // Ensure device exists and update its info
             val deviceExists = Devices.select {
                 (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
             }.count() > 0
 
             if (!deviceExists) {
+                // Create new device with comprehensive information
                 Devices.insert {
                     it[Devices.userId] = userId
                     it[Devices.deviceId] = deviceId
                     it[Devices.userAgent] = userAgent
                     it[Devices.ipAddress] = ipAddress
+                    it[Devices.deviceType] = deviceInfo.deviceType
+                    it[Devices.os] = deviceInfo.os
+                    it[Devices.browser] = deviceInfo.browser
+                    it[Devices.browserVersion] = deviceInfo.browserVersion
+                    it[Devices.createdAt] = System.currentTimeMillis()
+                    it[Devices.lastLoginAt] = System.currentTimeMillis()
                 }
             } else {
+                // Update existing device with latest information
                 Devices.update({ (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }) {
                     it[Devices.lastSeen] = System.currentTimeMillis()
+                    it[Devices.lastLoginAt] = System.currentTimeMillis()
                     if (userAgent != null) it[Devices.userAgent] = userAgent
                     if (ipAddress != null) it[Devices.ipAddress] = ipAddress
+                    it[Devices.deviceType] = deviceInfo.deviceType
+                    it[Devices.os] = deviceInfo.os
+                    it[Devices.browser] = deviceInfo.browser
+                    it[Devices.browserVersion] = deviceInfo.browserVersion
                 }
             }
         }
@@ -212,7 +300,7 @@ object AuthUtils {
     }
 
     /**
-     * Get user's devices
+     * Get user's devices with enhanced information
      */
     fun getUserDevices(userId: String): List<Map<String, Any?>> {
         return transaction {
@@ -222,9 +310,49 @@ object AuthUtils {
                         "device_id" to row[Devices.deviceId],
                         "display_name" to row[Devices.displayName],
                         "last_seen_ts" to row[Devices.lastSeen],
-                        "last_seen_ip" to row[Devices.ipAddress]
+                        "last_seen_ip" to row[Devices.ipAddress],
+                        "device_type" to row[Devices.deviceType],
+                        "os" to row[Devices.os],
+                        "browser" to row[Devices.browser],
+                        "browser_version" to row[Devices.browserVersion],
+                        "created_at" to row[Devices.createdAt],
+                        "last_login_at" to row[Devices.lastLoginAt]
                     )
                 }
+        }
+    }
+
+    /**
+     * Get specific device for user with enhanced information
+     */
+    fun getUserDevice(userId: String, deviceId: String): Map<String, Any?>? {
+        return transaction {
+            Devices.select { (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }
+                .singleOrNull()
+                ?.let { row ->
+                    mapOf(
+                        "device_id" to row[Devices.deviceId],
+                        "display_name" to row[Devices.displayName],
+                        "last_seen_ts" to row[Devices.lastSeen],
+                        "last_seen_ip" to row[Devices.ipAddress],
+                        "device_type" to row[Devices.deviceType],
+                        "os" to row[Devices.os],
+                        "browser" to row[Devices.browser],
+                        "browser_version" to row[Devices.browserVersion],
+                        "created_at" to row[Devices.createdAt],
+                        "last_login_at" to row[Devices.lastLoginAt]
+                    )
+                }
+        }
+    }
+
+    /**
+     * Check if device belongs to user
+     */
+    fun deviceBelongsToUser(userId: String, deviceId: String): Boolean {
+        return transaction {
+            Devices.select { (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }
+                .count() > 0
         }
     }
 

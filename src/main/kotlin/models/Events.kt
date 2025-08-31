@@ -82,6 +82,12 @@ object Devices : Table("devices") {
     val lastSeen = long("last_seen").default(System.currentTimeMillis())
     val ipAddress = varchar("ip_address", 45).nullable()
     val userAgent = varchar("user_agent", 500).nullable()
+    val deviceType = varchar("device_type", 50).nullable() // mobile, desktop, tablet, etc.
+    val os = varchar("os", 100).nullable() // Windows, macOS, Linux, iOS, Android, etc.
+    val browser = varchar("browser", 100).nullable() // Chrome, Firefox, Safari, etc.
+    val browserVersion = varchar("browser_version", 50).nullable()
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val lastLoginAt = long("last_login_at").default(System.currentTimeMillis())
 
     override val primaryKey = PrimaryKey(userId, deviceId)
 }
