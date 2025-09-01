@@ -10,6 +10,7 @@ import org.mindrot.jbcrypt.BCrypt
 import java.security.SecureRandom
 import java.util.*
 import utils.OAuthService
+import kotlin.concurrent.write
 
 object AuthUtils {
     private val random = SecureRandom()
@@ -126,29 +127,36 @@ object AuthUtils {
      */
     fun validateAccessToken(token: String): Pair<String, String>? { // Returns Pair<userId, deviceId> or null
         return transaction {
-            AccessTokens.select { AccessTokens.token eq token }
-                .singleOrNull()
-                ?.let { row ->
-                    val userId = row[AccessTokens.userId]
-                    val deviceId = row[AccessTokens.deviceId]
+            val accessTokenRow = AccessTokens.select { AccessTokens.token eq token }.singleOrNull()
+                ?: return@transaction null
 
-                    // Update last used timestamp
-                    AccessTokens.update({ AccessTokens.token eq token }) {
-                        it[AccessTokens.lastUsed] = System.currentTimeMillis()
-                    }
+            // Check if token is expired
+            val expiresAt = accessTokenRow[AccessTokens.expiresAt]
+            if (expiresAt != null && System.currentTimeMillis() > expiresAt) {
+                // Remove expired token
+                AccessTokens.deleteWhere { AccessTokens.token eq token }
+                return@transaction null
+            }
 
-                    // Update user's last seen
-                    Users.update({ Users.userId eq userId }) {
-                        it[Users.lastSeen] = System.currentTimeMillis()
-                    }
+            // Update last used timestamp
+            AccessTokens.update({ AccessTokens.token eq token }) {
+                it[lastUsed] = System.currentTimeMillis()
+            }
 
-                    // Update device's last seen
-                    Devices.update({ (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }) {
-                        it[Devices.lastSeen] = System.currentTimeMillis()
-                    }
+            // Update user's last seen
+            Users.update({ Users.userId eq accessTokenRow[AccessTokens.userId] }) {
+                it[lastSeen] = System.currentTimeMillis()
+            }
 
-                    Pair(userId, deviceId)
-                }
+            // Update device's last seen
+            Devices.update({
+                (Devices.userId eq accessTokenRow[AccessTokens.userId]) and
+                (Devices.deviceId eq accessTokenRow[AccessTokens.deviceId])
+            }) {
+                it[lastSeen] = System.currentTimeMillis()
+            }
+
+            Pair(accessTokenRow[AccessTokens.userId], accessTokenRow[AccessTokens.deviceId])
         }
     }
 
@@ -164,17 +172,26 @@ object AuthUtils {
         val userId = "@$username:localhost"
         val passwordHash = if (isGuest) "" else hashPassword(password)
 
-        transaction {
+        return transaction {
+            // Check if username already exists
+            val existingUser = Users.select { Users.username eq username }.singleOrNull()
+            if (existingUser != null) {
+                throw IllegalArgumentException("Username already exists")
+            }
+
+            // Insert new user
             Users.insert {
                 it[Users.userId] = userId
                 it[Users.username] = username
                 it[Users.passwordHash] = passwordHash
                 it[Users.displayName] = displayName ?: username
                 it[Users.isGuest] = isGuest
+                it[Users.createdAt] = System.currentTimeMillis()
+                it[Users.lastSeen] = System.currentTimeMillis()
             }
-        }
 
-        return userId
+            userId
+        }
     }
 
     /**
@@ -182,18 +199,22 @@ object AuthUtils {
      */
     fun authenticateUser(username: String, password: String): String? {
         return transaction {
-            Users.select { (Users.username eq username) and (Users.deactivated eq false) }
-                .singleOrNull()
-                ?.let { row ->
-                    val userId = row[Users.userId]
-                    val passwordHash = row[Users.passwordHash]
+            val userRow = Users.select { Users.username eq username }.singleOrNull()
+                ?: return@transaction null
 
-                    if (verifyPassword(password, passwordHash)) {
-                        userId
-                    } else {
-                        null
-                    }
+            if (userRow[Users.deactivated]) return@transaction null
+
+            if (userRow[Users.isGuest]) return@transaction userRow[Users.userId]
+
+            if (verifyPassword(password, userRow[Users.passwordHash])) {
+                // Update last seen
+                Users.update({ Users.userId eq userRow[Users.userId] }) {
+                    it[lastSeen] = System.currentTimeMillis()
                 }
+                return@transaction userRow[Users.userId]
+            }
+
+            null
         }
     }
 
@@ -208,31 +229,34 @@ object AuthUtils {
     ): String {
         val token = generateAccessToken()
 
-        transaction {
-            // Parse device information from user agent
-            val deviceInfo = parseUserAgent(userAgent)
+        // Parse device information from user agent
+        val deviceInfo = parseUserAgent(userAgent)
 
-            // Store access token
+        return transaction {
+            // Insert access token
             AccessTokens.insert {
                 it[AccessTokens.token] = token
                 it[AccessTokens.userId] = userId
                 it[AccessTokens.deviceId] = deviceId
+                it[AccessTokens.createdAt] = System.currentTimeMillis()
+                it[AccessTokens.lastUsed] = System.currentTimeMillis()
                 it[AccessTokens.userAgent] = userAgent
                 it[AccessTokens.ipAddress] = ipAddress
             }
 
-            // Ensure device exists and update its info
-            val deviceExists = Devices.select {
+            // Check if device exists
+            val existingDevice = Devices.select {
                 (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
-            }.count() > 0
+            }.singleOrNull()
 
-            if (!deviceExists) {
+            if (existingDevice == null) {
                 // Create new device with comprehensive information
                 Devices.insert {
                     it[Devices.userId] = userId
                     it[Devices.deviceId] = deviceId
-                    it[Devices.userAgent] = userAgent
+                    it[Devices.lastSeen] = System.currentTimeMillis()
                     it[Devices.ipAddress] = ipAddress
+                    it[Devices.userAgent] = userAgent
                     it[Devices.deviceType] = deviceInfo.deviceType
                     it[Devices.os] = deviceInfo.os
                     it[Devices.browser] = deviceInfo.browser
@@ -242,9 +266,11 @@ object AuthUtils {
                 }
             } else {
                 // Update existing device with latest information
-                Devices.update({ (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }) {
-                    it[Devices.lastSeen] = System.currentTimeMillis()
-                    it[Devices.lastLoginAt] = System.currentTimeMillis()
+                Devices.update({
+                    (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
+                }) {
+                    it[lastSeen] = System.currentTimeMillis()
+                    it[lastLoginAt] = System.currentTimeMillis()
                     if (userAgent != null) it[Devices.userAgent] = userAgent
                     if (ipAddress != null) it[Devices.ipAddress] = ipAddress
                     it[Devices.deviceType] = deviceInfo.deviceType
@@ -253,9 +279,9 @@ object AuthUtils {
                     it[Devices.browserVersion] = deviceInfo.browserVersion
                 }
             }
-        }
 
-        return token
+            token
+        }
     }
 
     /**
@@ -263,18 +289,17 @@ object AuthUtils {
      */
     fun getUserProfile(userId: String): Map<String, Any?>? {
         return transaction {
-            Users.select { Users.userId eq userId }
-                .singleOrNull()
-                ?.let { row ->
-                    mapOf(
-                        "user_id" to row[Users.userId],
-                        "username" to row[Users.username],
-                        "displayname" to row[Users.displayName],
-                        "avatar_url" to row[Users.avatarUrl],
-                        "is_guest" to row[Users.isGuest],
-                        "deactivated" to row[Users.deactivated]
-                    )
-                }
+            val userRow = Users.select { Users.userId eq userId }.singleOrNull()
+                ?: return@transaction null
+
+            mapOf(
+                "user_id" to userRow[Users.userId],
+                "username" to userRow[Users.username],
+                "displayname" to userRow[Users.displayName],
+                "avatar_url" to userRow[Users.avatarUrl],
+                "is_guest" to userRow[Users.isGuest],
+                "deactivated" to userRow[Users.deactivated]
+            )
         }
     }
 
@@ -305,18 +330,18 @@ object AuthUtils {
     fun getUserDevices(userId: String): List<Map<String, Any?>> {
         return transaction {
             Devices.select { Devices.userId eq userId }
-                .map { row ->
+                .map { deviceRow ->
                     mapOf(
-                        "device_id" to row[Devices.deviceId],
-                        "display_name" to row[Devices.displayName],
-                        "last_seen_ts" to row[Devices.lastSeen],
-                        "last_seen_ip" to row[Devices.ipAddress],
-                        "device_type" to row[Devices.deviceType],
-                        "os" to row[Devices.os],
-                        "browser" to row[Devices.browser],
-                        "browser_version" to row[Devices.browserVersion],
-                        "created_at" to row[Devices.createdAt],
-                        "last_login_at" to row[Devices.lastLoginAt]
+                        "device_id" to deviceRow[Devices.deviceId],
+                        "display_name" to deviceRow[Devices.displayName],
+                        "last_seen_ts" to deviceRow[Devices.lastSeen],
+                        "last_seen_ip" to deviceRow[Devices.ipAddress],
+                        "device_type" to deviceRow[Devices.deviceType],
+                        "os" to deviceRow[Devices.os],
+                        "browser" to deviceRow[Devices.browser],
+                        "browser_version" to deviceRow[Devices.browserVersion],
+                        "created_at" to deviceRow[Devices.createdAt],
+                        "last_login_at" to deviceRow[Devices.lastLoginAt]
                     )
                 }
         }
@@ -327,22 +352,22 @@ object AuthUtils {
      */
     fun getUserDevice(userId: String, deviceId: String): Map<String, Any?>? {
         return transaction {
-            Devices.select { (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }
-                .singleOrNull()
-                ?.let { row ->
-                    mapOf(
-                        "device_id" to row[Devices.deviceId],
-                        "display_name" to row[Devices.displayName],
-                        "last_seen_ts" to row[Devices.lastSeen],
-                        "last_seen_ip" to row[Devices.ipAddress],
-                        "device_type" to row[Devices.deviceType],
-                        "os" to row[Devices.os],
-                        "browser" to row[Devices.browser],
-                        "browser_version" to row[Devices.browserVersion],
-                        "created_at" to row[Devices.createdAt],
-                        "last_login_at" to row[Devices.lastLoginAt]
-                    )
-                }
+            val deviceRow = Devices.select {
+                (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
+            }.singleOrNull() ?: return@transaction null
+
+            mapOf(
+                "device_id" to deviceRow[Devices.deviceId],
+                "display_name" to deviceRow[Devices.displayName],
+                "last_seen_ts" to deviceRow[Devices.lastSeen],
+                "last_seen_ip" to deviceRow[Devices.ipAddress],
+                "device_type" to deviceRow[Devices.deviceType],
+                "os" to deviceRow[Devices.os],
+                "browser" to deviceRow[Devices.browser],
+                "browser_version" to deviceRow[Devices.browserVersion],
+                "created_at" to deviceRow[Devices.createdAt],
+                "last_login_at" to deviceRow[Devices.lastLoginAt]
+            )
         }
     }
 
@@ -351,8 +376,9 @@ object AuthUtils {
      */
     fun deviceBelongsToUser(userId: String, deviceId: String): Boolean {
         return transaction {
-            Devices.select { (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }
-                .count() > 0
+            Devices.select {
+                (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
+            }.count() > 0
         }
     }
 
@@ -361,7 +387,9 @@ object AuthUtils {
      */
     fun updateDeviceDisplayName(userId: String, deviceId: String, displayName: String?) {
         transaction {
-            Devices.update({ (Devices.userId eq userId) and (Devices.deviceId eq deviceId) }) {
+            Devices.update({
+                (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
+            }) {
                 it[Devices.displayName] = displayName
             }
         }
@@ -381,12 +409,12 @@ object AuthUtils {
      */
     fun deleteDevice(userId: String, deviceId: String) {
         transaction {
-            // Delete all access tokens for this device
+            // Remove all access tokens for this device
             AccessTokens.deleteWhere {
                 (AccessTokens.userId eq userId) and (AccessTokens.deviceId eq deviceId)
             }
 
-            // Delete the device
+            // Remove the device
             Devices.deleteWhere {
                 (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
             }
@@ -486,5 +514,78 @@ object AuthUtils {
         }
 
         return Pair(true, null)
+    }
+
+    /**
+     * Clean up expired access tokens
+     */
+    fun cleanupExpiredTokens() {
+        val currentTime = System.currentTimeMillis()
+        transaction {
+            // Clean up expired access tokens
+            AccessTokens.deleteWhere {
+                expiresAt.isNotNull() and (expiresAt less currentTime)
+            }
+
+            // Clean up expired OAuth auth codes
+            models.OAuthAuthorizationCodes.deleteWhere {
+                models.OAuthAuthorizationCodes.expiresAt less currentTime
+            }
+
+            // Clean up expired OAuth access tokens
+            models.OAuthAccessTokens.deleteWhere {
+                models.OAuthAccessTokens.expiresAt less currentTime
+            }
+
+            // Clean up expired OAuth states
+            models.OAuthStates.deleteWhere {
+                models.OAuthStates.expiresAt less currentTime
+            }
+        }
+    }
+
+    /**
+     * Get all users (for admin purposes)
+     */
+    fun getAllUsers(): List<Map<String, Any?>> {
+        return transaction {
+            Users.selectAll().map { userRow ->
+                mapOf(
+                    "user_id" to userRow[Users.userId],
+                    "username" to userRow[Users.username],
+                    "display_name" to userRow[Users.displayName],
+                    "is_guest" to userRow[Users.isGuest],
+                    "deactivated" to userRow[Users.deactivated],
+                    "created_at" to userRow[Users.createdAt],
+                    "last_seen" to userRow[Users.lastSeen]
+                )
+            }
+        }
+    }
+
+    /**
+     * Deactivate user
+     */
+    fun deactivateUser(userId: String) {
+        transaction {
+            // Deactivate user
+            Users.update({ Users.userId eq userId }) {
+                it[Users.deactivated] = true
+            }
+
+            // Remove all access tokens for this user
+            AccessTokens.deleteWhere { AccessTokens.userId eq userId }
+        }
+    }
+
+    /**
+     * Reactivate user
+     */
+    fun reactivateUser(userId: String) {
+        transaction {
+            Users.update({ Users.userId eq userId }) {
+                it[Users.deactivated] = false
+            }
+        }
     }
 }

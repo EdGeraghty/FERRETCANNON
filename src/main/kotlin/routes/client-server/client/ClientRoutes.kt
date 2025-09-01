@@ -20,10 +20,8 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import kotlinx.serialization.json.*
-import utils.AuthUtils
-import utils.typingMap
-import utils.connectedClients
-import utils.ServerKeys
+import utils.users
+import utils.accessTokens
 import routes.server_server.federation.v1.broadcastEDU
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Duration.Companion.minutes
@@ -33,6 +31,10 @@ import utils.MediaStorage
 import models.Users
 import models.AccessTokens
 import org.mindrot.jbcrypt.BCrypt
+import utils.AuthUtils
+import utils.connectedClients
+import utils.typingMap
+import utils.ServerKeys
 import utils.OAuthService
 import utils.OAuthConfig
 import utils.OAuthProvider
@@ -1175,15 +1177,11 @@ fun Application.clientRoutes() {
                                 return@get
                             }
 
-                            // Get user profile from database
-                            val profile = transaction {
-                                // For now, return basic profile info
-                                // In a real implementation, this would query a users table
-                                mapOf(
-                                    "displayname" to userId.substringAfter("@").substringBefore(":"),
-                                    "avatar_url" to null
-                                )
-                            }
+                            // Get user profile from in-memory storage
+                            val profile = AuthUtils.getUserProfile(userId) ?: mapOf(
+                                "displayname" to userId.substringAfter("@").substringBefore(":"),
+                                "avatar_url" to null
+                            )
 
                             call.respond(profile)
 
@@ -1239,8 +1237,8 @@ fun Application.clientRoutes() {
                                 return@put
                             }
 
-                            // Store display name (in real implementation, update user profile in database)
-                            // For now, we'll just acknowledge the request
+                            // Store display name using in-memory storage
+                            AuthUtils.updateUserProfile(userId, displayname)
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
                         } catch (e: Exception) {
@@ -1295,7 +1293,8 @@ fun Application.clientRoutes() {
                                 return@put
                             }
 
-                            // Store avatar URL (in real implementation, update user profile in database)
+                            // Store avatar URL using in-memory storage
+                            AuthUtils.updateUserProfile(userId, avatarUrl = avatarUrl)
                             call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
 
                         } catch (e: Exception) {
@@ -1373,12 +1372,12 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
-                            // Verify current password
-                            val user = transaction {
+                            // Verify current password using database
+                            val userRow = transaction {
                                 Users.select { Users.userId eq userId }.singleOrNull()
                             }
 
-                            if (user == null) {
+                            if (userRow == null) {
                                 call.respond(HttpStatusCode.NotFound, mapOf(
                                     "errcode" to "M_NOT_FOUND",
                                     "error" to "User not found"
@@ -1386,8 +1385,7 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
-                            val currentPasswordHash = user[Users.passwordHash]
-                            if (!BCrypt.checkpw(authPassword, currentPasswordHash)) {
+                            if (!BCrypt.checkpw(authPassword, userRow[Users.passwordHash])) {
                                 call.respond(HttpStatusCode.Forbidden, mapOf(
                                     "errcode" to "M_FORBIDDEN",
                                     "error" to "Invalid password"
@@ -1396,10 +1394,9 @@ fun Application.clientRoutes() {
                             }
 
                             // Update password in database
-                            val newPasswordHash = AuthUtils.hashPassword(newPassword)
                             transaction {
                                 Users.update({ Users.userId eq userId }) {
-                                    it[Users.passwordHash] = newPasswordHash
+                                    it[passwordHash] = AuthUtils.hashPassword(newPassword)
                                 }
                             }
 

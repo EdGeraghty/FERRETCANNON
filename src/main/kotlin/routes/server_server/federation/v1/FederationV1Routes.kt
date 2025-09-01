@@ -23,6 +23,7 @@ import utils.deviceKeys
 import utils.oneTimeKeys
 import utils.crossSigningKeys
 import utils.deviceListStreamIds
+import utils.accessTokens
 import utils.StateResolver
 import utils.MatrixAuth
 
@@ -1566,7 +1567,10 @@ fun Application.federationV1Routes() {
                         }
 
                         // Find user by access token
-                        val userId = utils.users.entries.find { it.value == accessToken }?.key
+                        val userId = transaction {
+                            AccessTokens.select { AccessTokens.token eq accessToken }
+                                .singleOrNull()?.get(AccessTokens.userId)
+                        }
                         if (userId == null) {
                             call.respond(HttpStatusCode.Unauthorized, mapOf(
                                 "errcode" to "M_UNKNOWN_TOKEN",
