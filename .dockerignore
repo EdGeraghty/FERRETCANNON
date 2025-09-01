@@ -1,0 +1,43 @@
+# Build artifacts
+build/
+.gradle/
+.kotlin/
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Database files (will be created at runtime)
+*.db
+*.db-journal
+
+# Media files (will be created at runtime)
+media/
+
+# Logs
+*.log
+output.log
+server_output.log
+
+# Test files
+test_*.ps1
+test_*.sh
+verify_*.kts
+
+# Documentation
+.github/
+README.md
+
+# Scripts
+start-server.bat
+start-server.ps1
+test-server.ps1
