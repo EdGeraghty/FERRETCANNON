@@ -943,7 +943,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             }
 
                             // Username is available
-                            call.respondText("{}", ContentType.Application.Json, HttpStatusCode.OK)
+                            call.respondText("""{"available": true}""", ContentType.Application.Json, HttpStatusCode.OK)
 
                         } catch (e: Exception) {
                             val errorResponse = """
