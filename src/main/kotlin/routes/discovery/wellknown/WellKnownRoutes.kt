@@ -38,7 +38,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                    val baseUrl = ServerNameResolver.getServerBaseUrlHttp()
+                    val baseUrl = "https://${ServerNameResolver.getServerName()}"
                     call.respond(mapOf(
                         "m.homeserver" to mapOf(
                             "base_url" to baseUrl
@@ -64,7 +64,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     call.response.headers.append("Content-Type", "application/json")
                     call.response.headers.append("Access-Control-Allow-Origin", "*")
 
-                    val baseUrl = ServerNameResolver.getServerBaseUrlHttp()
+                    val baseUrl = "https://${ServerNameResolver.getServerName()}"
                     call.respond(mapOf(
                         "policies" to mapOf(
                             "privacy_policy" to mapOf(

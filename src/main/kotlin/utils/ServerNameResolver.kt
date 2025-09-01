@@ -42,9 +42,17 @@ object ServerNameResolver {
     }
 
     /**
-     * Get the full server address (hostname:port)
+     * Get the full server address (hostname:port) for federation
+     * For federation, we need to advertise the external HTTPS port (443), not internal port
      */
     fun getServerAddress(): String {
+        return "${getServerName()}:443"
+    }
+
+    /**
+     * Get the full server address with internal port (for internal use)
+     */
+    fun getServerAddressInternal(): String {
         return "${getServerName()}:${getServerPort()}"
     }
 
@@ -166,6 +174,7 @@ object ServerNameResolver {
             "serverName" to getServerName(),
             "serverPort" to getServerPort(),
             "serverAddress" to getServerAddress(),
+            "serverAddressInternal" to getServerAddressInternal(),
             "serverBaseUrl" to getServerBaseUrl(),
             "localHostname" to (try { InetAddress.getLocalHost().hostName } catch (e: Exception) { "unknown" }),
             "canonicalHostname" to (try { InetAddress.getLocalHost().canonicalHostName } catch (e: Exception) { "unknown" }),
