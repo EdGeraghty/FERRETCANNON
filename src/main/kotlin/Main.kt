@@ -123,6 +123,7 @@ fun main() {
                 allowMethod(HttpMethod.Post)
                 allowMethod(HttpMethod.Put)
                 allowMethod(HttpMethod.Delete)
+                allowMethod(HttpMethod.Options) // Add OPTIONS for preflight requests
                 allowHeader(HttpHeaders.Authorization)
                 allowHeader(HttpHeaders.ContentType)
                 allowHeader("X-Requested-With")
