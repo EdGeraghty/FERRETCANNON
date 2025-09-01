@@ -1001,5 +1001,5 @@ The FERRETCANNON Matrix server now provides **100% compliance** with the Matrix 
 
 The FERRETCANNON Matrix server now has a complete, external configuration system that enables easy customization of all server settings without code changes, making it fully production-ready and easily deployable.
 
-- [x] Implement Database Schema Migration
-	<!-- Complete database schema migration from in-memory storage to persistent database tables. Added Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, and ServerKeys tables to Events.kt. Updated MediaStorage to use database operations instead of ConcurrentHashMap. Created ReceiptsStorage, PresenceStorage, and ServerKeysStorage objects in SharedState.kt with proper Exposed SQL operations. Modified FederationV1Routes to use database-backed storage for receipts and presence. Added all new tables to Main.kt schema creation. Project compiles successfully with proper database persistence. -->
+- [x] Implement User Profile Federation
+	<!-- Complete User Profile Federation implementation according to Matrix Server-Server API v1.15 specification. Added /query/displayname and /query/avatar_url endpoints with proper authentication and error handling. Improved getUserProfile function to use Users table directly for efficient database queries, with fallback to room state events. All endpoints include proper Matrix authentication, validation, and Matrix-compliant error handling. Project compiles successfully. -->

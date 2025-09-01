@@ -11,8 +11,7 @@ import io.ktor.server.websocket.DefaultWebSocketServerSession
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
-import models.Events
-import models.Rooms
+import models.Users
 import kotlinx.coroutines.runBlocking
 import utils.connectedClients
 import utils.PresenceStorage
@@ -1528,6 +1527,62 @@ fun Application.federationV1Routes() {
                             call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
                         }
                     }
+                    get("/query/displayname") {
+                        val userId = call.request.queryParameters["user_id"]
+
+                        if (userId == null) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing user_id parameter"))
+                            return@get
+                        }
+
+                        // Authenticate the request
+                        val authHeader = call.request.headers["Authorization"]
+                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            return@get
+                        }
+
+                        try {
+                            // Get user display name specifically
+                            val profile = getUserProfile(userId, "displayname")
+                            if (profile != null && profile.containsKey("displayname")) {
+                                call.respond(mapOf("displayname" to profile["displayname"]))
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "User display name not found"))
+                            }
+                        } catch (e: Exception) {
+                            println("Query displayname error: ${e.message}")
+                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                        }
+                    }
+                    get("/query/avatar_url") {
+                        val userId = call.request.queryParameters["user_id"]
+
+                        if (userId == null) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing user_id parameter"))
+                            return@get
+                        }
+
+                        // Authenticate the request
+                        val authHeader = call.request.headers["Authorization"]
+                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            return@get
+                        }
+
+                        try {
+                            // Get user avatar URL specifically
+                            val profile = getUserProfile(userId, "avatar_url")
+                            if (profile != null && profile.containsKey("avatar_url")) {
+                                call.respond(mapOf("avatar_url" to profile["avatar_url"]))
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "User avatar URL not found"))
+                            }
+                        } catch (e: Exception) {
+                            println("Query avatar_url error: ${e.message}")
+                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                        }
+                    }
                     get("/query/{queryType}") {
                         val queryType = call.parameters["queryType"] ?: return@get call.respond(HttpStatusCode.BadRequest)
 
@@ -2790,8 +2845,57 @@ fun findRoomByAlias(roomAlias: String): String? {
 
 fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
     return try {
-        // In a real implementation, this would query a user profile database
-        // For now, return basic profile information
+        // First check if user exists in the Users table
+        val userRow = transaction {
+            Users.select { Users.userId eq userId }.singleOrNull()
+        }
+
+        if (userRow == null) {
+            // User doesn't exist in our database, try to find profile info from room state
+            return getUserProfileFromRoomState(userId, field)
+        }
+
+        // User exists, get profile from Users table
+        val profile = mutableMapOf<String, Any?>()
+
+        when (field) {
+            null -> {
+                // Return all fields
+                val displayName = userRow[Users.displayName]
+                val avatarUrl = userRow[Users.avatarUrl]
+
+                if (displayName != null) profile["displayname"] = displayName
+                if (avatarUrl != null) profile["avatar_url"] = avatarUrl
+            }
+            "displayname" -> {
+                val displayName = userRow[Users.displayName]
+                if (displayName != null) profile["displayname"] = displayName
+            }
+            "avatar_url" -> {
+                val avatarUrl = userRow[Users.avatarUrl]
+                if (avatarUrl != null) profile["avatar_url"] = avatarUrl
+            }
+            else -> {
+                // Unknown field
+                return null
+            }
+        }
+
+        if (profile.isEmpty()) {
+            // If no profile data in Users table, try room state as fallback
+            return getUserProfileFromRoomState(userId, field)
+        }
+
+        profile
+    } catch (e: Exception) {
+        println("Error getting user profile for $userId: ${e.message}")
+        null
+    }
+}
+
+// Fallback function to get user profile from room state events
+fun getUserProfileFromRoomState(userId: String, field: String?): Map<String, Any?>? {
+    return try {
         val profile = mutableMapOf<String, Any?>()
 
         // Get user display name from current state of rooms the user is in
@@ -2846,7 +2950,7 @@ fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
 
         if (profile.isEmpty()) null else profile
     } catch (e: Exception) {
-        println("Error getting user profile for $userId: ${e.message}")
+        println("Error getting user profile from room state for $userId: ${e.message}")
         null
     }
 }
