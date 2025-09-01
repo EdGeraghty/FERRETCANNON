@@ -38,6 +38,7 @@ import utils.ServerKeys
 import utils.OAuthService
 import utils.OAuthConfig
 import config.ServerConfig
+import utils.MatrixPagination
 
 fun Application.clientRoutes(config: ServerConfig) {
     // Request size limiting - simplified version
@@ -486,6 +487,20 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val fullState = call.request.queryParameters["full_state"]?.toBoolean() ?: false
                             val setPresence = call.request.queryParameters["set_presence"]
 
+                            // Parse since token if provided
+                            var sinceToken: MatrixPagination.SyncToken? = null
+                            if (since != null) {
+                                sinceToken = MatrixPagination.parseSyncToken(since)
+                                if (sinceToken == null && MatrixPagination.isValidToken(since)) {
+                                    // Invalid token format
+                                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                                        "errcode" to "M_INVALID_PARAM",
+                                        "error" to "Invalid since token"
+                                    ))
+                                    return@get
+                                }
+                            }
+
                             // For demo purposes, we'll return a basic sync response
                             // In a real implementation, this would include actual room events, state, etc.
 
@@ -541,8 +556,15 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 })
                             }
 
+                            // Generate next batch token using proper Matrix pagination format
+                            val nextBatchToken = MatrixPagination.createSyncToken(
+                                eventId = "\$sync_${System.currentTimeMillis()}",
+                                timestamp = System.currentTimeMillis(),
+                                roomId = null
+                            )
+
                             val response = mutableMapOf<String, Any>(
-                                "next_batch" to System.currentTimeMillis().toString(),
+                                "next_batch" to nextBatchToken,
                                 "rooms" to mapOf(
                                     "join" to rooms,
                                     "invite" to emptyMap<String, Any>(),
@@ -2373,14 +2395,52 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
                             val filter = call.request.queryParameters["filter"]
 
+                            // Parse pagination tokens
+                            var fromToken: MatrixPagination.MessageToken? = null
+                            var toToken: MatrixPagination.MessageToken? = null
+
+                            if (from != null) {
+                                fromToken = MatrixPagination.parseMessageToken(from)
+                                if (fromToken == null && MatrixPagination.isValidToken(from)) {
+                                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                                        "errcode" to "M_INVALID_PARAM",
+                                        "error" to "Invalid from token"
+                                    ))
+                                    return@get
+                                }
+                            }
+
+                            if (to != null) {
+                                toToken = MatrixPagination.parseMessageToken(to)
+                                if (toToken == null && MatrixPagination.isValidToken(to)) {
+                                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                                        "errcode" to "M_INVALID_PARAM",
+                                        "error" to "Invalid to token"
+                                    ))
+                                    return@get
+                                }
+                            }
+
                             // Get room messages
                             val messages = transaction {
                                 val query = Events.select { Events.roomId eq roomId }
 
                                 // Apply direction and pagination
                                 when (dir) {
-                                    "b" -> query.orderBy(Events.originServerTs, SortOrder.DESC)
-                                    "f" -> query.orderBy(Events.originServerTs, SortOrder.ASC)
+                                    "b" -> {
+                                        // Backward pagination - get events before the 'from' token
+                                        if (fromToken != null) {
+                                            query.andWhere { Events.originServerTs less fromToken.timestamp }
+                                        }
+                                        query.orderBy(Events.originServerTs, SortOrder.DESC)
+                                    }
+                                    "f" -> {
+                                        // Forward pagination - get events after the 'from' token
+                                        if (fromToken != null) {
+                                            query.andWhere { Events.originServerTs greater fromToken.timestamp }
+                                        }
+                                        query.orderBy(Events.originServerTs, SortOrder.ASC)
+                                    }
                                 }
 
                                 query.limit(limit).map { row ->
@@ -2396,12 +2456,28 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 }
                             }
 
-                            val start = messages.firstOrNull()?.get("event_id") as String?
-                            val end = messages.lastOrNull()?.get("event_id") as String?
+                            // Generate pagination tokens for response
+                            val startToken = if (messages.isNotEmpty()) {
+                                val firstEvent = messages.first()
+                                MatrixPagination.createMessageToken(
+                                    eventId = firstEvent["event_id"] as String,
+                                    timestamp = firstEvent["origin_server_ts"] as Long,
+                                    roomId = roomId
+                                )
+                            } else null
+
+                            val endToken = if (messages.isNotEmpty()) {
+                                val lastEvent = messages.last()
+                                MatrixPagination.createMessageToken(
+                                    eventId = lastEvent["event_id"] as String,
+                                    timestamp = lastEvent["origin_server_ts"] as Long,
+                                    roomId = roomId
+                                )
+                            } else null
 
                             call.respond(mapOf(
-                                "start" to start,
-                                "end" to end,
+                                "start" to startToken,
+                                "end" to endToken,
                                 "chunk" to messages
                             ))
 
@@ -2507,9 +2583,28 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 "unsigned" to emptyMap<String, Any>()
                             )
 
+                            // Generate pagination tokens for context response
+                            val startToken = if (eventsBefore.isNotEmpty()) {
+                                val firstEvent = eventsBefore.first()
+                                MatrixPagination.createContextToken(
+                                    eventId = firstEvent["event_id"] as String,
+                                    timestamp = firstEvent["origin_server_ts"] as Long,
+                                    roomId = roomId
+                                )
+                            } else null
+
+                            val endToken = if (eventsAfter.isNotEmpty()) {
+                                val lastEvent = eventsAfter.last()
+                                MatrixPagination.createContextToken(
+                                    eventId = lastEvent["event_id"] as String,
+                                    timestamp = lastEvent["origin_server_ts"] as Long,
+                                    roomId = roomId
+                                )
+                            } else null
+
                             call.respond(mapOf(
-                                "start" to eventsBefore.lastOrNull()?.get("event_id"),
-                                "end" to eventsAfter.lastOrNull()?.get("event_id"),
+                                "start" to startToken,
+                                "end" to endToken,
                                 "events_before" to eventsBefore.reversed(),
                                 "event" to event,
                                 "events_after" to eventsAfter,
