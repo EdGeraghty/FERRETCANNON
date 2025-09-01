@@ -902,6 +902,66 @@ fun Application.clientRoutes(config: ServerConfig) {
                         }
                     }
 
+                    // GET /capabilities - Get server capabilities
+                    get("/capabilities") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@get
+                            }
+
+                            // Return server capabilities according to Matrix Client-Server API v1.15
+                            val capabilities = mapOf(
+                                "capabilities" to mapOf(
+                                    "m.change_password" to mapOf(
+                                        "enabled" to true
+                                    ),
+                                    "m.room_versions" to mapOf(
+                                        "default" to "9",
+                                        "available" to mapOf(
+                                            "1" to "stable",
+                                            "2" to "stable",
+                                            "3" to "stable",
+                                            "4" to "stable",
+                                            "5" to "stable",
+                                            "6" to "stable",
+                                            "7" to "stable",
+                                            "8" to "stable",
+                                            "9" to "stable",
+                                            "10" to "stable",
+                                            "11" to "stable"
+                                        )
+                                    ),
+                                    "m.set_displayname" to mapOf(
+                                        "enabled" to true
+                                    ),
+                                    "m.set_avatar_url" to mapOf(
+                                        "enabled" to true
+                                    ),
+                                    "m.3pid_changes" to mapOf(
+                                        "enabled" to true
+                                    ),
+                                    "m.get_login_token" to mapOf(
+                                        "enabled" to true
+                                    )
+                                )
+                            )
+
+                            call.respond(capabilities)
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
+                        }
+                    }
+
                     // GET /register/available - Check username availability
                     get("/register/available") {
                         try {

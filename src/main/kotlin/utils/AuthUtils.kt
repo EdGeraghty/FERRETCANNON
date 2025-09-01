@@ -14,43 +14,10 @@ import java.security.SecureRandom
 import java.util.*
 import utils.OAuthService
 import kotlin.concurrent.write
-import config.ServerConfig    /**
-     * Get device keys for specified users
-     */
-    fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, Any>> {
-        return transaction {
-            Devices.select { Devices.userId inList userIds }
-                .mapNotNull { deviceRow ->
-                    val userId = deviceRow[Devices.userId]
-                    val deviceId = deviceRow[Devices.deviceId]
-                    val ed25519Key = deviceRow[Devices.ed25519Key]
-                    val curve25519Key = deviceRow[Devices.curve25519Key]
-                    val ed25519KeyId = deviceRow[Devices.ed25519KeyId]
-                    val curve25519KeyId = deviceRow[Devices.curve25519KeyId]
+import config.ServerConfig
+import net.i2p.crypto.eddsa.EdDSAPrivateKey
 
-                    if (ed25519Key != null && curve25519Key != null &&
-                        ed25519KeyId != null && curve25519KeyId != null) {
-
-                        val deviceKeys = mapOf(
-                            "user_id" to userId,
-                            "device_id" to deviceId,
-                            "algorithms" to listOf("m.olm.v1.curve25519-aes-sha2", "m.megolm.v1.aes-sha2"),
-                            "keys" to mapOf(
-                                "ed25519:$ed25519KeyId" to ed25519Key,
-                                "curve25519:$curve25519KeyId" to curve25519Key
-                            ),
-                            "signatures" to mapOf(
-                                userId to mapOf(
-                                    "ed25519:$ed25519KeyId" to "signature_placeholder" // In real implementation, this would be signed
-                                )
-                            )
-                        )
-
-                        userId to deviceKeys
-                    } else null
-                }.toMap()
-        }
-    }ls {
+object AuthUtils {
     private val random = SecureRandom()
 
     /**
@@ -528,7 +495,7 @@ import config.ServerConfig    /**
         // Check for at least one special character
         val specialChars = "!@#\$%^&*()_+-=[]{}|;:,.<>?/~`"
         if (!password.any { specialChars.contains(it) }) {
-            return Pair(false, "Password must contain at least one special character (!@#\$%^&*()_+-=[]{}|;:,.<>?/~`}")
+            return Pair(false, "Password must contain at least one special character (!@#\$%^&*()_+-=[]{}|;:,.<>?/~`)")
         }
 
         // Check for common weak passwords
@@ -630,14 +597,20 @@ import config.ServerConfig    /**
      */
     fun generateDeviceKeys(): Pair<String, String> {
         // Generate ed25519 key pair
-        val ed25519KeyPair = ServerKeys.generateEd25519KeyPair()
-        val ed25519PublicKey = ServerKeys.encodeEd25519PublicKey(ed25519KeyPair.public)
+        val ed25519PrivateKey = ServerKeys.generateEd25519KeyPair()
+
+        // Derive public key from private key
+        val spec = net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable.getByName(net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable.ED_25519)
+        val publicKeySpec = net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec(ed25519PrivateKey.a, spec)
+        val ed25519PublicKey = net.i2p.crypto.eddsa.EdDSAPublicKey(publicKeySpec)
+
+        val ed25519PublicKeyEncoded = ServerKeys.encodeEd25519PublicKey(ed25519PublicKey)
 
         // Generate curve25519 key pair (for demo purposes, we'll use the same key)
         // In a real implementation, you'd generate separate curve25519 keys
-        val curve25519PublicKey = ed25519PublicKey // Simplified for demo
+        val curve25519PublicKey = ed25519PublicKeyEncoded // Simplified for demo
 
-        return Pair(ed25519PublicKey, curve25519PublicKey)
+        return Pair(ed25519PublicKeyEncoded, curve25519PublicKey)
     }
 
     /**
@@ -658,3 +631,40 @@ import config.ServerConfig    /**
             }
         }
     }
+
+    /**
+     * Get device keys for users (for end-to-end encryption)
+     */
+    fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, Map<String, Any>>> {
+        return transaction {
+            val result = mutableMapOf<String, Map<String, Map<String, Any>>>()
+
+            userIds.forEach { userId ->
+                val userDevices = Devices.select { Devices.userId eq userId }
+                    .filter { deviceRow ->
+                        deviceRow[Devices.ed25519Key] != null && deviceRow[Devices.curve25519Key] != null
+                    }
+                    .associate { deviceRow ->
+                        val deviceId = deviceRow[Devices.deviceId]
+                        val deviceKeys = mapOf(
+                            "algorithms" to listOf("m.olm.v1.curve25519-aes-sha2", "m.megolm.v1.aes-sha2"),
+                            "device_id" to deviceId,
+                            "keys" to mapOf(
+                                "curve25519:$deviceId" to deviceRow[Devices.curve25519Key],
+                                "ed25519:$deviceId" to deviceRow[Devices.ed25519Key]
+                            ),
+                            "signatures" to mapOf<String, Any>(),
+                            "user_id" to userId
+                        )
+                        deviceId to deviceKeys
+                    }
+
+                if (userDevices.isNotEmpty()) {
+                    result[userId] = userDevices
+                }
+            }
+
+            result
+        }
+    }
+}

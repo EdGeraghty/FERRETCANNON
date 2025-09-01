@@ -214,6 +214,20 @@ object ServerKeys {
         return keyId
     }
 
+    fun generateEd25519KeyPair(): EdDSAPrivateKey {
+        ensureKeysLoaded()
+        return privateKey
+    }
+
+    fun encodeEd25519PublicKey(publicKey: EdDSAPublicKey): String {
+        return Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+    }
+
+    fun generateKeyId(): String {
+        ensureKeysLoaded()
+        return keyId
+    }
+
     private fun ensureKeysLoaded() {
         if (!::privateKey.isInitialized) {
             logger.debug("Keys not initialized, loading/generating...")
