@@ -42,6 +42,7 @@ import routes.server_server.key.keyRoutes
 import routes.discovery.wellknown.wellKnownRoutes
 import config.ConfigLoader
 import config.ServerConfig
+import utils.ServerNameResolver
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -172,7 +173,24 @@ fun main() {
                 }
                 get("/_matrix/server-info") {
                     // Debug endpoint to show server information
-                    call.respond(utils.ServerNameResolver.getServerInfo())
+                    try {
+                        val serverInfo = ServerNameResolver.getServerInfo()
+                        call.respondText(
+                            kotlinx.serialization.json.Json.encodeToString(
+                                kotlinx.serialization.json.JsonObject.serializer(),
+                                kotlinx.serialization.json.JsonObject(serverInfo.mapValues { 
+                                    kotlinx.serialization.json.JsonPrimitive(it.value.toString())
+                                })
+                            ),
+                            ContentType.Application.Json
+                        )
+                    } catch (e: Exception) {
+                        call.respondText(
+                            """{"error": "Failed to get server info", "message": "${e.message}"}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.InternalServerError
+                        )
+                    }
                 }
                 webSocket("/ws/room/{roomId}") {
                     val roomId = call.parameters["roomId"] ?: return@webSocket

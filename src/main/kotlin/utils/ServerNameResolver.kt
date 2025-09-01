@@ -170,15 +170,24 @@ object ServerNameResolver {
      * Get server info for debugging
      */
     fun getServerInfo(): Map<String, Any> {
-        return mapOf(
-            "serverName" to getServerName(),
-            "serverPort" to getServerPort(),
-            "serverAddress" to getServerAddress(),
-            "serverAddressInternal" to getServerAddressInternal(),
-            "serverBaseUrl" to getServerBaseUrl(),
-            "localHostname" to (try { InetAddress.getLocalHost().hostName } catch (e: Exception) { "unknown" }),
-            "canonicalHostname" to (try { InetAddress.getLocalHost().canonicalHostName } catch (e: Exception) { "unknown" }),
-            "matrixServerNameEnv" to (System.getenv("MATRIX_SERVER_NAME") ?: "not set")
-        )
+        return try {
+            mapOf(
+                "serverName" to getServerName(),
+                "serverPort" to getServerPort(),
+                "serverAddress" to getServerAddress(),
+                "serverAddressInternal" to getServerAddressInternal(),
+                "serverBaseUrl" to getServerBaseUrl(),
+                "localHostname" to (try { InetAddress.getLocalHost().hostName } catch (e: Exception) { "unknown" }),
+                "canonicalHostname" to (try { InetAddress.getLocalHost().canonicalHostName } catch (e: Exception) { "unknown" }),
+                "matrixServerNameEnv" to (System.getenv("MATRIX_SERVER_NAME") ?: "not set")
+            )
+        } catch (e: Exception) {
+            // Fallback response if anything goes wrong
+            mapOf(
+                "error" to "Failed to get server info: ${e.message}",
+                "serverName" to (cachedServerName ?: "unknown"),
+                "serverPort" to cachedServerPort
+            )
+        }
     }
 }
