@@ -30,20 +30,20 @@ import io.ktor.websocket.Frame
 import utils.MediaStorage
 import models.Users
 import models.AccessTokens
-import org.mindrot.jbcrypt.BCrypt
+import at.favre.lib.crypto.bcrypt.BCrypt
 import utils.AuthUtils
 import utils.connectedClients
 import utils.typingMap
 import utils.ServerKeys
 import utils.OAuthService
 import utils.OAuthConfig
-import utils.OAuthProvider
+import config.ServerConfig
 
-fun Application.clientRoutes() {
+fun Application.clientRoutes(config: ServerConfig) {
     // Request size limiting - simplified version
     intercept(ApplicationCallPipeline.Call) {
         val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-        if (contentLength != null && contentLength > 1024 * 1024) { // 1MB limit
+        if (contentLength != null && contentLength > config.server.maxRequestSize) {
             call.respond(HttpStatusCode.BadRequest, mapOf(
                 "errcode" to "M_TOO_LARGE",
                 "error" to "Request too large"
@@ -904,7 +904,7 @@ fun Application.clientRoutes() {
                             call.respond(mapOf(
                                 "user_id" to authenticatedUserId,
                                 "access_token" to accessToken,
-                                "home_server" to "localhost:8080",
+                                "home_server" to config.federation.serverName,
                                 "device_id" to finalDeviceId
                             ))
                         } catch (e: Exception) {
@@ -1135,7 +1135,7 @@ fun Application.clientRoutes() {
                             val userId = "@$finalUsername:localhost"
                             val response = mutableMapOf<String, Any>(
                                 "user_id" to userId,
-                                "home_server" to "localhost:8080",
+                                "home_server" to config.federation.serverName,
                                 "device_id" to finalDeviceId
                             )
 
@@ -1385,7 +1385,7 @@ fun Application.clientRoutes() {
                                 return@post
                             }
 
-                            if (!BCrypt.checkpw(authPassword, userRow[Users.passwordHash])) {
+                            if (!BCrypt.verifyer().verify(authPassword.toCharArray(), userRow[Users.passwordHash]).verified) {
                                 call.respond(HttpStatusCode.Forbidden, mapOf(
                                     "errcode" to "M_FORBIDDEN",
                                     "error" to "Invalid password"
@@ -3254,18 +3254,14 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             // Return upload configuration
                             val config = mapOf(
                                 "upload_size" to mapOf(
-                                    "max_upload_size" to 10485760L, // 10MB
-                                    "max_image_size" to 10485760L,
-                                    "max_avatar_size" to 1048576L, // 1MB
-                                    "max_thumbnail_size" to 1048576L
+                                    "max_upload_size" to config.media.maxUploadSize,
+                                    "max_image_size" to config.media.maxImageSize,
+                                    "max_avatar_size" to config.media.maxAvatarSize,
+                                    "max_thumbnail_size" to config.media.maxThumbnailSize
                                 ),
-                                "thumbnail_sizes" to listOf(
-                                    mapOf("width" to 32, "height" to 32, "method" to "crop"),
-                                    mapOf("width" to 96, "height" to 96, "method" to "crop"),
-                                    mapOf("width" to 320, "height" to 240, "method" to "scale"),
-                                    mapOf("width" to 640, "height" to 480, "method" to "scale"),
-                                    mapOf("width" to 800, "height" to 600, "method" to "scale")
-                                )
+                                "thumbnail_sizes" to config.media.thumbnailSizes.map { size ->
+                                    mapOf("width" to size.width, "height" to size.height, "method" to size.method)
+                                }
                             )
 
                             call.respond(config)
@@ -4632,14 +4628,15 @@ ${String(thumbnailData, Charsets.UTF_8)}
 
                     // GET /.well-known/oauth-authorization-server - OAuth discovery
                     get("/.well-known/oauth-authorization-server") {
+                        val baseUrl = "https://${config.federation.serverName}"
                         call.respond(mapOf(
-                            "issuer" to "https://localhost:8080",
-                            "authorization_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/authorize",
-                            "token_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/token",
-                            "userinfo_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/userinfo",
-                            "revocation_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/revoke",
-                            "introspection_endpoint" to "https://localhost:8080/_matrix/client/v3/oauth2/introspect",
-                            "jwks_uri" to "https://localhost:8080/_matrix/client/v3/oauth2/jwks",
+                            "issuer" to baseUrl,
+                            "authorization_endpoint" to "$baseUrl/_matrix/client/v3/oauth2/authorize",
+                            "token_endpoint" to "$baseUrl/_matrix/client/v3/oauth2/token",
+                            "userinfo_endpoint" to "$baseUrl/_matrix/client/v3/oauth2/userinfo",
+                            "revocation_endpoint" to "$baseUrl/_matrix/client/v3/oauth2/revoke",
+                            "introspection_endpoint" to "$baseUrl/_matrix/client/v3/oauth2/introspect",
+                            "jwks_uri" to "$baseUrl/_matrix/client/v3/oauth2/jwks",
                             "scopes_supported" to listOf("openid", "profile", "email"),
                             "response_types_supported" to listOf("code"),
                             "grant_types_supported" to listOf("authorization_code", "refresh_token"),

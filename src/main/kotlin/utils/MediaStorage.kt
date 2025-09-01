@@ -21,8 +21,10 @@ object MediaStorage {
 
     private const val MEDIA_DIR = "media"
     private const val THUMBNAIL_DIR = "thumbnails"
-    private const val MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-    private const val MAX_THUMBNAIL_SIZE = 320 // Max dimension for thumbnails
+
+    // Configuration values - will be set during initialization
+    private var maxFileSize: Long = 50 * 1024 * 1024 // 50MB default
+    private var maxThumbnailSize: Int = 320 // Max dimension for thumbnails default
 
     // In-memory cache for media metadata
     private val mediaCache = ConcurrentHashMap<String, MediaMetadata>()
@@ -30,6 +32,15 @@ object MediaStorage {
     init {
         // Create media directories
         createDirectories()
+    }
+
+    /**
+     * Initialize MediaStorage with configuration values
+     */
+    fun initialize(maxFileSizeBytes: Long, maxThumbnailDimension: Int) {
+        this.maxFileSize = maxFileSizeBytes
+        this.maxThumbnailSize = maxThumbnailDimension
+        println("MediaStorage initialized with maxFileSize: $maxFileSize bytes, maxThumbnailSize: $maxThumbnailSize px")
     }
 
     private fun createDirectories() {
@@ -51,8 +62,8 @@ object MediaStorage {
         return withContext(Dispatchers.IO) {
             try {
                 // Validate file size
-                if (content.size > MAX_FILE_SIZE) {
-                    println("Media file too large: ${content.size} bytes")
+                if (content.size > maxFileSize) {
+                    println("Media file too large: ${content.size} bytes (max: $maxFileSize)")
                     return@withContext false
                 }
 
@@ -86,8 +97,8 @@ object MediaStorage {
         return withContext(Dispatchers.IO) {
             try {
                 // Validate file size
-                if (content.size > MAX_FILE_SIZE) {
-                    println("Media file too large: ${content.size} bytes")
+                if (content.size > maxFileSize) {
+                    println("Media file too large: ${content.size} bytes (max: $maxFileSize)")
                     return@withContext false
                 }
 
@@ -206,8 +217,8 @@ object MediaStorage {
         }
 
         // Ensure dimensions don't exceed maximum
-        val finalWidth = minOf(scaledWidth, MAX_THUMBNAIL_SIZE)
-        val finalHeight = minOf(scaledHeight, MAX_THUMBNAIL_SIZE)
+        val finalWidth = minOf(scaledWidth, maxThumbnailSize)
+        val finalHeight = minOf(scaledHeight, maxThumbnailSize)
 
         return Scalr.resize(original, Scalr.Method.ULTRA_QUALITY, Scalr.Mode.AUTOMATIC, finalWidth, finalHeight)
     }

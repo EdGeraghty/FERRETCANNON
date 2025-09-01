@@ -6,7 +6,9 @@ import models.Users
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.mindrot.jbcrypt.BCrypt
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.neq
+import at.favre.lib.crypto.bcrypt.BCrypt
 import java.security.SecureRandom
 import java.util.*
 import utils.OAuthService
@@ -19,7 +21,7 @@ object AuthUtils {
      * Hash a password using BCrypt
      */
     fun hashPassword(password: String): String {
-        return BCrypt.hashpw(password, BCrypt.gensalt(12))
+        return BCrypt.withDefaults().hashToString(12, password.toCharArray())
     }
 
     /**
@@ -27,7 +29,7 @@ object AuthUtils {
      */
     fun verifyPassword(password: String, hash: String): Boolean {
         return try {
-            BCrypt.checkpw(password, hash)
+            BCrypt.verifyer().verify(password.toCharArray(), hash).verified
         } catch (e: Exception) {
             false
         }
@@ -524,7 +526,7 @@ object AuthUtils {
         transaction {
             // Clean up expired access tokens
             AccessTokens.deleteWhere {
-                expiresAt.isNotNull() and (expiresAt less currentTime)
+                AccessTokens.expiresAt neq null and (AccessTokens.expiresAt less currentTime)
             }
 
             // Clean up expired OAuth auth codes

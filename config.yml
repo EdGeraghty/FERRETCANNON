@@ -1,0 +1,67 @@
+# FERRETCANNON Matrix Server Configuration
+# This file contains all configurable settings for the Matrix server
+
+server:
+  # Server network settings
+  host: "0.0.0.0"  # IP address to bind to (0.0.0.0 for all interfaces)
+  port: 8080       # Port to listen on
+  maxRequestSize: 1048576  # Maximum request size in bytes (1MB)
+  corsAllowedOrigins:       # List of allowed CORS origins
+    - "*"                   # Use specific domains in production
+
+database:
+  # Database connection settings
+  url: "jdbc:sqlite:ferretcannon.db"  # Database connection URL
+  driver: "org.sqlite.JDBC"           # JDBC driver class
+  maxConnections: 10                  # Maximum database connections
+  connectionTimeout: 30000            # Connection timeout in milliseconds
+
+federation:
+  # Federation settings for server-to-server communication
+  serverName: "localhost:8080"        # Public server name for federation
+  federationPort: 8080                # Port for federation endpoints
+  enableFederation: true              # Enable/disable federation
+  allowedServers:                     # List of allowed federation servers
+    - "*"                             # Use specific server names in production
+  keyValidityPeriod: 86400000         # Server key validity period in milliseconds
+
+security:
+  # Security and authentication settings
+  jwtSecret: "change-this-in-production-to-a-secure-random-key"  # JWT signing secret
+  tokenExpirationHours: 24            # Access token expiration time
+  bcryptRounds: 12                    # BCrypt password hashing rounds
+  rateLimitRequests: 300              # Rate limit: requests per period
+  rateLimitPeriodMinutes: 1           # Rate limit: period in minutes
+  enableRateLimiting: false           # Enable/disable rate limiting
+
+media:
+  # Media upload and storage settings
+  maxUploadSize: 10485760             # Maximum upload size in bytes (10MB)
+  maxImageSize: 10485760              # Maximum image size in bytes (10MB)
+  maxAvatarSize: 1048576              # Maximum avatar size in bytes (1MB)
+  maxThumbnailSize: 1048576           # Maximum thumbnail size in bytes (1MB)
+  thumbnailSizes:                     # Available thumbnail sizes
+    - width: 32
+      height: 32
+      method: "crop"
+    - width: 96
+      height: 96
+      method: "crop"
+    - width: 320
+      height: 240
+      method: "scale"
+    - width: 640
+      height: 480
+      method: "scale"
+    - width: 800
+      height: 600
+      method: "scale"
+
+development:
+  # Development and testing settings
+  createTestUser: true                # Create test user on startup
+  testUsername: "testuser"            # Test user username
+  testPassword: "TestPass123!"        # Test user password
+  testDisplayName: "Test User"        # Test user display name
+  enableDebugLogging: true            # Enable debug logging
+  enableWebSocketDebug: false         # Enable WebSocket debug logging

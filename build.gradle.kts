@@ -34,7 +34,11 @@ dependencies {
     implementation("dnsjava:dnsjava:3.5.2") // For DNS SRV record lookup
     implementation("com.github.jai-imageio:jai-imageio-core:1.4.0") // For image processing
     implementation("org.imgscalr:imgscalr-lib:4.2") // For image scaling/thumbnail generation
-    implementation("org.mindrot:jbcrypt:0.4") // For password hashing
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2") // For JSON/YAML parsing
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.15.2") // For YAML support
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2") // For Kotlin support
+    implementation("at.favre.lib:bcrypt:0.10.2") // For password hashing
+    implementation("org.bouncycastle:bcprov-jdk18on:1.76") // For cryptographic operations
 }
 
 tasks.test {

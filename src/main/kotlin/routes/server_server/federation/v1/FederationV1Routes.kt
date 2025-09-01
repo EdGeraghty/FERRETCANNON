@@ -24,6 +24,7 @@ import utils.oneTimeKeys
 import utils.crossSigningKeys
 import utils.deviceListStreamIds
 import utils.accessTokens
+import models.AccessTokens
 import utils.StateResolver
 import utils.MatrixAuth
 

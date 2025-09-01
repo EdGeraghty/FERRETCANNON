@@ -8,6 +8,7 @@ import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import io.ktor.server.plugins.cors.routing.*
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import models.Events
 import models.Rooms
@@ -32,8 +33,8 @@ import routes.client_server.client.clientRoutes
 import routes.server_server.federation.federationRoutes
 import routes.server_server.key.keyRoutes
 import routes.discovery.wellknown.wellKnownRoutes
-import io.ktor.server.plugins.cors.routing.*
-// import io.ktor.server.plugins.multipart.*
+import config.ConfigLoader
+import config.ServerConfig
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -45,28 +46,42 @@ import io.ktor.server.plugins.cors.routing.*
 
 fun main() {
     println("Starting FERRETCANNON Matrix Server...")
-    
-    // Database setup
-    Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
+
+    // Load configuration
+    val config = ConfigLoader.loadConfig()
+    println("Configuration loaded successfully")
+
+    // Database setup with configurable connection
+    Database.connect(config.database.url, driver = config.database.driver)
     transaction {
         SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates)
-        
-        // Create a test user for development
-        val testUserExists = Users.select { Users.username eq "testuser" }.count() > 0
-        if (!testUserExists) {
-            utils.AuthUtils.createUser("testuser", "TestPass123!", "Test User")
-            println("Created test user: testuser with password: TestPass123!")
+
+        // Create test user for development (if enabled in config)
+        if (config.development.createTestUser) {
+            val testUserExists = Users.select { Users.username eq config.development.testUsername }.count() > 0
+            if (!testUserExists) {
+                utils.AuthUtils.createUser(
+                    config.development.testUsername,
+                    config.development.testPassword,
+                    config.development.testDisplayName
+                )
+                println("Created test user: ${config.development.testUsername} with password: ${config.development.testPassword}")
+            }
         }
     }
-    
-    val federationServer = "localhost:8080" // TODO: Make configurable
+
+    // Initialize MediaStorage with configuration
+    utils.MediaStorage.initialize(
+        config.media.maxUploadSize,
+        800 // Use largest thumbnail dimension as max
+    )
     
     try {
         println("About to create embedded server")
-        val server = embeddedServer(Netty, port = 8080, host = "0.0.0.0") {
+        val server = embeddedServer(Netty, port = config.server.port, host = config.server.host) {
             println("Inside embeddedServer block")
 
-            // Install CORS for client-server API
+            // Install CORS for client-server API with configurable origins
             install(CORS) {
                 allowMethod(HttpMethod.Get)
                 allowMethod(HttpMethod.Post)
@@ -76,7 +91,11 @@ fun main() {
                 allowHeader(HttpHeaders.ContentType)
                 allowHeader("X-Requested-With")
                 allowCredentials = true
-                anyHost() // In production, specify allowed origins
+                if (config.server.corsAllowedOrigins.contains("*")) {
+                    anyHost() // Allow all origins in development
+                } else {
+                    config.server.corsAllowedOrigins.forEach { allowHost(it) }
+                }
             }
 
             // Install rate limiting (simplified for now)
@@ -86,10 +105,10 @@ fun main() {
             //     }
             // }
 
-            // Request size limiting - simplified version
+            // Request size limiting with configurable limit
             intercept(ApplicationCallPipeline.Call) {
                 val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-                if (contentLength != null && contentLength > 1024 * 1024) { // 1MB limit
+                if (contentLength != null && contentLength > config.server.maxRequestSize) {
                     call.respond(HttpStatusCode.BadRequest, mapOf(
                         "errcode" to "M_TOO_LARGE",
                         "error" to "Request too large"
@@ -108,12 +127,12 @@ fun main() {
                 masking = false
             }
             // install(Multipart) {
-            //     maxPartSize = 10 * 1024 * 1024 // 10MB
+            //     maxPartSize = config.media.maxUploadSize
             // }
             
             // Call route setup functions on the application
             println("About to call clientRoutes()")
-            clientRoutes()
+            clientRoutes(config)
             println("clientRoutes() completed")
             
             println("About to call federationRoutes()")
@@ -123,7 +142,7 @@ fun main() {
             keyRoutes()
             println("keyRoutes() completed")
             println("About to call wellKnownRoutes()")
-            wellKnownRoutes()
+            wellKnownRoutes(config)
             println("wellKnownRoutes() completed")
             
             routing {
@@ -164,7 +183,7 @@ fun main() {
         println("Server started successfully!")
         
         // Keep the main thread alive
-        println("Server is running on port 8080. Press Ctrl+C to stop.")
+        println("Server is running on ${config.server.host}:${config.server.port}. Press Ctrl+C to stop.")
         Runtime.getRuntime().addShutdownHook(Thread {
             println("Shutting down server...")
             server.stop(1000, 1000)

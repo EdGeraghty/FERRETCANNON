@@ -6,8 +6,9 @@ import io.ktor.server.response.*
 import io.ktor.http.*
 import io.ktor.server.request.*
 import kotlinx.serialization.json.*
+import config.ServerConfig
 
-fun Application.wellKnownRoutes() {
+fun Application.wellKnownRoutes(config: ServerConfig) {
     routing {
         route("/.well-known") {
             route("/matrix") {
@@ -22,7 +23,7 @@ fun Application.wellKnownRoutes() {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
 
-                    call.respond(mapOf("m.server" to "localhost:9090"))
+                    call.respond(mapOf("m.server" to "${config.federation.serverName}:${config.server.port}"))
                 }
 
                 get("/client") {
@@ -36,12 +37,13 @@ fun Application.wellKnownRoutes() {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
+                    val baseUrl = "https://${config.federation.serverName}:${config.server.port}"
                     call.respond(mapOf(
                         "m.homeserver" to mapOf(
-                            "base_url" to "https://localhost:9090"
+                            "base_url" to baseUrl
                         ),
                         "m.identity_server" to mapOf(
-                            "base_url" to "https://localhost:9090" // Using same server for identity in this implementation
+                            "base_url" to baseUrl // Using same server for identity in this implementation
                         )
                     ))
                 }
@@ -61,20 +63,21 @@ fun Application.wellKnownRoutes() {
                     call.response.headers.append("Content-Type", "application/json")
                     call.response.headers.append("Access-Control-Allow-Origin", "*")
 
+                    val baseUrl = "https://${config.federation.serverName}:${config.server.port}"
                     call.respond(mapOf(
                         "policies" to mapOf(
                             "privacy_policy" to mapOf(
                                 "version" to "1.0",
                                 "en" to mapOf(
                                     "name" to "Privacy Policy",
-                                    "url" to "https://localhost:8080/privacy"
+                                    "url" to "$baseUrl/privacy"
                                 )
                             ),
                             "terms_of_service" to mapOf(
                                 "version" to "1.0",
                                 "en" to mapOf(
                                     "name" to "Terms of Service",
-                                    "url" to "https://localhost:8080/terms"
+                                    "url" to "$baseUrl/terms"
                                 )
                             )
                         )
