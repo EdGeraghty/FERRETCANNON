@@ -1746,6 +1746,14 @@ fun Application.clientRoutes(config: ServerConfig) {
                             }
 
                             val request = call.receiveText()
+                            if (request.isBlank()) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_BAD_JSON",
+                                    "error" to "Request body is empty"
+                                ))
+                                return@post
+                            }
+
                             val json = Json.parseToJsonElement(request).jsonObject
 
                             // Extract device_keys object containing user IDs to query
@@ -1780,21 +1788,16 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                             call.respond(response)
 
+                        } catch (e: kotlinx.serialization.SerializationException) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                                "errcode" to "M_BAD_JSON",
+                                "error" to "Invalid JSON format in request body"
+                            ))
                         } catch (e: Exception) {
-                            when (e) {
-                                is kotlinx.serialization.SerializationException -> {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_BAD_JSON",
-                                        "error" to "Invalid JSON"
-                                    ))
-                                }
-                                else -> {
-                                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                        "errcode" to "M_UNKNOWN",
-                                        "error" to "Internal server error"
-                                    ))
-                                }
-                            }
+                            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                "errcode" to "M_UNKNOWN",
+                                "error" to "Internal server error"
+                            ))
                         }
                     }
 
