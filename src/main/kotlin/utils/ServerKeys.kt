@@ -24,8 +24,11 @@ object ServerKeys {
     private lateinit var keyId: String
     private lateinit var serverName: String
 
+    // Use a deterministic seed based on server name for consistent key generation
+    private val SERVER_KEY_SEED = "FERRETCANNON_MATRIX_SERVER_SEED_2024"
+
     init {
-        logger.info("🔐 ServerKeys utility initialized - key generation will be lazy")
+        logger.info("🔐 ServerKeys utility initialized - deterministic key generation enabled")
         serverName = ServerNameResolver.getServerName()
     }
 
@@ -41,84 +44,67 @@ object ServerKeys {
 
             if (existingKey != null) {
                 // Load existing key
-                val publicKeyPem = existingKey[ServerKeysTable.publicKey]
-                logger.info("✅ Loaded existing server key pair with ID: ed25519:0")
+                val storedPublicKey = existingKey[ServerKeysTable.publicKey]
+                logger.info("✅ Found existing server key pair with ID: ed25519:0")
 
-                // For now, we'll regenerate the key pair since we don't store the private key
-                // In production, you should encrypt and store the private key securely
-                logger.warn("⚠️  Private key not stored - regenerating key pair for security")
-                generateAndStoreKeyPair()
+                // Generate the same key pair using deterministic seed
+                generateDeterministicKeyPair()
+
+                // Verify the stored public key matches our generated one
+                if (storedPublicKey != publicKeyBase64) {
+                    logger.warn("⚠️  Stored public key doesn't match generated key - updating database")
+                    updateStoredKey()
+                } else {
+                    logger.info("✅ Stored public key matches generated key")
+                }
             } else {
-                // Generate new key pair
-                logger.info("🔑 No existing key found - generating new Ed25519 key pair")
-                generateAndStoreKeyPair()
+                // Generate new deterministic key pair
+                logger.info("🔑 No existing key found - generating new deterministic Ed25519 key pair")
+                generateDeterministicKeyPair()
+                storeKeyInDatabase()
             }
         }
     }
 
-    private fun generateAndStoreKeyPair() {
-        logger.debug("Generating new Ed25519 key pair...")
+    private fun generateDeterministicKeyPair() {
+        logger.debug("Generating deterministic Ed25519 key pair...")
         try {
-            val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
-            // Try with SecureRandom first
-            val secureRandom = java.security.SecureRandom()
-            keyPairGenerator.initialize(spec, secureRandom)
-            val keyPair = keyPairGenerator.generateKeyPair()
+            // Create a deterministic seed based on server name and fixed seed
+            val seedString = "$SERVER_KEY_SEED:$serverName"
+            val seedBytes = seedString.toByteArray(Charsets.UTF_8)
 
-            privateKey = keyPair.private as EdDSAPrivateKey
-            publicKey = keyPair.public as EdDSAPublicKey
+            // Use SHA-256 to create a 32-byte seed from our string
+            val sha256 = java.security.MessageDigest.getInstance("SHA-256")
+            val deterministicSeed = sha256.digest(seedBytes).copyOfRange(0, 32) // Ed25519 needs 32 bytes
+
+            // Create private key from deterministic seed
+            val privateKeySpec = EdDSAPrivateKeySpec(deterministicSeed, spec)
+            privateKey = EdDSAPrivateKey(privateKeySpec)
+
+            // Derive public key from private key
+            val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
+            publicKey = EdDSAPublicKey(publicKeySpec)
+
             // Use unpadded Base64 as per Matrix specification appendices
             publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
             keyId = "ed25519:0"
 
-            // Store the key in database
-            storeKeyInDatabase()
-
-            logger.info("✅ Generated and stored server key pair with ID: $keyId")
+            logger.info("✅ Generated deterministic server key pair with ID: $keyId")
             logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
         } catch (e: Exception) {
-            logger.error("Failed to generate key pair with SecureRandom, trying alternative approach", e)
-            // Fallback: try with key size instead of AlgorithmParameterSpec
-            try {
-                val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
-                val secureRandom = java.security.SecureRandom()
-                keyPairGenerator.initialize(25519, secureRandom) // Ed25519 key size
-                val keyPair = keyPairGenerator.generateKeyPair()
+            logger.error("Failed to generate deterministic key pair", e)
+            throw e
+        }
+    }
 
-                privateKey = keyPair.private as EdDSAPrivateKey
-                publicKey = keyPair.public as EdDSAPublicKey
-                publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
-                keyId = "ed25519:0"
-
-                // Store the key in database
-                storeKeyInDatabase()
-
-                logger.info("✅ Generated and stored server key pair with key size method, ID: $keyId")
-                logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
-            } catch (fallbackError: Exception) {
-                logger.error("Both key generation methods failed", fallbackError)
-                // Try one more approach using the EdDSANamedCurveTable spec
-                try {
-                    val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
-                    val secureRandom = java.security.SecureRandom()
-                    keyPairGenerator.initialize(spec, secureRandom)
-                    val keyPair = keyPairGenerator.generateKeyPair()
-
-                    privateKey = keyPair.private as EdDSAPrivateKey
-                    publicKey = keyPair.public as EdDSAPublicKey
-                    publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
-                    keyId = "ed25519:0"
-
-                    // Store the key in database
-                    storeKeyInDatabase()
-
-                    logger.info("✅ Generated and stored server key pair with EdDSANamedCurveTable spec, ID: $keyId")
-                    logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
-                } catch (finalError: Exception) {
-                    logger.error("All key generation methods failed", finalError)
-                    throw finalError
-                }
+    private fun updateStoredKey() {
+        transaction {
+            ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq keyId) }) {
+                it[ServerKeysTable.publicKey] = publicKeyBase64
+                it[ServerKeysTable.keyValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
+                it[ServerKeysTable.tsValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)
             }
+            logger.debug("🔒 Updated stored server key in database")
         }
     }
 
@@ -142,12 +128,7 @@ object ServerKeys {
             } catch (e: Exception) {
                 // If insert fails (key already exists), try update
                 logger.debug("Key already exists, updating...")
-                ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq keyId) }) {
-                    it[ServerKeysTable.publicKey] = publicKeyBase64
-                    it[ServerKeysTable.keyValidUntilTs] = validUntilTs
-                    it[ServerKeysTable.tsValidUntilTs] = validUntilTs
-                }
-                logger.debug("🔒 Updated existing server key in database")
+                updateStoredKey()
             }
 
             logger.debug("🔒 Stored server key in database with validity until: $validUntilTs")
