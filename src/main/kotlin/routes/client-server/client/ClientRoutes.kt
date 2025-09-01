@@ -1067,6 +1067,16 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                                 // Validate UIA
                                 val authType = auth["type"]?.jsonPrimitive?.content
+                                if (authType == null) {
+                                    val errorResponse = """
+                                    {
+                                        "errcode": "M_INVALID_PARAM",
+                                        "error": "Missing authentication type in auth data"
+                                    }
+                                    """.trimIndent()
+                                    call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
+                                    return@post
+                                }
                                 when (authType) {
                                     "m.login.password" -> {
                                         // In a real implementation, validate password strength, etc.
@@ -1702,7 +1712,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             }
 
                             val authType = auth["type"]?.jsonPrimitive?.content
-                            if (authType != "m.login.password") {
+                            if (authType == null || authType != "m.login.password") {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
                                     "errcode" to "M_UNKNOWN",
                                     "error" to "Unsupported authentication type"
