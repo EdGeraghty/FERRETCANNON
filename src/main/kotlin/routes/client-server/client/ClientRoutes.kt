@@ -116,14 +116,14 @@ fun Application.clientRoutes(config: ServerConfig) {
                 ))
                 null
             }
-            accessToken == null -> {
+            accessToken != null -> accessToken
+            else -> {
                 respond(HttpStatusCode.Unauthorized, mapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
                 null
             }
-            else -> accessToken
         }
     }
 
@@ -905,15 +905,11 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // GET /capabilities - Get server capabilities
                     get("/capabilities") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            // Validate access token using the helper function
+                            val accessToken = call.validateAccessToken() ?: return@get
 
-                            if (userId == null) {
-                                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                                    "errcode" to "M_MISSING_TOKEN",
-                                    "error" to "Missing access token"
-                                ))
-                                return@get
-                            }
+                            // Get authenticated user information
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
 
                             // Return server capabilities according to Matrix Client-Server API v1.15
                             val capabilities = mapOf(
