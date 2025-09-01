@@ -1660,6 +1660,81 @@ fun Application.clientRoutes(config: ServerConfig) {
                         }
                     }
 
+                    // ===== END-TO-END ENCRYPTION =====
+
+                    // POST /keys/query - Query device keys for users
+                    post("/keys/query") {
+                        try {
+                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+
+                            if (userId == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_MISSING_TOKEN",
+                                    "error" to "Missing access token"
+                                ))
+                                return@post
+                            }
+
+                            val request = call.receiveText()
+                            val json = Json.parseToJsonElement(request).jsonObject
+
+                            // Extract device_keys object containing user IDs to query
+                            val deviceKeys = json["device_keys"]?.jsonObject
+                            if (deviceKeys == null) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "Missing device_keys parameter"
+                                ))
+                                return@post
+                            }
+
+                            // Extract user IDs from the device_keys object
+                            val userIds = deviceKeys.keys.toList()
+
+                            if (userIds.isEmpty()) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_INVALID_PARAM",
+                                    "error" to "No user IDs provided in device_keys"
+                                ))
+                                return@post
+                            }
+
+                            // Query device keys for the specified users
+                            val deviceKeysMap = AuthUtils.getDeviceKeysForUsers(userIds)
+
+                            // Build response according to Matrix specification
+                            val response = mutableMapOf<String, Any>()
+
+                            // Add device_keys section
+                            val deviceKeysResponse = mutableMapOf<String, Any>()
+                            deviceKeysMap.forEach { (userId, devices) ->
+                                deviceKeysResponse[userId] = devices
+                            }
+                            response["device_keys"] = deviceKeysResponse
+
+                            // Add failures section (empty for now, but structure is ready for federation)
+                            response["failures"] = emptyMap<String, Any>()
+
+                            call.respond(response)
+
+                        } catch (e: Exception) {
+                            when (e) {
+                                is kotlinx.serialization.SerializationException -> {
+                                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                                        "errcode" to "M_BAD_JSON",
+                                        "error" to "Invalid JSON"
+                                    ))
+                                }
+                                else -> {
+                                    call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                        "errcode" to "M_UNKNOWN",
+                                        "error" to "Internal server error"
+                                    ))
+                                }
+                            }
+                        }
+                    }
+
                     // ===== ACCOUNT DATA MANAGEMENT =====
 
                     // GET /user/{userId}/account_data/{type} - Get global account data

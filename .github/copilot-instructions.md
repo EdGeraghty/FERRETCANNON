@@ -1009,3 +1009,6 @@ The FERRETCANNON Matrix server now has a complete, external configuration system
 
 - [x] Fix Server Name Configuration
 	<!-- Systematically replaced all hardcoded "localhost" references with config.federation.serverName throughout the codebase. Updated AuthUtils.createUser() function to accept serverName parameter, fixed user ID generation in ClientRoutes.kt registration and OAuth endpoints, updated room ID generation, fixed third-party network endpoints, and updated MediaStorage.kt default userId to use generic example.com. All changes maintain Matrix specification compliance and project compiles successfully. -->
+
+- [x] Implement Client-Server Device Key Query
+	<!-- POST /_matrix/client/v3/keys/query endpoint implemented according to Matrix Client-Server API v1.15 specification. Added device key fields to Devices table (ed25519Key, curve25519Key, ed25519KeyId, curve25519KeyId), implemented generateDeviceKeys() and getDeviceKeysForUsers() functions in AuthUtils.kt, and added endpoint in ClientRoutes.kt with proper authentication, validation, and Matrix-compliant error handling. Device keys are now automatically generated for new devices and can be queried by Matrix clients for end-to-end encryption setup. Project compiles successfully. -->

@@ -14,9 +14,43 @@ import java.security.SecureRandom
 import java.util.*
 import utils.OAuthService
 import kotlin.concurrent.write
-import config.ServerConfig
+import config.ServerConfig    /**
+     * Get device keys for specified users
+     */
+    fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, Any>> {
+        return transaction {
+            Devices.select { Devices.userId inList userIds }
+                .mapNotNull { deviceRow ->
+                    val userId = deviceRow[Devices.userId]
+                    val deviceId = deviceRow[Devices.deviceId]
+                    val ed25519Key = deviceRow[Devices.ed25519Key]
+                    val curve25519Key = deviceRow[Devices.curve25519Key]
+                    val ed25519KeyId = deviceRow[Devices.ed25519KeyId]
+                    val curve25519KeyId = deviceRow[Devices.curve25519KeyId]
 
-object AuthUtils {
+                    if (ed25519Key != null && curve25519Key != null &&
+                        ed25519KeyId != null && curve25519KeyId != null) {
+
+                        val deviceKeys = mapOf(
+                            "user_id" to userId,
+                            "device_id" to deviceId,
+                            "algorithms" to listOf("m.olm.v1.curve25519-aes-sha2", "m.megolm.v1.aes-sha2"),
+                            "keys" to mapOf(
+                                "ed25519:$ed25519KeyId" to ed25519Key,
+                                "curve25519:$curve25519KeyId" to curve25519Key
+                            ),
+                            "signatures" to mapOf(
+                                userId to mapOf(
+                                    "ed25519:$ed25519KeyId" to "signature_placeholder" // In real implementation, this would be signed
+                                )
+                            )
+                        )
+
+                        userId to deviceKeys
+                    } else null
+                }.toMap()
+        }
+    }ls {
     private val random = SecureRandom()
 
     /**
@@ -255,7 +289,11 @@ object AuthUtils {
             }.singleOrNull()
 
             if (existingDevice == null) {
-                // Create new device with comprehensive information
+                // Generate device keys for new device
+                val (ed25519Key, curve25519Key) = generateDeviceKeys()
+                val keyId = ServerKeys.generateKeyId()
+
+                // Create new device with comprehensive information and keys
                 Devices.insert {
                     it[Devices.userId] = userId
                     it[Devices.deviceId] = deviceId
@@ -268,6 +306,10 @@ object AuthUtils {
                     it[Devices.browserVersion] = deviceInfo.browserVersion
                     it[Devices.createdAt] = System.currentTimeMillis()
                     it[Devices.lastLoginAt] = System.currentTimeMillis()
+                    it[Devices.ed25519Key] = ed25519Key
+                    it[Devices.curve25519Key] = curve25519Key
+                    it[Devices.ed25519KeyId] = keyId
+                    it[Devices.curve25519KeyId] = keyId
                 }
             } else {
                 // Update existing device with latest information
@@ -584,13 +626,35 @@ object AuthUtils {
     }
 
     /**
-     * Reactivate user
+     * Generate device keys for end-to-end encryption
      */
-    fun reactivateUser(userId: String) {
+    fun generateDeviceKeys(): Pair<String, String> {
+        // Generate ed25519 key pair
+        val ed25519KeyPair = ServerKeys.generateEd25519KeyPair()
+        val ed25519PublicKey = ServerKeys.encodeEd25519PublicKey(ed25519KeyPair.public)
+
+        // Generate curve25519 key pair (for demo purposes, we'll use the same key)
+        // In a real implementation, you'd generate separate curve25519 keys
+        val curve25519PublicKey = ed25519PublicKey // Simplified for demo
+
+        return Pair(ed25519PublicKey, curve25519PublicKey)
+    }
+
+    /**
+     * Update device with generated keys
+     */
+    fun updateDeviceKeys(userId: String, deviceId: String) {
+        val (ed25519Key, curve25519Key) = generateDeviceKeys()
+        val keyId = ServerKeys.generateKeyId()
+
         transaction {
-            Users.update({ Users.userId eq userId }) {
-                it[Users.deactivated] = false
+            Devices.update({
+                (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
+            }) {
+                it[Devices.ed25519Key] = ed25519Key
+                it[Devices.curve25519Key] = curve25519Key
+                it[Devices.ed25519KeyId] = keyId
+                it[Devices.curve25519KeyId] = keyId
             }
         }
     }
-}

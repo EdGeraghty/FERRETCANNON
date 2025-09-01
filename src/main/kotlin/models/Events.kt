@@ -88,6 +88,11 @@ object Devices : Table("devices") {
     val browserVersion = varchar("browser_version", 50).nullable()
     val createdAt = long("created_at").default(System.currentTimeMillis())
     val lastLoginAt = long("last_login_at").default(System.currentTimeMillis())
+    // Device keys for end-to-end encryption
+    val ed25519Key = varchar("ed25519_key", 44).nullable() // Base64 encoded ed25519 public key
+    val curve25519Key = varchar("curve25519_key", 44).nullable() // Base64 encoded curve25519 public key
+    val ed25519KeyId = varchar("ed25519_key_id", 10).nullable() // Key ID for ed25519 key
+    val curve25519KeyId = varchar("curve25519_key_id", 10).nullable() // Key ID for curve25519 key
 
     override val primaryKey = PrimaryKey(userId, deviceId)
 }
