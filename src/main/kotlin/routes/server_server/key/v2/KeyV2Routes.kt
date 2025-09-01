@@ -15,6 +15,9 @@ import io.ktor.http.*
 import kotlinx.coroutines.runBlocking
 import utils.ServerKeys
 import utils.MatrixAuth
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("routes.server_server.key.v2.KeyV2Routes")
 
 fun Application.keyV2Routes() {
     val client = HttpClient(CIO)
@@ -24,12 +27,16 @@ fun Application.keyV2Routes() {
             route("/key") {
                 route("/v2") {
                     get("/server") {
+                        logger.trace("GET /_matrix/key/v2/server request")
                         val serverName = utils.ServerNameResolver.getServerName() // Dynamic server name resolution
                         val validUntilTs = System.currentTimeMillis() + (24 * 60 * 60 * 1000) // 24 hours
 
                         // Get the actual server key
                         val publicKeyBase64 = ServerKeys.getPublicKey()
                         val keyId = ServerKeys.getKeyId()
+
+                        logger.debug("Serving server keys for server: $serverName, keyId: $keyId")
+                        logger.trace("Server key response: server_name=$serverName, valid_until_ts=$validUntilTs")
 
                         call.respond(mapOf(
                             "server_name" to serverName,
@@ -45,15 +52,11 @@ fun Application.keyV2Routes() {
                         ))
                     }
                     post("/query") {
-                        // Authenticate the request
-                        val body = call.receiveText()
-                        val authHeader = call.request.headers["Authorization"]
-                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
-                            return@post
-                        }
-
+                        // Key query endpoint is public - no authentication required per Matrix spec
+                        logger.trace("POST /_matrix/key/v2/query request")
                         try {
+                            val body = call.receiveText()
+                            logger.debug("Key query request body length: ${body.length}")
                             val requestBody = Json.parseToJsonElement(body).jsonObject
                             val serverKeys = requestBody["server_keys"]?.jsonObject ?: JsonObject(emptyMap())
 
@@ -62,12 +65,14 @@ fun Application.keyV2Routes() {
                             // Process server keys
                             val serverKeysResponse = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>()
                             for (serverName in serverKeys.keys) {
+                                logger.debug("Processing key query for server: $serverName")
                                 val requestedKeysJson = serverKeys[serverName]
                                 val globalServerKeys = utils.serverKeys[serverName] ?: emptyMap<String, Map<String, Any?>>()
                                 val serverKeyData = mutableMapOf<String, Map<String, Any?>>()
 
                                 if (requestedKeysJson is JsonNull) {
                                     // Return all keys for this server
+                                    logger.trace("Returning all keys for server: $serverName")
                                     for (keyId in globalServerKeys.keys) {
                                         val keyInfo = globalServerKeys[keyId]
                                         if (keyInfo != null) {
@@ -77,6 +82,7 @@ fun Application.keyV2Routes() {
                                     }
                                 } else if (requestedKeysJson is JsonObject) {
                                     val keyList = requestedKeysJson["key_ids"]?.jsonArray ?: JsonArray(emptyList())
+                                    logger.trace("Returning specific keys for server $serverName: ${keyList.map { it.jsonPrimitive.content }}")
                                     // Return only requested keys
                                     for (keyElement in keyList) {
                                         val keyId = keyElement.jsonPrimitive.content
@@ -97,39 +103,44 @@ fun Application.keyV2Routes() {
                                 response["server_keys"] = serverKeysResponse
                             }
 
+                            logger.debug("Key query response contains ${serverKeysResponse.size} server keys")
                             call.respond(response)
                         } catch (e: Exception) {
-                            println("Query keys error: ${e.message}")
+                            logger.error("Key query error", e)
                             call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
                         }
                     }
                     get("/query/{serverName}") {
-                        val serverName = call.parameters["serverName"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-
-                        // Authenticate the request
-                        val authHeader = call.request.headers["Authorization"]
-                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
-                            return@get
+                        val serverName = call.parameters["serverName"]
+                        if (serverName == null) {
+                            logger.warn("GET /_matrix/key/v2/query/{serverName} - missing serverName parameter")
+                            return@get call.respond(HttpStatusCode.BadRequest)
                         }
 
+                        logger.trace("GET /_matrix/key/v2/query/$serverName request")
+
+                        // Key query endpoint is public - no authentication required per Matrix spec
                         try {
                             // Get server's keys from cache or fetch from remote server
                             val serverKeyData = utils.serverKeys[serverName]
                             if (serverKeyData == null) {
                                 // Try to fetch from remote server
+                                logger.debug("Server keys for $serverName not in cache, fetching from remote")
                                 val fetchedKeys = fetchRemoteServerKeys(serverName, client)
                                 if (fetchedKeys != null) {
                                     utils.serverKeys[serverName] = fetchedKeys
+                                    logger.info("Successfully fetched and cached server keys for $serverName")
                                     call.respond(fetchedKeys)
                                 } else {
+                                    logger.warn("Failed to fetch server keys for $serverName")
                                     call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Server keys not found"))
                                 }
                             } else {
+                                logger.debug("Serving cached server keys for $serverName")
                                 call.respond(serverKeyData)
                             }
                         } catch (e: Exception) {
-                            println("Query server keys error: ${e.message}")
+                            logger.error("Query server keys error for $serverName", e)
                             call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
                         }
                     }
@@ -141,6 +152,7 @@ fun Application.keyV2Routes() {
 
 suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<String, Any?>? {
     return try {
+        logger.debug("Fetching server keys from remote server: $serverName")
         val response = client.get("https://$serverName/_matrix/key/v2/server")
         val json = response.body<String>()
         val data = Json.parseToJsonElement(json).jsonObject
@@ -151,6 +163,7 @@ suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<S
         val validUntilTs = data["valid_until_ts"]?.jsonPrimitive?.long
 
         if (serverNameResponse == null || verifyKeys == null || validUntilTs == null) {
+            logger.warn("Invalid server key response from $serverName - missing required fields")
             return null
         }
 
@@ -161,9 +174,10 @@ suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<S
         keyData["valid_until_ts"] = validUntilTs
         keyData["signatures"] = data["signatures"]?.jsonObject ?: emptyMap<String, Any>()
 
+        logger.debug("Successfully parsed server keys for $serverName")
         keyData
     } catch (e: Exception) {
-        println("Failed to fetch keys from $serverName: ${e.message}")
+        logger.error("Failed to fetch keys from $serverName", e)
         null
     }
 }

@@ -43,6 +43,7 @@ import routes.discovery.wellknown.wellKnownRoutes
 import config.ConfigLoader
 import config.ServerConfig
 import utils.ServerNameResolver
+import org.slf4j.LoggerFactory
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -52,47 +53,68 @@ import utils.ServerNameResolver
 // Connected clients for broadcasting
 // val connectedClients = mutableMapOf<String, MutableList<WebSocketSession>>() // roomId to list of sessions
 
+private val logger = LoggerFactory.getLogger("Main")
+
 fun main() {
-    println("Starting FERRETCANNON Matrix Server...")
+    logger.info("🚀 Starting FERRETCANNON Matrix Server...")
+    logger.debug("Initializing server components...")
 
     // Load configuration
     val config = ConfigLoader.loadConfig()
-    println("Configuration loaded successfully")
+    logger.info("✅ Configuration loaded successfully from: ${config::class.simpleName}")
+    logger.debug("Server config: host=${config.server.host}, port=${config.server.port}")
+    logger.debug("Database config: ${config.database.url}")
+    logger.debug("Media config: maxUploadSize=${config.media.maxUploadSize}")
 
     // Database setup with configurable connection
+    logger.debug("Connecting to database...")
     Database.connect(config.database.url, driver = config.database.driver)
+    logger.info("✅ Database connected successfully")
+
     transaction {
+        logger.debug("Creating database schema...")
         SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, ServerKeys)
+        logger.info("✅ Database schema created/verified")
 
         // Create test user for development (if enabled in config)
         if (config.development.createTestUser) {
+            logger.debug("Checking for test user creation...")
             val testUserExists = Users.select { Users.username eq config.development.testUsername }.count() > 0
             if (!testUserExists) {
+                logger.debug("Creating test user: ${config.development.testUsername}")
                 utils.AuthUtils.createUser(
                     config.development.testUsername,
                     config.development.testPassword,
                     config.development.testDisplayName
                 )
-                println("Created test user: ${config.development.testUsername} with password: ${config.development.testPassword}")
+                logger.info("✅ Created test user: ${config.development.testUsername}")
+                logger.warn("⚠️  TEST USER PASSWORD: ${config.development.testPassword} - Change in production!")
+            } else {
+                logger.debug("Test user already exists")
             }
         }
     }
 
     // Initialize MediaStorage with configuration
+    logger.debug("Initializing media storage...")
     utils.MediaStorage.initialize(
         config.media.maxUploadSize,
         800 // Use largest thumbnail dimension as max
     )
+    logger.info("✅ Media storage initialized with max upload size: ${config.media.maxUploadSize} bytes")
 
     // Initialize ServerNameResolver with the configured port
+    logger.debug("Initializing server name resolver...")
     utils.ServerNameResolver.setServerPort(config.server.port)
+    logger.info("✅ Server name resolver initialized")
 
     try {
-        println("About to create embedded server")
+        logger.debug("Creating embedded server instance...")
         val server = embeddedServer(Netty, port = config.server.port, host = config.server.host) {
-            println("Inside embeddedServer block")
+            logger.debug("Configuring server plugins and routes...")
 
             // Install CORS for client-server API with configurable origins
+            logger.trace("Installing CORS plugin...")
             install(CORS) {
                 allowMethod(HttpMethod.Get)
                 allowMethod(HttpMethod.Post)
@@ -103,8 +125,10 @@ fun main() {
                 allowHeader("X-Requested-With")
                 allowCredentials = true
                 if (config.server.corsAllowedOrigins.contains("*")) {
+                    logger.debug("CORS: Allowing all origins (development mode)")
                     anyHost() // Allow all origins in development
                 } else {
+                    logger.debug("CORS: Configuring specific origins: ${config.server.corsAllowedOrigins}")
                     config.server.corsAllowedOrigins.forEach { origin ->
                         // Extract host from origin (remove scheme if present)
                         val host = if (origin.startsWith("http://") || origin.startsWith("https://")) {
@@ -117,18 +141,14 @@ fun main() {
                     }
                 }
             }
-
-            // Install rate limiting (simplified for now)
-            // install(io.ktor.server.plugins.ratelimit.RateLimit) {
-            //     global {
-            //         rateLimiter(limit = 300, refillPeriod = java.time.Duration.ofMinutes(1)) // 300 requests per minute
-            //     }
-            // }
+            logger.debug("✅ CORS plugin installed")
 
             // Request size limiting with configurable limit
+            logger.trace("Installing request size interceptor...")
             intercept(ApplicationCallPipeline.Call) {
                 val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
                 if (contentLength != null && contentLength > config.server.maxRequestSize) {
+                    logger.warn("Request rejected: size ${contentLength} exceeds limit ${config.server.maxRequestSize}")
                     call.respond(HttpStatusCode.BadRequest, mapOf(
                         "errcode" to "M_TOO_LARGE",
                         "error" to "Request too large"
@@ -137,44 +157,50 @@ fun main() {
                 }
             }
 
+            logger.trace("Installing ContentNegotiation plugin...")
             install(ContentNegotiation) {
                 json()
             }
+            logger.debug("✅ ContentNegotiation plugin installed")
+
+            logger.trace("Installing WebSockets plugin...")
             install(WebSockets) {
                 pingPeriod = Duration.ofSeconds(15)
                 timeout = Duration.ofSeconds(15)
                 maxFrameSize = Long.MAX_VALUE
                 masking = false
             }
-            // install(Multipart) {
-            //     maxPartSize = config.media.maxUploadSize
-            // }
+            logger.debug("✅ WebSockets plugin installed")
             
             // Call route setup functions on the application
-            println("About to call clientRoutes()")
+            logger.debug("Setting up client routes...")
             clientRoutes(config)
-            println("clientRoutes() completed")
+            logger.info("✅ Client routes configured")
             
-            println("About to call federationRoutes()")
+            logger.debug("Setting up federation routes...")
             federationRoutes()
-            println("federationRoutes() completed")
-            println("About to call keyRoutes()")
+            logger.info("✅ Federation routes configured")
+
+            logger.debug("Setting up key routes...")
             keyRoutes()
-            println("keyRoutes() completed")
-            println("About to call wellKnownRoutes()")
+            logger.info("✅ Key routes configured")
+
+            logger.debug("Setting up well-known routes...")
             wellKnownRoutes(config)
-            println("wellKnownRoutes() completed")
+            logger.info("✅ Well-known routes configured")
             
             routing {
-                println("Setting up routes...")
+                logger.debug("Setting up basic routes...")
                 get("/") {
-                    println("Handling root request")
+                    logger.trace("Handling root request")
                     call.respondText("Hello, FERRETCANNON Matrix Server!", ContentType.Text.Plain)
                 }
                 get("/_matrix/server-info") {
                     // Debug endpoint to show server information
+                    logger.trace("Handling server-info request")
                     try {
                         val serverInfo = ServerNameResolver.getServerInfo()
+                        logger.debug("Server info retrieved: ${serverInfo.keys.joinToString()}")
                         call.respondText(
                             kotlinx.serialization.json.Json.encodeToString(
                                 kotlinx.serialization.json.JsonObject.serializer(),
@@ -185,6 +211,7 @@ fun main() {
                             ContentType.Application.Json
                         )
                     } catch (e: Exception) {
+                        logger.error("Failed to get server info", e)
                         call.respondText(
                             """{"error": "Failed to get server info", "message": "${e.message}"}""",
                             ContentType.Application.Json,
@@ -193,50 +220,71 @@ fun main() {
                     }
                 }
                 webSocket("/ws/room/{roomId}") {
-                    val roomId = call.parameters["roomId"] ?: return@webSocket
+                    val roomId = call.parameters["roomId"]
+                    if (roomId == null) {
+                        logger.warn("WebSocket connection rejected: missing roomId parameter")
+                        return@webSocket
+                    }
+                    
+                    logger.info("WebSocket connection established for room: $roomId")
                     val session = this
                     val clients = connectedClients.getOrPut(roomId) { mutableListOf() }
                     clients.add(session as io.ktor.server.websocket.DefaultWebSocketServerSession)
+                    
                     try {
                         for (frame in incoming) {
                             // Handle client messages if needed
                             when (frame) {
                                 is Frame.Text -> {
                                     val text = frame.readText()
-                                    println("Received: $text")
+                                    logger.debug("WebSocket message received in room $roomId: $text")
                                 }
-                                else -> {}
+                                else -> {
+                                    logger.trace("WebSocket frame received in room $roomId: ${frame.frameType}")
+                                }
                             }
                         }
                     } catch (e: ClosedReceiveChannelException) {
-                        // Client disconnected
+                        logger.debug("WebSocket client disconnected from room $roomId")
+                    } catch (e: Exception) {
+                        logger.error("WebSocket error in room $roomId", e)
                     } finally {
                         clients.remove(session)
+                        logger.debug("WebSocket session cleaned up for room $roomId")
                     }
                 }
-                println("Basic routes set up")
+                logger.debug("✅ Basic routes configured")
             }
-            println("Server configuration complete")
+            logger.info("✅ Server configuration complete")
         }
         
-        println("About to start server...")
+        logger.debug("Starting server...")
         server.start(wait = false)
-        println("Server started successfully!")
+        logger.info("🎉 Server started successfully!")
+        logger.info("🌐 Server is running on ${config.server.host}:${config.server.port}")
+        logger.info("📋 Available endpoints:")
+        logger.info("   - Client API: http://${config.server.host}:${config.server.port}/_matrix/client/")
+        logger.info("   - Federation API: http://${config.server.host}:${config.server.port}/_matrix/federation/")
+        logger.info("   - Key API: http://${config.server.host}:${config.server.port}/_matrix/key/")
+        logger.info("   - Well-known: http://${config.server.host}:${config.server.port}/.well-known/matrix/")
+        logger.info("   - Server Info: http://${config.server.host}:${config.server.port}/_matrix/server-info")
+        logger.info("   - WebSocket: ws://${config.server.host}:${config.server.port}/ws/room/{roomId}")
+        logger.info("🛑 Press Ctrl+C to stop the server")
         
         // Keep the main thread alive
-        println("Server is running on ${config.server.host}:${config.server.port}. Press Ctrl+C to stop.")
         Runtime.getRuntime().addShutdownHook(Thread {
-            println("Shutting down server...")
+            logger.info("🛑 Shutting down server...")
             server.stop(1000, 1000)
+            logger.info("✅ Server shutdown complete")
         })
         
         // Wait indefinitely
         Thread.currentThread().join()
         
     } catch (e: Exception) {
-        println("Error starting server: ${e.message}")
+        logger.error("💥 Error starting server", e)
         e.printStackTrace()
     }
     
-    println("Main function completed")
+    logger.info("🏁 Main function completed")
 }

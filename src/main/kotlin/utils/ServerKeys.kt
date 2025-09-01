@@ -8,8 +8,10 @@ import net.i2p.crypto.eddsa.spec.EdDSAPrivateKeySpec
 import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 import java.security.Signature
 import java.util.Base64
+import org.slf4j.LoggerFactory
 
 object ServerKeys {
+    private val logger = LoggerFactory.getLogger("utils.ServerKeys")
     private val spec = EdDSANamedCurveTable.getByName(EdDSANamedCurveTable.ED_25519)
     private lateinit var privateKey: EdDSAPrivateKey
     private lateinit var publicKey: EdDSAPublicKey
@@ -17,10 +19,12 @@ object ServerKeys {
     private lateinit var keyId: String
 
     init {
+        logger.info("🔐 Initializing ServerKeys with Ed25519 key pair generation")
         generateKeyPair()
     }
 
     private fun generateKeyPair() {
+        logger.debug("Generating new Ed25519 key pair...")
         val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
         keyPairGenerator.initialize(spec, null)
         val keyPair = keyPairGenerator.generateKeyPair()
@@ -30,6 +34,9 @@ object ServerKeys {
         // Use unpadded Base64 as per Matrix specification appendices
         publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
         keyId = "ed25519:0"
+        
+        logger.info("✅ Generated server key pair with ID: $keyId")
+        logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
     }
 
     // Test function to verify against Matrix specification test vectors
@@ -74,15 +81,19 @@ object ServerKeys {
     fun getPublicKeyObject(): EdDSAPublicKey = publicKey
 
     fun sign(data: ByteArray): String {
+        logger.trace("Signing ${data.size} bytes of data")
         val signature = Signature.getInstance("EdDSA", "I2P")
         signature.initSign(privateKey)
         signature.update(data)
         val signatureBytes = signature.sign()
         // Use unpadded Base64 as per Matrix specification appendices
-        return Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
+        val signatureBase64 = Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
+        logger.trace("Generated signature: ${signatureBase64.take(32)}...")
+        return signatureBase64
     }
 
     fun verify(data: ByteArray, signature: String): Boolean {
+        logger.trace("Verifying signature for ${data.size} bytes of data")
         return try {
             // Handle both padded and unpadded Base64 for compatibility
             val signatureBytes = try {
@@ -94,9 +105,74 @@ object ServerKeys {
             val sig = Signature.getInstance("EdDSA", "I2P")
             sig.initVerify(publicKey)
             sig.update(data)
-            sig.verify(signatureBytes)
+            val result = sig.verify(signatureBytes)
+            logger.trace("Signature verification result: $result")
+            result
         } catch (e: Exception) {
+            logger.warn("Signature verification failed", e)
             false
         }
+    }
+
+    fun getServerKeys(serverName: String): Map<String, Any> {
+        logger.debug("Generating server keys response for server: $serverName")
+        val validUntilTs = System.currentTimeMillis() + 86400000 // Valid for 24 hours
+        
+        val serverKeys = mapOf(
+            "server_name" to serverName,
+            "valid_until_ts" to validUntilTs,
+            "verify_keys" to mapOf(
+                keyId to mapOf(
+                    "key" to publicKeyBase64
+                )
+            ),
+            "old_verify_keys" to emptyMap<String, Any>(),
+            "signatures" to mapOf(
+                serverName to mapOf(
+                    keyId to sign(getServerKeysCanonicalJson(serverName).toByteArray(Charsets.UTF_8))
+                )
+            )
+        )
+        
+        logger.debug("Server keys generated with valid_until_ts: $validUntilTs")
+        logger.trace("Server keys response: ${serverKeys.keys.joinToString()}")
+        return serverKeys
+    }
+
+    private fun getServerKeysCanonicalJson(serverName: String): String {
+        // Create canonical JSON for signing (without signatures field)
+        val canonicalData = mapOf(
+            "server_name" to serverName,
+            "valid_until_ts" to (System.currentTimeMillis() + 86400000),
+            "verify_keys" to mapOf(
+                keyId to mapOf(
+                    "key" to publicKeyBase64
+                )
+            ),
+            "old_verify_keys" to emptyMap<String, Any>()
+        )
+
+        // Convert to canonical JSON string
+        return kotlinx.serialization.json.Json {
+            encodeDefaults = true
+            explicitNulls = false
+        }.encodeToString(kotlinx.serialization.json.JsonObject.serializer(),
+            kotlinx.serialization.json.JsonObject(canonicalData.mapValues { value ->
+                when (value.value) {
+                    is String -> kotlinx.serialization.json.JsonPrimitive(value.value as String)
+                    is Long -> kotlinx.serialization.json.JsonPrimitive(value.value as Long)
+                    is Map<*, *> -> kotlinx.serialization.json.JsonObject((value.value as Map<String, Any>).mapValues { innerValue ->
+                        when (innerValue.value) {
+                            is String -> kotlinx.serialization.json.JsonPrimitive(innerValue.value as String)
+                            is Map<*, *> -> kotlinx.serialization.json.JsonObject((innerValue.value as Map<String, Any>).mapValues { innermostValue ->
+                                kotlinx.serialization.json.JsonPrimitive(innermostValue.value as String)
+                            })
+                            else -> kotlinx.serialization.json.JsonPrimitive(innerValue.value.toString())
+                        }
+                    })
+                    else -> kotlinx.serialization.json.JsonPrimitive(value.value.toString())
+                }
+            })
+        )
     }
 }
