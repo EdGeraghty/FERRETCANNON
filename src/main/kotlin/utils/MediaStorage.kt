@@ -60,7 +60,7 @@ object MediaStorage {
     /**
      * Store media content
      */
-    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, userId: String = "@anonymous:localhost"): Boolean {
+    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, userId: String = "@anonymous:example.com"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 // Validate file size
@@ -103,7 +103,7 @@ object MediaStorage {
     /**
      * Store media content with filename
      */
-    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, filename: String?, userId: String = "@anonymous:localhost"): Boolean {
+    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, filename: String?, userId: String = "@anonymous:example.com"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 // Validate file size

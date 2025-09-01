@@ -369,7 +369,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             }
 
                             // Generate new room ID for upgraded room
-                            val newRoomId = "!${System.currentTimeMillis()}_${userId.substringAfter("@").substringBefore(":")}:localhost"
+                            val newRoomId = "!${System.currentTimeMillis()}_${userId.substringAfter("@").substringBefore(":")}:${config.federation.serverName}"
 
                             // Create the upgraded room
                             transaction {
@@ -1042,12 +1042,12 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                                         // Use OAuth user ID for registration
                                         val finalUsername = json["username"]?.jsonPrimitive?.content ?: oauthUserId.substringAfter("@").substringBefore(":")
-                                        val finalUserId = "@$finalUsername:localhost"
+                                        val finalUserId = "@$finalUsername:${config.federation.serverName}"
 
                                         // Check if user already exists
                                         if (AuthUtils.isUsernameAvailable(finalUsername)) {
                                             // Create user with OAuth credentials
-                                            AuthUtils.createUser(finalUsername, "", finalUsername, false)
+                                            AuthUtils.createUser(finalUsername, "", finalUsername, false, config.federation.serverName)
                                         }
                                     }
                                     else -> {
@@ -1180,12 +1180,12 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     ?: call.request.local.remoteHost
 
                                 // Create user first
-                                val userId = AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest)
+                                val userId = AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest, config.federation.serverName)
                                 // Create access token for the user with device information
                                 AuthUtils.createAccessToken(userId, finalDeviceId, userAgent, ipAddress)
                             } else {
                                 // For inhibited login, still create the user but don't create access token
-                                AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest)
+                                AuthUtils.createUser(finalUsername, password ?: "", finalUsername, isGuest, config.federation.serverName)
                                 null
                             }
 
@@ -1193,12 +1193,12 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                             // Store user session in database if login is not inhibited
                             if (accessToken != null) {
-                                val userId = "@$finalUsername:localhost"
+                                val userId = "@$finalUsername:${config.federation.serverName}"
                                 // Access token is already stored by AuthUtils.createAccessToken()
                             }
 
                             // Prepare response
-                            val userId = "@$finalUsername:localhost"
+                            val userId = "@$finalUsername:${config.federation.serverName}"
                             val responseJson = if (accessToken != null) {
                                 """
                                 {
@@ -1939,7 +1939,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val creationContent = json["creation_content"]?.jsonObject
 
                             // Generate room ID
-                            val roomId = "!${System.currentTimeMillis()}:localhost"
+                            val roomId = "!${System.currentTimeMillis()}:${config.federation.serverName}"
 
                             // Create room in database
                             transaction {
@@ -4034,11 +4034,11 @@ ${String(thumbnailData, Charsets.UTF_8)}
                                 "room_id" to roomId,
                                 "name" to "Test Room",
                                 "topic" to "Test topic",
-                                "canonical_alias" to "#test:localhost",
+                                "canonical_alias" to "#test:${config.federation.serverName}",
                                 "joined_members" to 1,
                                 "joined_local_members" to 1,
                                 "version" to "9",
-                                "creator" to "@test:localhost",
+                                "creator" to "@test:${config.federation.serverName}",
                                 "encryption" to null,
                                 "federatable" to true,
                                 "public" to false,
@@ -4242,7 +4242,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             // Get user by protocol (simplified)
                             val users = listOf(
                                 mapOf(
-                                    "userid" to "@irc_user:localhost",
+                                    "userid" to "@irc_user:${config.federation.serverName}",
                                     "protocol" to protocol,
                                     "fields" to fields
                                 )
@@ -4285,7 +4285,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             // Get location by protocol (simplified)
                             val locations = listOf(
                                 mapOf(
-                                    "alias" to "#irc_channel:localhost",
+                                    "alias" to "#irc_channel:${config.federation.serverName}",
                                     "protocol" to protocol,
                                     "fields" to fields
                                 )
@@ -4317,7 +4317,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             // Get all locations (simplified)
                             val locations = listOf(
                                 mapOf(
-                                    "alias" to "#irc_channel:localhost",
+                                    "alias" to "#irc_channel:${config.federation.serverName}",
                                     "protocol" to "irc",
                                     "fields" to mapOf("irc_server" to "irc.example.com", "irc_channel" to "#channel")
                                 )
@@ -4513,7 +4513,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                                         accessToken = newAccessToken,
                                         refreshToken = newRefreshToken,
                                         clientId = clientId,
-                                        userId = "@test:localhost", // Simplified
+                                        userId = "@test:${config.federation.serverName}", // Simplified
                                         scope = "openid profile",
                                         expiresIn = 3600L
                                     )
@@ -4734,7 +4734,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             val userInfo = userInfoResult.getOrThrow()
 
                             // Create or update Matrix user account
-                            val matrixUserId = "@${userInfo.email?.substringBefore("@") ?: userInfo.id ?: "oauth_user"}:localhost"
+                            val matrixUserId = "@${userInfo.email?.substringBefore("@") ?: userInfo.id ?: "oauth_user"}:${config.federation.serverName}"
 
                             // Check if user exists, create if not
                             val existingUser = transaction {

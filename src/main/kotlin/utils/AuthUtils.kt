@@ -14,6 +14,7 @@ import java.security.SecureRandom
 import java.util.*
 import utils.OAuthService
 import kotlin.concurrent.write
+import config.ServerConfig
 
 object AuthUtils {
     private val random = SecureRandom()
@@ -170,9 +171,10 @@ object AuthUtils {
         username: String,
         password: String,
         displayName: String? = null,
-        isGuest: Boolean = false
+        isGuest: Boolean = false,
+        serverName: String = "localhost"
     ): String {
-        val userId = "@$username:localhost"
+        val userId = "@$username:$serverName"
         val passwordHash = if (isGuest) "" else hashPassword(password)
 
         return transaction {
@@ -435,19 +437,19 @@ object AuthUtils {
     /**
      * Validate application service token (placeholder)
      */
-    fun validateApplicationServiceToken(token: String): String? {
+    fun validateApplicationServiceToken(token: String, serverName: String = "localhost"): String? {
         // TODO: Implement real application service token validation
         // For now, return a mock user ID for demo purposes
-        return if (token.startsWith("as_")) "@appservice_user:localhost" else null
+        return if (token.startsWith("as_")) "@appservice_user:$serverName" else null
     }
 
     /**
      * Validate login token (placeholder)
      */
-    fun validateLoginToken(token: String): String? {
+    fun validateLoginToken(token: String, serverName: String = "localhost"): String? {
         // TODO: Implement real login token validation
         // For now, return a mock user ID for demo purposes
-        return if (token.startsWith("login_")) "@login_user:localhost" else null
+        return if (token.startsWith("login_")) "@login_user:$serverName" else null
     }
 
     /**

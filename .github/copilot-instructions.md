@@ -1006,3 +1006,6 @@ The FERRETCANNON Matrix server now has a complete, external configuration system
 
 - [x] Implement Username Availability Checking
 	<!-- GET /_matrix/client/v3/register/available endpoint implemented according to Matrix Client-Server API v1.15 specification. Added username format validation, availability checking using AuthUtils.isUsernameAvailable(), and proper Matrix error responses (M_INVALID_USERNAME, M_USER_IN_USE, M_MISSING_PARAM). Endpoint returns 200 for available usernames and appropriate error codes for invalid or taken usernames. Project compiles successfully. -->
+
+- [x] Fix Server Name Configuration
+	<!-- Systematically replaced all hardcoded "localhost" references with config.federation.serverName throughout the codebase. Updated AuthUtils.createUser() function to accept serverName parameter, fixed user ID generation in ClientRoutes.kt registration and OAuth endpoints, updated room ID generation, fixed third-party network endpoints, and updated MediaStorage.kt default userId to use generic example.com. All changes maintain Matrix specification compliance and project compiles successfully. -->

@@ -88,7 +88,8 @@ fun main() {
                 utils.AuthUtils.createUser(
                     config.development.testUsername,
                     config.development.testPassword,
-                    config.development.testDisplayName
+                    config.development.testDisplayName,
+                    serverName = config.federation.serverName
                 )
                 logger.info("✅ Created test user: ${config.development.testUsername}")
                 logger.warn("⚠️  TEST USER PASSWORD: ${config.development.testPassword} - Change in production!")
