@@ -27,7 +27,7 @@ object MatrixAuth {
     fun verifyAuth(call: ApplicationCall, authHeader: String, body: String): Boolean {
         val method = call.request.httpMethod.value
         val uri = call.request.uri
-        val destination = "localhost" // This server's name
+        val destination = ServerNameResolver.getServerName() // This server's name
 
         // Parse auth header to get origin
         val authParams = parseAuthorization(authHeader) ?: return false

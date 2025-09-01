@@ -7,6 +7,7 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import kotlinx.serialization.json.*
 import config.ServerConfig
+import utils.ServerNameResolver
 
 fun Application.wellKnownRoutes(config: ServerConfig) {
     routing {
@@ -23,7 +24,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
 
-                    call.respond(mapOf("m.server" to "${config.federation.serverName}:${config.server.port}"))
+                    call.respond(mapOf("m.server" to ServerNameResolver.getServerAddress()))
                 }
 
                 get("/client") {
@@ -37,7 +38,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                    val baseUrl = "https://${config.federation.serverName}:${config.server.port}"
+                    val baseUrl = ServerNameResolver.getServerBaseUrlHttp()
                     call.respond(mapOf(
                         "m.homeserver" to mapOf(
                             "base_url" to baseUrl
@@ -63,7 +64,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     call.response.headers.append("Content-Type", "application/json")
                     call.response.headers.append("Access-Control-Allow-Origin", "*")
 
-                    val baseUrl = "https://${config.federation.serverName}:${config.server.port}"
+                    val baseUrl = ServerNameResolver.getServerBaseUrlHttp()
                     call.respond(mapOf(
                         "policies" to mapOf(
                             "privacy_policy" to mapOf(

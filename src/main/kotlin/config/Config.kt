@@ -2,6 +2,7 @@
 package config
 
 import kotlinx.serialization.Serializable
+import utils.ServerNameResolver
 
 @Serializable
 data class ServerConfig(
@@ -31,7 +32,7 @@ data class DatabaseSettings(
 
 @Serializable
 data class FederationSettings(
-    val serverName: String = "localhost:8080",
+    val serverName: String = ServerNameResolver.getServerName(),
     val federationPort: Int = 8080,
     val enableFederation: Boolean = true,
     val allowedServers: List<String> = listOf("*"), // In production, specify allowed servers

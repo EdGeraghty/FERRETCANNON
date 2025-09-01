@@ -82,7 +82,10 @@ fun main() {
         config.media.maxUploadSize,
         800 // Use largest thumbnail dimension as max
     )
-    
+
+    // Initialize ServerNameResolver with the configured port
+    utils.ServerNameResolver.setServerPort(config.server.port)
+
     try {
         println("About to create embedded server")
         val server = embeddedServer(Netty, port = config.server.port, host = config.server.host) {
@@ -157,6 +160,10 @@ fun main() {
                 get("/") {
                     println("Handling root request")
                     call.respondText("Hello, FERRETCANNON Matrix Server!", ContentType.Text.Plain)
+                }
+                get("/_matrix/server-info") {
+                    // Debug endpoint to show server information
+                    call.respond(utils.ServerNameResolver.getServerInfo())
                 }
                 webSocket("/ws/room/{roomId}") {
                     val roomId = call.parameters["roomId"] ?: return@webSocket

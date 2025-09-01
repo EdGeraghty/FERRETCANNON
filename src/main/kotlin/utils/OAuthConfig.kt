@@ -55,7 +55,7 @@ object OAuthConfig {
                 tokenUrl = "https://oauth2.googleapis.com/token",
                 userInfoUrl = "https://www.googleapis.com/oauth2/v2/userinfo",
                 scope = "openid profile email",
-                redirectUri = "https://localhost:8080/_matrix/client/v3/oauth2/callback/google"
+                redirectUri = "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/google"
             )
         }
 
@@ -73,7 +73,7 @@ object OAuthConfig {
                 tokenUrl = "https://github.com/login/oauth/access_token",
                 userInfoUrl = "https://api.github.com/user",
                 scope = "read:user user:email",
-                redirectUri = "https://localhost:8080/_matrix/client/v3/oauth2/callback/github"
+                redirectUri = "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/github"
             )
         }
 
@@ -91,7 +91,7 @@ object OAuthConfig {
                 tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
                 userInfoUrl = "https://graph.microsoft.com/v1.0/me",
                 scope = "openid profile email",
-                redirectUri = "https://localhost:8080/_matrix/client/v3/oauth2/callback/microsoft"
+                redirectUri = "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/microsoft"
             )
         }
     }

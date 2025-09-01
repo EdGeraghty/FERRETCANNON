@@ -24,7 +24,7 @@ fun Application.keyV2Routes() {
             route("/key") {
                 route("/v2") {
                     get("/server") {
-                        val serverName = "localhost" // In production, this would be configurable
+                        val serverName = utils.ServerNameResolver.getServerName() // Dynamic server name resolution
                         val validUntilTs = System.currentTimeMillis() + (24 * 60 * 60 * 1000) // 24 hours
 
                         // Get the actual server key
