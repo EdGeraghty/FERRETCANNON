@@ -80,18 +80,18 @@ fun Application.clientRoutes(config: ServerConfig) {
 
             if (result != null) {
                 val (userId, deviceId) = result
-                // Store authenticated user information
-                call.attributes.put(AttributeKey("matrix-user"), UserIdPrincipal(userId))
-                call.attributes.put(AttributeKey("matrix-token"), accessToken)
-                call.attributes.put(AttributeKey("matrix-user-id"), userId)
-                call.attributes.put(AttributeKey("matrix-device-id"), deviceId)
+                // Store authenticated user information with properly typed AttributeKeys
+                call.attributes.put(AttributeKey<UserIdPrincipal>("matrix-user"), UserIdPrincipal(userId))
+                call.attributes.put(AttributeKey<String>("matrix-token"), accessToken)
+                call.attributes.put(AttributeKey<String>("matrix-user-id"), userId)
+                call.attributes.put(AttributeKey<String>("matrix-device-id"), deviceId)
             } else {
                 // Invalid token - will be handled by individual endpoints
-                call.attributes.put(AttributeKey("matrix-invalid-token"), accessToken)
+                call.attributes.put(AttributeKey<String>("matrix-invalid-token"), accessToken)
             }
         } else {
             // No token provided - will be handled by individual endpoints
-            call.attributes.put(AttributeKey("matrix-no-token"), true)
+            call.attributes.put(AttributeKey<Boolean>("matrix-no-token"), true)
         }
     }
 
