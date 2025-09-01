@@ -27,6 +27,8 @@ import utils.accessTokens
 import models.AccessTokens
 import utils.StateResolver
 import utils.MatrixAuth
+import models.Events
+import models.Rooms
 
 val stateResolver = StateResolver()
 
