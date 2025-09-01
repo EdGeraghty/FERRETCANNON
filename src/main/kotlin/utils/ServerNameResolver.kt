@@ -74,7 +74,7 @@ object ServerNameResolver {
      * Determine the server name using multiple strategies
      */
     private fun determineServerName(): String {
-        // Strategy 1: Environment variable
+        // Strategy 1: Environment variable (highest priority)
         System.getenv("MATRIX_SERVER_NAME")?.let { envName ->
             if (envName.isNotBlank()) {
                 println("Using server name from MATRIX_SERVER_NAME: $envName")
@@ -82,7 +82,7 @@ object ServerNameResolver {
             }
         }
 
-        // Strategy 2: Configuration file override
+        // Strategy 2: Configuration file override (high priority)
         try {
             val configFile = java.io.File("config.yml")
             if (configFile.exists()) {
@@ -100,19 +100,19 @@ object ServerNameResolver {
             println("Warning: Could not read config.yml for server name: ${e.message}")
         }
 
-        // Strategy 3: Try to get FQDN
+        // Strategy 3: Try to get hostname (not FQDN)
         try {
             val localHost = InetAddress.getLocalHost()
-            val fqdn = localHost.canonicalHostName
-            if (fqdn != "localhost" && fqdn != "127.0.0.1" && !fqdn.contains("localhost")) {
-                println("Using FQDN as server name: $fqdn")
-                return fqdn
+            val hostname = localHost.hostName
+            if (hostname != "localhost" && hostname != "127.0.0.1" && !hostname.contains("localhost")) {
+                println("Using hostname as server name: $hostname")
+                return hostname
             }
         } catch (e: Exception) {
-            println("Warning: Could not determine FQDN: ${e.message}")
+            println("Warning: Could not determine hostname: ${e.message}")
         }
 
-        // Strategy 4: Try to find a non-loopback network interface
+        // Strategy 4: Try to find a non-loopback network interface hostname
         try {
             val networkInterfaces = NetworkInterface.getNetworkInterfaces()
             while (networkInterfaces.hasMoreElements()) {
@@ -123,7 +123,7 @@ object ServerNameResolver {
                 while (addresses.hasMoreElements()) {
                     val address = addresses.nextElement()
                     if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
-                        val hostname = address.canonicalHostName
+                        val hostname = address.hostName
                         if (hostname != "localhost" && hostname != address.hostAddress) {
                             println("Using network interface hostname: $hostname")
                             return hostname
@@ -135,9 +135,8 @@ object ServerNameResolver {
             println("Warning: Could not enumerate network interfaces: ${e.message}")
         }
 
-        // Strategy 5: Try reverse DNS lookup of public IP
+        // Strategy 5: Try reverse DNS lookup of public IP (only as last resort)
         try {
-            // This is a simplified approach - in production you'd use a service
             val localHost = InetAddress.getLocalHost()
             if (localHost.hostAddress != "127.0.0.1") {
                 println("Using local host address: ${localHost.hostAddress}")

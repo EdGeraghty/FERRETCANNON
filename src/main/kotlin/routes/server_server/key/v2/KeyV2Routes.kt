@@ -38,18 +38,26 @@ fun Application.keyV2Routes() {
                         logger.debug("Serving server keys for server: $serverName, keyId: $keyId")
                         logger.trace("Server key response: server_name=$serverName, valid_until_ts=$validUntilTs")
 
-                        call.respond(mapOf(
-                            "server_name" to serverName,
-                            "signatures" to mapOf(
-                                serverName to mapOf(
-                                    keyId to ServerKeys.sign("$serverName valid_until_ts:$validUntilTs".toByteArray())
-                                )
-                            ),
-                            "valid_until_ts" to validUntilTs,
-                            "verify_keys" to mapOf(
-                                keyId to mapOf("key" to publicKeyBase64)
-                            )
+                        // Create response manually to avoid serialization issues
+                        val responseJson = kotlinx.serialization.json.JsonObject(mapOf(
+                            "server_name" to kotlinx.serialization.json.JsonPrimitive(serverName),
+                            "signatures" to kotlinx.serialization.json.JsonObject(mapOf(
+                                serverName to kotlinx.serialization.json.JsonObject(mapOf(
+                                    keyId to kotlinx.serialization.json.JsonPrimitive(ServerKeys.sign("$serverName valid_until_ts:$validUntilTs".toByteArray()))
+                                ))
+                            )),
+                            "valid_until_ts" to kotlinx.serialization.json.JsonPrimitive(validUntilTs),
+                            "verify_keys" to kotlinx.serialization.json.JsonObject(mapOf(
+                                keyId to kotlinx.serialization.json.JsonObject(mapOf(
+                                    "key" to kotlinx.serialization.json.JsonPrimitive(publicKeyBase64)
+                                ))
+                            ))
                         ))
+
+                        call.respondText(
+                            kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), responseJson),
+                            io.ktor.http.ContentType.Application.Json
+                        )
                     }
                     post("/query") {
                         // Key query endpoint is public - no authentication required per Matrix spec

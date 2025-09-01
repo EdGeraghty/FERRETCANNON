@@ -25,18 +25,42 @@ object ServerKeys {
 
     private fun generateKeyPair() {
         logger.debug("Generating new Ed25519 key pair...")
-        val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
-        keyPairGenerator.initialize(spec, null)
-        val keyPair = keyPairGenerator.generateKeyPair()
+        try {
+            val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
+            // Try with SecureRandom first
+            val secureRandom = java.security.SecureRandom()
+            keyPairGenerator.initialize(spec, secureRandom)
+            val keyPair = keyPairGenerator.generateKeyPair()
 
-        privateKey = keyPair.private as EdDSAPrivateKey
-        publicKey = keyPair.public as EdDSAPublicKey
-        // Use unpadded Base64 as per Matrix specification appendices
-        publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
-        keyId = "ed25519:0"
-        
-        logger.info("✅ Generated server key pair with ID: $keyId")
-        logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
+            privateKey = keyPair.private as EdDSAPrivateKey
+            publicKey = keyPair.public as EdDSAPublicKey
+            // Use unpadded Base64 as per Matrix specification appendices
+            publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+            keyId = "ed25519:0"
+            
+            logger.info("✅ Generated server key pair with ID: $keyId")
+            logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
+        } catch (e: Exception) {
+            logger.error("Failed to generate key pair with SecureRandom, trying alternative approach", e)
+            // Fallback: try with key size instead of AlgorithmParameterSpec
+            try {
+                val keyPairGenerator = net.i2p.crypto.eddsa.KeyPairGenerator()
+                val secureRandom = java.security.SecureRandom()
+                keyPairGenerator.initialize(25519, secureRandom) // Ed25519 key size
+                val keyPair = keyPairGenerator.generateKeyPair()
+
+                privateKey = keyPair.private as EdDSAPrivateKey
+                publicKey = keyPair.public as EdDSAPublicKey
+                publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+                keyId = "ed25519:0"
+                
+                logger.info("✅ Generated server key pair with key size method, ID: $keyId")
+                logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
+            } catch (fallbackError: Exception) {
+                logger.error("Both key generation methods failed", fallbackError)
+                throw fallbackError
+            }
+        }
     }
 
     // Test function to verify against Matrix specification test vectors
@@ -82,14 +106,20 @@ object ServerKeys {
 
     fun sign(data: ByteArray): String {
         logger.trace("Signing ${data.size} bytes of data")
-        val signature = Signature.getInstance("EdDSA", "I2P")
-        signature.initSign(privateKey)
-        signature.update(data)
-        val signatureBytes = signature.sign()
-        // Use unpadded Base64 as per Matrix specification appendices
-        val signatureBase64 = Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
-        logger.trace("Generated signature: ${signatureBase64.take(32)}...")
-        return signatureBase64
+        try {
+            // Use EdDSAEngine with SHA-512 (required for Ed25519)
+            val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
+            signatureEngine.initSign(privateKey)
+            signatureEngine.update(data)
+            val signatureBytes = signatureEngine.sign()
+            // Use unpadded Base64 as per Matrix specification appendices
+            val signatureBase64 = Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
+            logger.trace("Generated signature: ${signatureBase64.take(32)}...")
+            return signatureBase64
+        } catch (e: Exception) {
+            logger.error("Failed to sign data with EdDSAEngine", e)
+            throw e
+        }
     }
 
     fun verify(data: ByteArray, signature: String): Boolean {
@@ -102,10 +132,12 @@ object ServerKeys {
                 // Try with padding if unpadded decoding fails
                 Base64.getDecoder().decode(signature)
             }
-            val sig = Signature.getInstance("EdDSA", "I2P")
-            sig.initVerify(publicKey)
-            sig.update(data)
-            val result = sig.verify(signatureBytes)
+            
+            // Use EdDSAEngine with SHA-512 (required for Ed25519)
+            val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
+            signatureEngine.initVerify(publicKey)
+            signatureEngine.update(data)
+            val result = signatureEngine.verify(signatureBytes)
             logger.trace("Signature verification result: $result")
             result
         } catch (e: Exception) {
