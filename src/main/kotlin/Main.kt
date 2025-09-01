@@ -104,7 +104,16 @@ fun main() {
                 if (config.server.corsAllowedOrigins.contains("*")) {
                     anyHost() // Allow all origins in development
                 } else {
-                    config.server.corsAllowedOrigins.forEach { allowHost(it) }
+                    config.server.corsAllowedOrigins.forEach { origin ->
+                        // Extract host from origin (remove scheme if present)
+                        val host = if (origin.startsWith("http://") || origin.startsWith("https://")) {
+                            origin.substringAfter("://").substringBefore("/")
+                        } else {
+                            origin
+                        }
+                        // Allow the host for both HTTP and HTTPS
+                        allowHost(host, listOf("https", "http"))
+                    }
                 }
             }
 

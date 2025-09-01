@@ -41,3 +41,10 @@ README.md
 start-server.bat
 start-server.ps1
 test-server.ps1
+
+# Deployment files
+fly.toml
+deploy-to-fly.bat
+deploy-to-fly.sh
+FLY-DEPLOYMENT-README.md
+.dockerignore
