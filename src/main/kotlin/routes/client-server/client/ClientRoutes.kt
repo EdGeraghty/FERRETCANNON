@@ -1763,17 +1763,10 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val deviceKeysMap = AuthUtils.getDeviceKeysForUsers(userIds)
 
                             // Build response according to Matrix specification
-                            val response = mutableMapOf<String, Any>()
-
-                            // Add device_keys section
-                            val deviceKeysResponse = mutableMapOf<String, Any>()
-                            deviceKeysMap.forEach { (userId, devices) ->
-                                deviceKeysResponse[userId] = devices
-                            }
-                            response["device_keys"] = deviceKeysResponse
-
-                            // Add failures section (empty for now, but structure is ready for federation)
-                            response["failures"] = emptyMap<String, Any>()
+                            val response = mapOf(
+                                "device_keys" to deviceKeysMap,
+                                "failures" to emptyMap<String, Any>()
+                            )
 
                             call.respond(response)
 
