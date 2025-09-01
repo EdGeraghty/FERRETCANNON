@@ -153,87 +153,40 @@ fun Application.clientRoutes(config: ServerConfig) {
 
         route("/_matrix") {
             route("/client") {
-                route("/v3") {
-                    get("/login") {
-                        // Get available login flows
-                        call.respond(mapOf(
-                            "flows" to listOf(
-                                mapOf(
-                                    "type" to "m.login.password",
-                                    "get_login_token" to true
-                                ),
-                                mapOf(
-                                    "type" to "m.login.token"
-                                ),
-                                mapOf(
-                                    "type" to "m.login.oauth2"
-                                ),
-                                mapOf(
-                                    "type" to "m.login.sso",
-                                    "identity_providers" to listOf(
-                                        mapOf(
-                                            "id" to "oidc",
-                                            "name" to "OpenID Connect",
-                                            "icon" to null,
-                                            "brand" to null
-                                        ),
-                                        mapOf(
-                                            "id" to "oauth2",
-                                            "name" to "OAuth 2.0",
-                                            "icon" to null,
-                                            "brand" to null
-                                        ),
-                                        mapOf(
-                                            "id" to "saml",
-                                            "name" to "SAML",
-                                            "icon" to null,
-                                            "brand" to null
-                                        )
-                                    )
-                                ),
-                                mapOf(
-                                    "type" to "m.login.application_service"
-                                )
-                            )
-                        ))
-                    }
+                // Server versions endpoint
+                get("/versions") {
+                    call.respondText("""
+                        {
+                            "versions": [
+                                "r0.0.1",
+                                "r0.1.0",
+                                "r0.2.0",
+                                "r0.3.0",
+                                "r0.4.0",
+                                "r0.5.0",
+                                "r0.6.0",
+                                "v1.1",
+                                "v1.2",
+                                "v1.3",
+                                "v1.4",
+                                "v1.5",
+                                "v1.6",
+                                "v1.7",
+                                "v1.8",
+                                "v1.9",
+                                "v1.10",
+                                "v1.11",
+                                "v1.12",
+                                "v1.13",
+                                "v1.14",
+                                "v1.15"
+                            ],
+                            "unstable_features": {}
+                        }
+                    """.trimIndent(), ContentType.Application.Json)
+                }
 
-                    // Server capabilities endpoint
-                    get("/capabilities") {
-                        call.respond(mapOf(
-                            "capabilities" to mapOf(
-                                "m.change_password" to mapOf(
-                                    "enabled" to true
-                                ),
-                                "m.room_versions" to mapOf(
-                                    "default" to "9",
-                                    "available" to mapOf(
-                                        "1" to "stable",
-                                        "2" to "stable",
-                                        "3" to "stable",
-                                        "4" to "stable",
-                                        "5" to "stable",
-                                        "6" to "stable",
-                                        "7" to "stable",
-                                        "8" to "stable",
-                                        "9" to "stable"
-                                    )
-                                ),
-                                "m.set_displayname" to mapOf(
-                                    "enabled" to true
-                                ),
-                                "m.set_avatar_url" to mapOf(
-                                    "enabled" to true
-                                ),
-                                "m.3pid_changes" to mapOf(
-                                    "enabled" to false
-                                ),
-                                "m.get_login_token" to mapOf(
-                                    "enabled" to true
-                                )
-                            )
-                        ))
-                    }
+                route("/v3") {
 
                     // Login fallback for clients that don't support the API
                     get("/login/fallback") {
@@ -4742,17 +4695,19 @@ ${String(thumbnailData, Charsets.UTF_8)}
 
                     // GET /oauth2/jwks - JSON Web Key Set (simplified)
                     get("/oauth2/jwks") {
-                        call.respond(mapOf(
-                            "keys" to listOf(
-                                mapOf(
-                                    "kty" to "RSA",
-                                    "use" to "sig",
-                                    "kid" to "rsa1",
-                                    "n" to "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtmUAmh9K8X1GYTAJwTDFb",
-                                    "e" to "AQAB"
-                                )
-                            )
-                        ))
+                        call.respondText("""
+                            {
+                                "keys": [
+                                    {
+                                        "kty": "RSA",
+                                        "use": "sig",
+                                        "kid": "rsa1",
+                                        "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtmUAmh9K8X1GYTAJwTDFb",
+                                        "e": "AQAB"
+                                    }
+                                ]
+                            }
+                        """.trimIndent(), ContentType.Application.Json)
                     }
                 }
             }

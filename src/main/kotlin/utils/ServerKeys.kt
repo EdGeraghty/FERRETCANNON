@@ -281,11 +281,11 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.debug("Generating server keys response for server: $serverName")
         val currentTime = System.currentTimeMillis()
-        val validUntilTs = currentTime + 86400000 // Valid for 24 hours
 
         // Get all valid keys from database
         val verifyKeys = mutableMapOf<String, Map<String, Any>>()
         val oldVerifyKeys = mutableMapOf<String, Map<String, Any>>()
+        var validUntilTs: Long = currentTime + 86400000 // Default fallback
 
         transaction {
             ServerKeysTable.select {
@@ -297,8 +297,9 @@ object ServerKeys {
                 val keyValidUntilTs = row[ServerKeysTable.keyValidUntilTs]
 
                 if (keyId == this@ServerKeys.keyId) {
-                    // Current key goes in verify_keys
+                    // Current key goes in verify_keys - use its stored validity time
                     verifyKeys[keyId] = mapOf("key" to publicKey)
+                    validUntilTs = keyValidUntilTs // Use the stored validity time for consistency
                 } else {
                     // Old keys go in old_verify_keys
                     oldVerifyKeys[keyId] = mapOf(
@@ -309,7 +310,7 @@ object ServerKeys {
             }
         }
 
-        // If no keys found in database, use current key
+        // If no keys found in database, use current key with default validity
         if (verifyKeys.isEmpty()) {
             verifyKeys[keyId] = mapOf("key" to publicKeyBase64)
         }
