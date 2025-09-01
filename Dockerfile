@@ -1,7 +1,7 @@
 # Multi-stage build for FERRETCANNON Matrix Server
 
 # Stage 1: Build stage
-FROM openjdk:17-jdk-slim as builder
+FROM eclipse-temurin:17-jdk-alpine as builder
 
 # Set the working directory
 WORKDIR /app
@@ -20,10 +20,13 @@ RUN chmod +x gradlew
 RUN ./gradlew installDist --no-daemon -x test --no-configuration-cache
 
 # Stage 2: Runtime stage
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk-alpine
 
 # Set the working directory
 WORKDIR /app
+
+# Install security updates and remove cache (Alpine)
+RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
 
 # Copy the built application from the builder stage
 COPY --from=builder /app/build/install/FERRETCANNON /app/
@@ -40,20 +43,6 @@ EXPOSE 8080
 # Set environment variables for production
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
-# Force clean build - version 3
-# Create a startup script to handle database location
-RUN echo '#!/bin/bash\n\
-# Copy database to persistent volume if it exists\n\
-if [ -f /data/ferretcannon.db ]; then\n\
-  cp /data/ferretcannon.db /app/ferretcannon.db 2>/dev/null || true\n\
-fi\n\
-\n\
-# Run the application (fixed executable name - version 3)\n\
-./bin/FERRETCANNON\n\
-\n\
-# Copy database back to persistent volume after shutdown\n\
-cp /app/ferretcannon.db /data/ferretcannon.db 2>/dev/null || true\n\
-' > /app/start.sh && chmod +x /app/start.sh
-
-# Run the application
-CMD ["/app/start.sh"]
+# Force clean build - version 4
+# Run the application directly
+CMD ["./bin/FERRETCANNON"]
