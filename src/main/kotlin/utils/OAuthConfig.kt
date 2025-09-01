@@ -35,18 +35,6 @@ object OAuthConfig {
         initializeProviders()
     }
 
-/**
- * OAuth 2.0 Configuration Manager
- */
-object OAuthConfig {
-    private val random = SecureRandom()
-    private val providers = mutableMapOf<String, OAuthProvider>()
-
-    init {
-        // Defer initialization to avoid issues with ServerNameResolver
-        initializeProviders()
-    }
-
     /**
      * Initialize OAuth providers with error handling
      */
@@ -188,9 +176,19 @@ object OAuthConfig {
     }
 
     /**
+     * Generate refresh token
+     */
+    fun generateRefreshToken(): String {
+        val bytes = ByteArray(32)
+        random.nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    /**
      * Refresh OAuth providers (useful if server name changes)
      */
     fun refreshProviders() {
         providers.clear()
         initializeProviders()
     }
+}
