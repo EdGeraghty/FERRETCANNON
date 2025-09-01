@@ -27,6 +27,7 @@ import utils.accessTokens
 import models.AccessTokens
 import utils.StateResolver
 import utils.MatrixAuth
+import utils.ServerKeys
 import models.Events
 import models.Rooms
 
@@ -1976,6 +1977,31 @@ ${String(thumbnailData, Charsets.UTF_8)}
 
                         } catch (e: Exception) {
                             println("Media thumbnail error: ${e.message}")
+                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                        }
+                    }
+                    get("/server/{serverName}") {
+                        val serverName = call.parameters["serverName"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+
+                        // Authenticate the request
+                        val authHeader = call.request.headers["Authorization"]
+                        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            return@get
+                        }
+
+                        try {
+                            // Get server keys for the requested server
+                            val serverKeys = ServerKeys.getServerKeys(serverName)
+                            if (serverKeys == null) {
+                                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Server keys not found"))
+                                return@get
+                            }
+
+                            // Return the server keys
+                            call.respond(serverKeys)
+                        } catch (e: Exception) {
+                            println("Server keys error: ${e.message}")
                             call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
                         }
                     }
