@@ -43,9 +43,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     call.respond(mapOf(
                         "m.homeserver" to mapOf(
                             "base_url" to baseUrl
-                        ),
-                        "m.identity_server" to mapOf(
-                            "base_url" to baseUrl // Using same server for identity in this implementation
                         )
                     ))
                 }
