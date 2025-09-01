@@ -31,68 +31,111 @@ object OAuthConfig {
     private val providers = mutableMapOf<String, OAuthProvider>()
 
     init {
-        loadProviders()
+        // Defer initialization to avoid issues with ServerNameResolver
+        initializeProviders()
+    }
+
+/**
+ * OAuth 2.0 Configuration Manager
+ */
+object OAuthConfig {
+    private val random = SecureRandom()
+    private val providers = mutableMapOf<String, OAuthProvider>()
+
+    init {
+        // Defer initialization to avoid issues with ServerNameResolver
+        initializeProviders()
     }
 
     /**
-     * Load OAuth providers from configuration
+     * Initialize OAuth providers with error handling
      */
-    private fun loadProviders() {
-        // Load from environment variables or config file
-        // For now, we'll configure common providers
+    private fun initializeProviders() {
+        try {
+            // Load from environment variables or config file
+            // For now, we'll configure common providers
 
-        // Google OAuth Provider
-        val googleClientId = System.getenv("GOOGLE_OAUTH_CLIENT_ID") ?: "demo_google_client_id"
-        val googleClientSecret = System.getenv("GOOGLE_OAUTH_CLIENT_SECRET") ?: "demo_google_client_secret"
+            // Google OAuth Provider
+            val googleClientId = System.getenv("GOOGLE_OAUTH_CLIENT_ID") ?: "demo_google_client_id"
+            val googleClientSecret = System.getenv("GOOGLE_OAUTH_CLIENT_SECRET") ?: "demo_google_client_secret"
 
-        if (googleClientId != "demo_google_client_id") {
-            providers["google"] = OAuthProvider(
-                id = "google",
-                name = "Google",
-                clientId = googleClientId,
-                clientSecret = googleClientSecret,
-                authorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
-                tokenUrl = "https://oauth2.googleapis.com/token",
-                userInfoUrl = "https://www.googleapis.com/oauth2/v2/userinfo",
-                scope = "openid profile email",
-                redirectUri = "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/google"
-            )
-        }
+            if (googleClientId != "demo_google_client_id") {
+                val googleRedirectUri = try {
+                    "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/google"
+                } catch (e: Exception) {
+                    println("Warning: Could not get server base URL for Google OAuth, using fallback: ${e.message}")
+                    "https://localhost:8080/_matrix/client/v3/oauth2/callback/google"
+                }
 
-        // GitHub OAuth Provider
-        val githubClientId = System.getenv("GITHUB_OAUTH_CLIENT_ID") ?: "demo_github_client_id"
-        val githubClientSecret = System.getenv("GITHUB_OAUTH_CLIENT_SECRET") ?: "demo_github_client_secret"
+                providers["google"] = OAuthProvider(
+                    id = "google",
+                    name = "Google",
+                    clientId = googleClientId,
+                    clientSecret = googleClientSecret,
+                    authorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
+                    tokenUrl = "https://oauth2.googleapis.com/token",
+                    userInfoUrl = "https://www.googleapis.com/oauth2/v2/userinfo",
+                    scope = "openid profile email",
+                    redirectUri = googleRedirectUri
+                )
+            }
 
-        if (githubClientId != "demo_github_client_id") {
-            providers["github"] = OAuthProvider(
-                id = "github",
-                name = "GitHub",
-                clientId = githubClientId,
-                clientSecret = githubClientSecret,
-                authorizationUrl = "https://github.com/login/oauth/authorize",
-                tokenUrl = "https://github.com/login/oauth/access_token",
-                userInfoUrl = "https://api.github.com/user",
-                scope = "read:user user:email",
-                redirectUri = "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/github"
-            )
-        }
+            // GitHub OAuth Provider
+            val githubClientId = System.getenv("GITHUB_OAUTH_CLIENT_ID") ?: "demo_github_client_id"
+            val githubClientSecret = System.getenv("GITHUB_OAUTH_CLIENT_SECRET") ?: "demo_github_client_secret"
 
-        // Microsoft OAuth Provider
-        val microsoftClientId = System.getenv("MICROSOFT_OAUTH_CLIENT_ID") ?: "demo_microsoft_client_id"
-        val microsoftClientSecret = System.getenv("MICROSOFT_OAUTH_CLIENT_SECRET") ?: "demo_microsoft_client_secret"
+            if (githubClientId != "demo_github_client_id") {
+                val githubRedirectUri = try {
+                    "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/github"
+                } catch (e: Exception) {
+                    println("Warning: Could not get server base URL for GitHub OAuth, using fallback: ${e.message}")
+                    "https://localhost:8080/_matrix/client/v3/oauth2/callback/github"
+                }
 
-        if (microsoftClientId != "demo_microsoft_client_id") {
-            providers["microsoft"] = OAuthProvider(
-                id = "microsoft",
-                name = "Microsoft",
-                clientId = microsoftClientId,
-                clientSecret = microsoftClientSecret,
-                authorizationUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-                tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-                userInfoUrl = "https://graph.microsoft.com/v1.0/me",
-                scope = "openid profile email",
-                redirectUri = "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/microsoft"
-            )
+                providers["github"] = OAuthProvider(
+                    id = "github",
+                    name = "GitHub",
+                    clientId = githubClientId,
+                    clientSecret = githubClientSecret,
+                    authorizationUrl = "https://github.com/login/oauth/authorize",
+                    tokenUrl = "https://github.com/login/oauth/access_token",
+                    userInfoUrl = "https://api.github.com/user",
+                    scope = "read:user user:email",
+                    redirectUri = githubRedirectUri
+                )
+            }
+
+            // Microsoft OAuth Provider
+            val microsoftClientId = System.getenv("MICROSOFT_OAUTH_CLIENT_ID") ?: "demo_microsoft_client_id"
+            val microsoftClientSecret = System.getenv("MICROSOFT_OAUTH_CLIENT_SECRET") ?: "demo_microsoft_client_secret"
+
+            if (microsoftClientId != "demo_microsoft_client_id") {
+                val microsoftRedirectUri = try {
+                    "${ServerNameResolver.getServerBaseUrl()}/_matrix/client/v3/oauth2/callback/microsoft"
+                } catch (e: Exception) {
+                    println("Warning: Could not get server base URL for Microsoft OAuth, using fallback: ${e.message}")
+                    "https://localhost:8080/_matrix/client/v3/oauth2/callback/microsoft"
+                }
+
+                providers["microsoft"] = OAuthProvider(
+                    id = "microsoft",
+                    name = "Microsoft",
+                    clientId = microsoftClientId,
+                    clientSecret = microsoftClientSecret,
+                    authorizationUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+                    tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                    userInfoUrl = "https://graph.microsoft.com/v1.0/me",
+                    scope = "openid profile email",
+                    redirectUri = microsoftRedirectUri
+                )
+            }
+
+            println("OAuth providers initialized successfully: ${providers.keys.joinToString()}")
+
+        } catch (e: Exception) {
+            println("Error initializing OAuth providers: ${e.message}")
+            e.printStackTrace()
+            // Continue with empty providers - endpoints will handle gracefully
         }
     }
 
@@ -145,11 +188,9 @@ object OAuthConfig {
     }
 
     /**
-     * Generate refresh token
+     * Refresh OAuth providers (useful if server name changes)
      */
-    fun generateRefreshToken(): String {
-        val bytes = ByteArray(32)
-        random.nextBytes(bytes)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    fun refreshProviders() {
+        providers.clear()
+        initializeProviders()
     }
-}
