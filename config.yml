@@ -18,7 +18,7 @@ database:
 
 federation:
   # Federation settings for server-to-server communication
-  serverName: "localhost:8080"        # Public server name for federation
+  serverName: "localhost"        # Public server name for federation
   federationPort: 8080                # Port for federation endpoints
   enableFederation: true              # Enable/disable federation
   allowedServers:                     # List of allowed federation servers

@@ -87,17 +87,36 @@ object ServerNameResolver {
             val configFile = java.io.File("config.yml")
             if (configFile.exists()) {
                 val configContent = configFile.readText()
+                println("DEBUG: Config file content length: ${configContent.length}")
+                println("DEBUG: Config file content preview: ${configContent.take(500)}")
+                
+                // First try federation.serverName (production format) - handle YAML indentation
+                val federationServerNamePattern = Regex("federation:\\s*\n\\s*serverName:\\s*[\"']([^\"']+)[\"']", RegexOption.DOT_MATCHES_ALL)
+                federationServerNamePattern.find(configContent)?.let { match ->
+                    val configServerName = match.groupValues[1]
+                    println("DEBUG: Found federation server name: $configServerName")
+                    if (configServerName.isNotBlank()) {
+                        println("Using federation server name from config.yml: $configServerName")
+                        return configServerName
+                    }
+                }
+                
+                // Fallback to top-level serverName
                 val serverNamePattern = Regex("serverName:\\s*[\"']([^\"']+)[\"']")
                 serverNamePattern.find(configContent)?.let { match ->
                     val configServerName = match.groupValues[1]
-                    if (configServerName.isNotBlank() && configServerName != "localhost:8080") {
+                    println("DEBUG: Found top-level server name: $configServerName")
+                    if (configServerName.isNotBlank()) {
                         println("Using server name from config.yml: $configServerName")
                         return configServerName
                     }
                 }
+            } else {
+                println("DEBUG: Config file does not exist at: ${configFile.absolutePath}")
             }
         } catch (e: Exception) {
             println("Warning: Could not read config.yml for server name: ${e.message}")
+            e.printStackTrace()
         }
 
         // Strategy 3: Try to get hostname (not FQDN)

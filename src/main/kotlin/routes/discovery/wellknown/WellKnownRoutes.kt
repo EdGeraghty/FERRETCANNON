@@ -32,7 +32,14 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                    val baseUrl = "https://${ServerNameResolver.getServerName()}"
+                    // For production, use HTTPS without port (fly.io handles this)
+                    // For development, use the configured base URL
+                    val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
+                        "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
+                    } else {
+                        "https://${ServerNameResolver.getServerName()}"
+                    }
+
                     call.respond(mapOf(
                         "m.homeserver" to mapOf(
                             "base_url" to baseUrl
@@ -56,7 +63,12 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Terms of service for identity server
                     call.response.headers.append("Content-Type", "application/json")
 
-                    val baseUrl = "https://${ServerNameResolver.getServerName()}"
+                    val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
+                        "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
+                    } else {
+                        "https://${ServerNameResolver.getServerName()}"
+                    }
+
                     call.respond(mapOf(
                         "policies" to mapOf(
                             "privacy_policy" to mapOf(
