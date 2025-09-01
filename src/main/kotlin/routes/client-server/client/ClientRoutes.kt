@@ -876,12 +876,14 @@ fun Application.clientRoutes(config: ServerConfig) {
                             )
 
                             // Return login response
-                            call.respond(mapOf(
-                                "user_id" to authenticatedUserId,
-                                "access_token" to accessToken,
-                                "home_server" to config.federation.serverName,
-                                "device_id" to finalDeviceId
-                            ))
+                            call.respondText("""
+                                {
+                                    "user_id": "$authenticatedUserId",
+                                    "access_token": "$accessToken",
+                                    "home_server": "${config.federation.serverName}",
+                                    "device_id": "$finalDeviceId"
+                                }
+                            """.trimIndent(), ContentType.Application.Json)
                         } catch (e: Exception) {
                             when (e) {
                                 is kotlinx.serialization.SerializationException -> {
@@ -906,10 +908,13 @@ fun Application.clientRoutes(config: ServerConfig) {
                             // Validate content type
                             val contentType = call.request.contentType()
                             if (contentType != ContentType.Application.Json) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_NOT_JSON",
-                                    "error" to "Content-Type must be application/json"
-                                ))
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_NOT_JSON",
+                                    "error": "Content-Type must be application/json"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                 return@post
                             }
 
@@ -926,20 +931,23 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 val auth = json["auth"]?.jsonObject
                                 if (auth == null) {
                                     // Return UIA flows for non-guest registration
-                                    call.respond(HttpStatusCode.Unauthorized, mapOf(
-                                        "errcode" to "M_MISSING_PARAM",
-                                        "error" to "Missing authentication data",
-                                        "flows" to listOf(
-                                            mapOf(
-                                                "stages" to listOf("m.login.password")
-                                            ),
-                                            mapOf(
-                                                "stages" to listOf("m.login.oauth2")
-                                            )
-                                        ),
-                                        "params" to mapOf<String, Any>(),
-                                        "session" to "session_${System.currentTimeMillis()}"
-                                    ))
+                                    val uiaResponse = """
+                                    {
+                                        "errcode": "M_MISSING_PARAM",
+                                        "error": "Missing authentication data",
+                                        "flows": [
+                                            {
+                                                "stages": ["m.login.password"]
+                                            },
+                                            {
+                                                "stages": ["m.login.oauth2"]
+                                            }
+                                        ],
+                                        "params": {},
+                                        "session": "session_${System.currentTimeMillis()}"
+                                    }
+                                    """.trimIndent()
+                                    call.respondText(uiaResponse, ContentType.Application.Json, HttpStatusCode.Unauthorized)
                                     return@post
                                 }
 
@@ -953,20 +961,26 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     "m.login.oauth2" -> {
                                         val oauth2Token = auth["token"]?.jsonPrimitive?.content
                                         if (oauth2Token == null) {
-                                            call.respond(HttpStatusCode.BadRequest, mapOf(
-                                                "errcode" to "M_INVALID_PARAM",
-                                                "error" to "Missing OAuth token in authentication data"
-                                            ))
+                                            val errorResponse = """
+                                            {
+                                                "errcode": "M_INVALID_PARAM",
+                                                "error": "Missing OAuth token in authentication data"
+                                            }
+                                            """.trimIndent()
+                                            call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                             return@post
                                         }
 
                                         // Validate OAuth 2.0 token
                                         val tokenValidation = OAuthService.validateAccessToken(oauth2Token)
                                         if (tokenValidation == null) {
-                                            call.respond(HttpStatusCode.Forbidden, mapOf(
-                                                "errcode" to "M_FORBIDDEN",
-                                                "error" to "Invalid OAuth 2.0 token"
-                                            ))
+                                            val errorResponse = """
+                                            {
+                                                "errcode": "M_FORBIDDEN",
+                                                "error": "Invalid OAuth 2.0 token"
+                                            }
+                                            """.trimIndent()
+                                            call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.Forbidden)
                                             return@post
                                         }
 
@@ -983,10 +997,13 @@ fun Application.clientRoutes(config: ServerConfig) {
                                         }
                                     }
                                     else -> {
-                                        call.respond(HttpStatusCode.BadRequest, mapOf(
-                                            "errcode" to "M_UNKNOWN",
-                                            "error" to "Unsupported authentication type: $authType"
-                                        ))
+                                        val errorResponse = """
+                                        {
+                                            "errcode": "M_UNKNOWN",
+                                            "error": "Unsupported authentication type: $authType"
+                                        }
+                                        """.trimIndent()
+                                        call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                         return@post
                                     }
                                 }
@@ -999,20 +1016,25 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 val guestUserPair = AuthUtils.validateAccessToken(guestAccessToken)
                                 val guestUserId = guestUserPair?.first
                                 if (guestUserId == null || !guestUserId.startsWith("@guest_")) {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_INVALID_PARAM",
-                                        "error" to "Invalid guest access token"
-                                    ))
+                                    val errorResponse = """
+                                    {
+                                        "errcode": "M_INVALID_PARAM",
+                                        "error": "Invalid guest access token"
+                                    }
+                                    """.trimIndent()
+                                    call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                     return@post
                                 }
 
-                                // For upgrade, username must match the guest's username
                                 val requestedUsername = json["username"]?.jsonPrimitive?.content
                                 if (requestedUsername != null && !guestUserId.contains(requestedUsername)) {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_INVALID_PARAM",
-                                        "error" to "Username must match guest account"
-                                    ))
+                                    val errorResponse = """
+                                    {
+                                        "errcode": "M_INVALID_PARAM",
+                                        "error": "Username must match guest account"
+                                    }
+                                    """.trimIndent()
+                                    call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                     return@post
                                 }
                             }
@@ -1032,37 +1054,49 @@ fun Application.clientRoutes(config: ServerConfig) {
                             }
 
                             if (finalUsername == null) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_MISSING_PARAM",
-                                    "error" to "Missing 'username' parameter"
-                                ))
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_MISSING_PARAM",
+                                    "error": "Missing 'username' parameter"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                 return@post
                             }
 
                             // Validate username format
                             if (!finalUsername.matches(Regex("^[a-zA-Z0-9._=-]+\$"))) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_INVALID_USERNAME",
-                                    "error" to "Invalid username format"
-                                ))
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_INVALID_USERNAME",
+                                    "error": "Invalid username format"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                 return@post
                             }
 
                             // Check if username is available using AuthUtils
                             if (!AuthUtils.isUsernameAvailable(finalUsername)) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_USER_IN_USE",
-                                    "error" to "Username already taken"
-                                ))
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_USER_IN_USE",
+                                    "error": "Username already taken"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                 return@post
                             }
 
                             // For non-guest registration, require password
                             if (!isGuest && password == null) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_MISSING_PARAM",
-                                    "error" to "Missing 'password' parameter"
-                                ))
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_MISSING_PARAM",
+                                    "error": "Missing 'password' parameter"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                 return@post
                             }
 
@@ -1070,10 +1104,13 @@ fun Application.clientRoutes(config: ServerConfig) {
                             if (!isGuest && password != null) {
                                 val (isValid, errorMessage) = AuthUtils.validatePasswordStrength(password)
                                 if (!isValid) {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_WEAK_PASSWORD",
-                                        "error" to errorMessage
-                                    ))
+                                    val errorResponse = """
+                                    {
+                                        "errcode": "M_WEAK_PASSWORD",
+                                        "error": "$errorMessage"
+                                    }
+                                    """.trimIndent()
+                                    call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                                     return@post
                                 }
                             }
@@ -1108,33 +1145,42 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                             // Prepare response
                             val userId = "@$finalUsername:localhost"
-                            val response = mutableMapOf<String, Any>(
-                                "user_id" to userId,
-                                "home_server" to config.federation.serverName,
-                                "device_id" to finalDeviceId
-                            )
-
-                            // Add access token if login is not inhibited
-                            if (accessToken != null) {
-                                response["access_token"] = accessToken
+                            val responseJson = if (accessToken != null) {
+                                """
+                                {
+                                    "user_id": "$userId",
+                                    "access_token": "$accessToken",
+                                    "home_server": "${config.federation.serverName}",
+                                    "device_id": "$finalDeviceId"
+                                }
+                                """.trimIndent()
+                            } else {
+                                """
+                                {
+                                    "user_id": "$userId",
+                                    "home_server": "${config.federation.serverName}",
+                                    "device_id": "$finalDeviceId"
+                                }
+                                """.trimIndent()
                             }
 
-                            call.respond(response)
+                            call.respondText(responseJson, ContentType.Application.Json)
+                        } catch (e: kotlinx.serialization.SerializationException) {
+                            val errorResponse = """
+                            {
+                                "errcode": "M_BAD_JSON",
+                                "error": "Invalid JSON"
+                            }
+                            """.trimIndent()
+                            call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
                         } catch (e: Exception) {
-                            when (e) {
-                                is kotlinx.serialization.SerializationException -> {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_BAD_JSON",
-                                        "error" to "Invalid JSON"
-                                    ))
-                                }
-                                else -> {
-                                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                        "errcode" to "M_UNKNOWN",
-                                        "error" to "Internal server error"
-                                    ))
-                                }
+                            val errorResponse = """
+                            {
+                                "errcode": "M_UNKNOWN",
+                                "error": "Internal server error"
                             }
+                            """.trimIndent()
+                            call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.InternalServerError)
                         }
                     }
 

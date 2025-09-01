@@ -44,6 +44,9 @@ import config.ConfigLoader
 import config.ServerConfig
 import utils.ServerNameResolver
 import org.slf4j.LoggerFactory
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlin.reflect.KClass
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
