@@ -902,6 +902,60 @@ fun Application.clientRoutes(config: ServerConfig) {
                         }
                     }
 
+                    // GET /register/available - Check username availability
+                    get("/register/available") {
+                        try {
+                            val username = call.request.queryParameters["username"]
+
+                            if (username == null) {
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_MISSING_PARAM",
+                                    "error": "Missing 'username' parameter"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
+                                return@get
+                            }
+
+                            // Validate username format
+                            if (!username.matches(Regex("^[a-zA-Z0-9._=-]+\$"))) {
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_INVALID_USERNAME",
+                                    "error": "Invalid username format"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
+                                return@get
+                            }
+
+                            // Check if username is available using AuthUtils
+                            if (!AuthUtils.isUsernameAvailable(username)) {
+                                val errorResponse = """
+                                {
+                                    "errcode": "M_USER_IN_USE",
+                                    "error": "Username already taken"
+                                }
+                                """.trimIndent()
+                                call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.BadRequest)
+                                return@get
+                            }
+
+                            // Username is available
+                            call.respondText("{}", ContentType.Application.Json, HttpStatusCode.OK)
+
+                        } catch (e: Exception) {
+                            val errorResponse = """
+                            {
+                                "errcode": "M_UNKNOWN",
+                                "error": "Internal server error"
+                            }
+                            """.trimIndent()
+                            call.respondText(errorResponse, ContentType.Application.Json, HttpStatusCode.InternalServerError)
+                        }
+                    }
+
                     // Registration endpoint
                     post("/register") {
                         try {

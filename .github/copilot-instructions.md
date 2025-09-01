@@ -1003,3 +1003,6 @@ The FERRETCANNON Matrix server now has a complete, external configuration system
 
 - [x] Implement User Profile Federation
 	<!-- Complete User Profile Federation implementation according to Matrix Server-Server API v1.15 specification. Added /query/displayname and /query/avatar_url endpoints with proper authentication and error handling. Improved getUserProfile function to use Users table directly for efficient database queries, with fallback to room state events. All endpoints include proper Matrix authentication, validation, and Matrix-compliant error handling. Project compiles successfully. -->
+
+- [x] Implement Username Availability Checking
+	<!-- GET /_matrix/client/v3/register/available endpoint implemented according to Matrix Client-Server API v1.15 specification. Added username format validation, availability checking using AuthUtils.isUsernameAvailable(), and proper Matrix error responses (M_INVALID_USERNAME, M_USER_IN_USE, M_MISSING_PARAM). Endpoint returns 200 for available usernames and appropriate error codes for invalid or taken usernames. Project compiles successfully. -->
