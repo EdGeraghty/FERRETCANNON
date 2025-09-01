@@ -13,6 +13,11 @@ import java.io.ByteArrayOutputStream
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import models.Media
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.transactions.transaction
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 
 /**
  * Media Storage and Processing utilities for Matrix Content Repository
@@ -25,9 +30,6 @@ object MediaStorage {
     // Configuration values - will be set during initialization
     private var maxFileSize: Long = 50 * 1024 * 1024 // 50MB default
     private var maxThumbnailSize: Int = 320 // Max dimension for thumbnails default
-
-    // In-memory cache for media metadata
-    private val mediaCache = ConcurrentHashMap<String, MediaMetadata>()
 
     init {
         // Create media directories
@@ -58,7 +60,7 @@ object MediaStorage {
     /**
      * Store media content
      */
-    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String): Boolean {
+    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, userId: String = "@anonymous:localhost"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 // Validate file size
@@ -73,14 +75,22 @@ object MediaStorage {
                 // Write file
                 Files.write(filePath, content)
 
-                // Store metadata
-                val metadata = MediaMetadata(
-                    mediaId = mediaId,
-                    contentType = contentType,
-                    size = content.size,
-                    uploadedAt = System.currentTimeMillis()
-                )
-                mediaCache[mediaId] = metadata
+                // Store metadata in database
+                transaction {
+                    Media.insert {
+                        it[Media.mediaId] = mediaId
+                        it[Media.userId] = userId
+                        it[Media.filename] = ""
+                        it[Media.contentType] = contentType
+                        it[Media.size] = content.size.toLong()
+                        it[Media.uploadTime] = System.currentTimeMillis()
+                        it[Media.thumbnailMediaId] = null
+                        it[Media.width] = null
+                        it[Media.height] = null
+                        it[Media.duration] = null
+                        it[Media.hash] = null
+                    }
+                }
 
                 true
             } catch (e: Exception) {
@@ -93,7 +103,7 @@ object MediaStorage {
     /**
      * Store media content with filename
      */
-    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, filename: String?): Boolean {
+    suspend fun storeMedia(mediaId: String, content: ByteArray, contentType: String, filename: String?, userId: String = "@anonymous:localhost"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 // Validate file size
@@ -108,15 +118,22 @@ object MediaStorage {
                 // Write file
                 Files.write(filePath, content)
 
-                // Store metadata
-                val metadata = MediaMetadata(
-                    mediaId = mediaId,
-                    contentType = contentType,
-                    size = content.size,
-                    uploadedAt = System.currentTimeMillis(),
-                    filename = filename
-                )
-                mediaCache[mediaId] = metadata
+                // Store metadata in database
+                transaction {
+                    Media.insert {
+                        it[Media.mediaId] = mediaId
+                        it[Media.userId] = userId
+                        it[Media.filename] = filename ?: ""
+                        it[Media.contentType] = contentType
+                        it[Media.size] = content.size.toLong()
+                        it[Media.uploadTime] = System.currentTimeMillis()
+                        it[Media.thumbnailMediaId] = null
+                        it[Media.width] = null
+                        it[Media.height] = null
+                        it[Media.duration] = null
+                        it[Media.hash] = null
+                    }
+                }
 
                 true
             } catch (e: Exception) {
@@ -138,8 +155,10 @@ object MediaStorage {
                 }
 
                 val content = Files.readAllBytes(filePath)
-                val metadata = mediaCache[mediaId]
-                val contentType = metadata?.contentType ?: "application/octet-stream"
+                val contentType = transaction {
+                    Media.select { Media.mediaId eq mediaId }
+                        .singleOrNull()?.get(Media.contentType) ?: "application/octet-stream"
+                }
 
                 Pair(content, contentType)
             } catch (e: Exception) {
@@ -243,7 +262,24 @@ object MediaStorage {
      * Get media metadata
      */
     fun getMediaMetadata(mediaId: String): MediaMetadata? {
-        return mediaCache[mediaId]
+        return transaction {
+            Media.select { Media.mediaId eq mediaId }
+                .singleOrNull()?.let { row ->
+                    MediaMetadata(
+                        mediaId = row[Media.mediaId],
+                        userId = row[Media.userId],
+                        filename = row[Media.filename],
+                        contentType = row[Media.contentType],
+                        size = row[Media.size].toInt(),
+                        uploadTime = row[Media.uploadTime],
+                        thumbnailMediaId = row[Media.thumbnailMediaId],
+                        width = row[Media.width],
+                        height = row[Media.height],
+                        duration = row[Media.duration],
+                        hash = row[Media.hash]
+                    )
+                }
+        }
     }
 
     /**
@@ -277,8 +313,14 @@ object MediaStorage {
 
 data class MediaMetadata(
     val mediaId: String,
+    val userId: String,
+    val filename: String,
     val contentType: String,
     val size: Int,
-    val uploadedAt: Long,
-    val filename: String? = null
+    val uploadTime: Long,
+    val thumbnailMediaId: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val duration: Int? = null,
+    val hash: String? = null
 )

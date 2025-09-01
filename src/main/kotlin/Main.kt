@@ -20,6 +20,13 @@ import models.Devices
 import models.OAuthAuthorizationCodes
 import models.OAuthAccessTokens
 import models.OAuthStates
+import models.Media
+import models.Receipts
+import models.Presence
+import models.PushRules
+import models.RoomAliases
+import models.RegistrationTokens
+import models.ServerKeys
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -54,7 +61,7 @@ fun main() {
     // Database setup with configurable connection
     Database.connect(config.database.url, driver = config.database.driver)
     transaction {
-        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates)
+        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, ServerKeys)
 
         // Create test user for development (if enabled in config)
         if (config.development.createTestUser) {

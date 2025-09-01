@@ -1,14 +1,209 @@
 package utils
 
 import io.ktor.server.websocket.DefaultWebSocketServerSession
+import models.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.transactions.transaction
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 
 // Connected clients for broadcasting
 val connectedClients = mutableMapOf<String, MutableList<DefaultWebSocketServerSession>>() // roomId to list of sessions
 
-// In-memory storage for EDUs
-val presenceMap = mutableMapOf<String, Map<String, Any?>>() // userId to presence data
-val receiptsMap = mutableMapOf<String, MutableMap<String, Long>>() // roomId to (eventId to ts)
+// In-memory storage for EDUs (keeping typing as it's short-lived)
 val typingMap = mutableMapOf<String, MutableMap<String, Long>>() // roomId to (userId to timestamp)
+
+// ===== DATABASE-BACKED STORAGE =====
+
+// Receipts operations
+object ReceiptsStorage {
+    fun addReceipt(roomId: String, userId: String, eventId: String, receiptType: String = "m.read", threadId: String? = null) {
+        transaction {
+            // Remove existing receipt for this user/room/type combination
+            Receipts.deleteWhere {
+                (Receipts.roomId eq roomId) and
+                (Receipts.userId eq userId) and
+                (Receipts.receiptType eq receiptType)
+            }
+
+            // Add new receipt
+            Receipts.insert {
+                it[Receipts.roomId] = roomId
+                it[Receipts.userId] = userId
+                it[Receipts.eventId] = eventId
+                it[Receipts.receiptType] = receiptType
+                it[Receipts.threadId] = threadId
+                it[Receipts.timestamp] = System.currentTimeMillis()
+            }
+        }
+    }
+
+    fun getReceiptsForRoom(roomId: String): Map<String, Map<String, Any?>> {
+        return transaction {
+            Receipts.select { Receipts.roomId eq roomId }
+                .associate { row ->
+                    val userId = row[Receipts.userId]
+                    val receiptType = row[Receipts.receiptType]
+                    val eventId = row[Receipts.eventId]
+                    val timestamp = row[Receipts.timestamp]
+
+                    userId to mapOf(
+                        "event_id" to eventId,
+                        "ts" to timestamp,
+                        "thread_id" to row[Receipts.threadId]
+                    )
+                }
+        }
+    }
+
+    fun getUserReceipt(userId: String, roomId: String, receiptType: String = "m.read"): Map<String, Any?>? {
+        return transaction {
+            Receipts.select {
+                (Receipts.userId eq userId) and
+                (Receipts.roomId eq roomId) and
+                (Receipts.receiptType eq receiptType)
+            }.singleOrNull()?.let { row ->
+                mapOf(
+                    "event_id" to row[Receipts.eventId],
+                    "ts" to row[Receipts.timestamp],
+                    "thread_id" to row[Receipts.threadId]
+                )
+            }
+        }
+    }
+}
+
+// Presence operations
+object PresenceStorage {
+    fun updatePresence(userId: String, presence: String, statusMsg: String? = null, lastActiveAgo: Long = 0) {
+        transaction {
+            val existing = Presence.select { Presence.userId eq userId }.singleOrNull()
+
+            if (existing != null) {
+                Presence.update({ Presence.userId eq userId }) {
+                    it[Presence.presence] = presence
+                    it[Presence.statusMsg] = statusMsg
+                    it[Presence.lastActiveAgo] = lastActiveAgo
+                    it[Presence.currentlyActive] = presence == "online"
+                    it[Presence.lastUserSyncTs] = System.currentTimeMillis()
+                }
+            } else {
+                Presence.insert {
+                    it[Presence.userId] = userId
+                    it[Presence.presence] = presence
+                    it[Presence.statusMsg] = statusMsg
+                    it[Presence.lastActiveAgo] = lastActiveAgo
+                    it[Presence.currentlyActive] = presence == "online"
+                    it[Presence.lastUserSyncTs] = System.currentTimeMillis()
+                    it[Presence.lastSyncTs] = null
+                }
+            }
+        }
+    }
+
+    fun getPresence(userId: String): Map<String, Any?>? {
+        return transaction {
+            Presence.select { Presence.userId eq userId }
+                .singleOrNull()?.let { row ->
+                    mapOf(
+                        "presence" to row[Presence.presence],
+                        "status_msg" to row[Presence.statusMsg],
+                        "last_active_ago" to row[Presence.lastActiveAgo],
+                        "currently_active" to row[Presence.currentlyActive]
+                    )
+                }
+        }
+    }
+
+    fun getAllPresence(): Map<String, Map<String, Any?>> {
+        return transaction {
+            Presence.selectAll().associate { row ->
+                val userId = row[Presence.userId]
+                userId to mapOf(
+                    "presence" to row[Presence.presence],
+                    "status_msg" to row[Presence.statusMsg],
+                    "last_active_ago" to row[Presence.lastActiveAgo],
+                    "currently_active" to row[Presence.currentlyActive]
+                )
+            }
+        }
+    }
+}
+
+// Server keys operations
+object ServerKeysStorage {
+    fun storeServerKey(serverName: String, keyId: String, publicKey: String, validUntilTs: Long) {
+        transaction {
+            val existing = models.ServerKeys.select {
+                (models.ServerKeys.serverName eq serverName) and
+                (models.ServerKeys.keyId eq keyId)
+            }.singleOrNull()
+
+            if (existing != null) {
+                models.ServerKeys.update({
+                    (models.ServerKeys.serverName eq serverName) and
+                    (models.ServerKeys.keyId eq keyId)
+                }) {
+                    it[models.ServerKeys.publicKey] = publicKey
+                    it[models.ServerKeys.keyValidUntilTs] = validUntilTs
+                    it[models.ServerKeys.tsAddedTs] = System.currentTimeMillis()
+                    it[models.ServerKeys.tsValidUntilTs] = validUntilTs
+                }
+            } else {
+                models.ServerKeys.insert {
+                    it[models.ServerKeys.serverName] = serverName
+                    it[models.ServerKeys.keyId] = keyId
+                    it[models.ServerKeys.publicKey] = publicKey
+                    it[models.ServerKeys.keyValidUntilTs] = validUntilTs
+                    it[models.ServerKeys.tsAddedTs] = System.currentTimeMillis()
+                    it[models.ServerKeys.tsValidUntilTs] = validUntilTs
+                }
+            }
+        }
+    }
+
+    fun getServerKey(serverName: String, keyId: String): Map<String, Any?>? {
+        return transaction {
+            models.ServerKeys.select {
+                (models.ServerKeys.serverName eq serverName) and
+                (models.ServerKeys.keyId eq keyId)
+            }.singleOrNull()?.let { row ->
+                mapOf(
+                    "server_name" to row[models.ServerKeys.serverName],
+                    "key_id" to row[models.ServerKeys.keyId],
+                    "public_key" to row[models.ServerKeys.publicKey],
+                    "valid_until_ts" to row[models.ServerKeys.keyValidUntilTs]
+                )
+            }
+        }
+    }
+
+    fun getServerKeys(serverName: String): List<Map<String, Any?>> {
+        return transaction {
+            models.ServerKeys.select { models.ServerKeys.serverName eq serverName }
+                .map { row ->
+                    mapOf(
+                        "server_name" to row[models.ServerKeys.serverName],
+                        "key_id" to row[models.ServerKeys.keyId],
+                        "public_key" to row[models.ServerKeys.publicKey],
+                        "valid_until_ts" to row[models.ServerKeys.keyValidUntilTs]
+                    )
+                }
+        }
+    }
+}
+
+// ===== LEGACY IN-MEMORY STORAGE (keeping for compatibility) =====
+
+// In-memory storage for EDUs (deprecated - use database operations above)
+val presenceMap = mutableMapOf<String, Map<String, Any?>>() // userId to presence data (DEPRECATED)
+val receiptsMap = mutableMapOf<String, MutableMap<String, Long>>() // roomId to (eventId to ts) (DEPRECATED)
 
 // ===== IN-MEMORY USER STORAGE =====
 
@@ -107,5 +302,5 @@ val oneTimeKeys = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>() 
 val crossSigningKeys = mutableMapOf<String, Map<String, Any?>>() // userId -> cross-signing key data
 val deviceListStreamIds = mutableMapOf<String, Long>() // userId -> stream_id for device list updates
 
-// Server key storage for federation
-val serverKeys = mutableMapOf<String, Map<String, Any?>>() // serverName -> server key data
+// Server key storage for federation (deprecated - use ServerKeysStorage above)
+val serverKeys = mutableMapOf<String, Map<String, Any?>>() // serverName -> server key data (DEPRECATED)

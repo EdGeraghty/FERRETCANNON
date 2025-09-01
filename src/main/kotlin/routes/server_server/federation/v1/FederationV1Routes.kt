@@ -15,8 +15,9 @@ import models.Events
 import models.Rooms
 import kotlinx.coroutines.runBlocking
 import utils.connectedClients
-import utils.presenceMap
-import utils.receiptsMap
+import utils.PresenceStorage
+import utils.ReceiptsStorage
+import utils.ServerKeysStorage
 import utils.typingMap
 import utils.MediaStorage
 import utils.deviceKeys
@@ -2189,6 +2190,7 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
 
                 // Handle receipts: content is {roomId: {eventId: {userId: {receiptType: {data: {ts: ts}}}}}}
+                val processedRooms = mutableSetOf<String>()
                 for ((roomId, roomReceipts) in content) {
                     // Validate room_id format
                     if (!roomId.startsWith("!") || !roomId.contains(":")) {
@@ -2196,7 +2198,7 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                         continue
                     }
 
-                    val roomMap = receiptsMap.getOrPut(roomId) { mutableMapOf() }
+                    processedRooms.add(roomId)
 
                     for ((eventId, userReceipts) in roomReceipts.jsonObject) {
                         // Validate event_id format
@@ -2227,9 +2229,8 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                                         "m.read" -> {
                                             val ts = receiptInfo.jsonObject["ts"]?.jsonPrimitive?.long
                                             if (ts != null) {
-                                                // Store read receipt with user and timestamp
-                                                val receiptKey = "$eventId:$userId"
-                                                roomMap[receiptKey] = ts
+                                                // Store read receipt using database
+                                                ReceiptsStorage.addReceipt(roomId, userId, eventId, receiptType)
                                                 println("Read receipt: user $userId read event $eventId in room $roomId at $ts")
                                             }
                                         }
@@ -2251,21 +2252,22 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
 
                 // Also broadcast a simplified version for better client compatibility
                 val simplifiedReceipts = mutableMapOf<String, Any>()
-                for ((roomId, roomReceipts) in receiptsMap) {
-                    val roomData = mutableMapOf<String, Any>()
-                    for ((receiptKey, timestamp) in roomReceipts) {
-                        if (receiptKey.contains(":")) {
-                            val (eventId, userId) = receiptKey.split(":", limit = 2)
-                            if (!roomData.containsKey(eventId)) {
-                                roomData[eventId] = mutableMapOf<String, Any>()
-                            }
-                            (roomData[eventId] as? MutableMap<String, Any>)?.let { eventMap ->
-                                eventMap[userId] = mapOf("ts" to timestamp)
-                            }
+                for (roomId in processedRooms) {
+                    val allReceipts = ReceiptsStorage.getReceiptsForRoom(roomId)
+                    for ((userId, receiptData) in allReceipts) {
+                        val eventId = receiptData["event_id"] as? String ?: continue
+                        val timestamp = receiptData["ts"] as? Long ?: continue
+
+                        if (!simplifiedReceipts.containsKey(roomId)) {
+                            simplifiedReceipts[roomId] = mutableMapOf<String, Any>()
                         }
-                    }
-                    if (roomData.isNotEmpty()) {
-                        simplifiedReceipts[roomId] = roomData
+                        val roomData = simplifiedReceipts[roomId] as? MutableMap<String, Any> ?: continue
+
+                        if (!roomData.containsKey(eventId)) {
+                            roomData[eventId] = mutableMapOf<String, Any>()
+                        }
+                        val eventData = roomData[eventId] as? MutableMap<String, Any> ?: continue
+                        eventData[userId] = mapOf("ts" to timestamp)
                     }
                 }
 
@@ -2311,13 +2313,16 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 // Extract additional presence fields
                 val statusMsg = content["status_msg"]?.jsonPrimitive?.content
                 val currentlyActive = content["currently_active"]?.jsonPrimitive?.boolean
-                val lastActiveAgo = content["last_active_ago"]?.jsonPrimitive?.long
+                val lastActiveAgo = content["last_active_ago"]?.jsonPrimitive?.long ?: 0
 
-                // Create comprehensive presence data
+                // Update presence using database
+                PresenceStorage.updatePresence(userId, presence, statusMsg, lastActiveAgo)
+
+                // Create comprehensive presence data for broadcasting
                 val presenceData = mutableMapOf<String, Any?>(
                     "user_id" to userId,
                     "presence" to presence,
-                    "last_active_ago" to (lastActiveAgo ?: System.currentTimeMillis())
+                    "last_active_ago" to lastActiveAgo
                 )
 
                 if (statusMsg != null) {
@@ -2327,17 +2332,6 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 if (currentlyActive != null) {
                     presenceData["currently_active"] = currentlyActive
                 }
-
-                // Update presence with timestamp
-                val presenceWithTimestamp = mapOf(
-                    "presence" to presence,
-                    "status_msg" to statusMsg,
-                    "currently_active" to currentlyActive,
-                    "last_active_ago" to (lastActiveAgo ?: System.currentTimeMillis()),
-                    "updated_at" to System.currentTimeMillis()
-                )
-
-                presenceMap[userId] = presenceWithTimestamp
 
                 // Broadcast presence update to all clients
                 runBlocking { broadcastEDU(null, eduObj) }

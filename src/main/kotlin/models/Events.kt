@@ -128,3 +128,88 @@ object OAuthStates : Table("oauth_states") {
 
     override val primaryKey = PrimaryKey(state)
 }
+
+object Media : Table("media") {
+    val mediaId = varchar("media_id", 255).uniqueIndex()
+    val userId = varchar("user_id", 255)
+    val filename = varchar("filename", 500)
+    val contentType = varchar("content_type", 255)
+    val size = long("size")
+    val uploadTime = long("upload_time").default(System.currentTimeMillis())
+    val thumbnailMediaId = varchar("thumbnail_media_id", 255).nullable()
+    val width = integer("width").nullable()
+    val height = integer("height").nullable()
+    val duration = integer("duration").nullable() // for audio/video
+    val hash = varchar("hash", 128).nullable() // SHA-256 hash
+
+    override val primaryKey = PrimaryKey(mediaId)
+}
+
+object Receipts : Table("receipts") {
+    val roomId = varchar("room_id", 255)
+    val userId = varchar("user_id", 255)
+    val eventId = varchar("event_id", 255)
+    val receiptType = varchar("receipt_type", 50) // "m.read", "m.read.private", etc.
+    val threadId = varchar("thread_id", 255).nullable() // for threaded receipts
+    val timestamp = long("timestamp").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(roomId, userId, receiptType)
+}
+
+object Presence : Table("presence") {
+    val userId = varchar("user_id", 255).uniqueIndex()
+    val presence = varchar("presence", 50).default("offline") // "online", "offline", "unavailable", "busy"
+    val statusMsg = varchar("status_msg", 500).nullable()
+    val lastActiveAgo = long("last_active_ago").default(0)
+    val currentlyActive = bool("currently_active").default(false)
+    val lastUserSyncTs = long("last_user_sync_ts").nullable()
+    val lastSyncTs = long("last_sync_ts").nullable()
+
+    override val primaryKey = PrimaryKey(userId)
+}
+
+object PushRules : Table("push_rules") {
+    val userId = varchar("user_id", 255)
+    val scope = varchar("scope", 50).default("global") // "global", "device"
+    val kind = varchar("kind", 50) // "override", "underride", "sender", "room", "content"
+    val ruleId = varchar("rule_id", 255)
+    val default = bool("default").default(false)
+    val enabled = bool("enabled").default(true)
+    val conditions = text("conditions").nullable() // JSON array of conditions
+    val actions = text("actions").nullable() // JSON array of actions
+    val priorityClass = integer("priority_class").default(0)
+    val priorityIndex = integer("priority_index").default(0)
+
+    override val primaryKey = PrimaryKey(userId, scope, kind, ruleId)
+}
+
+object RoomAliases : Table("room_aliases") {
+    val roomId = varchar("room_id", 255)
+    val alias = varchar("alias", 255).uniqueIndex()
+    val servers = text("servers") // JSON array of servers that know about this alias
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(alias)
+}
+
+object RegistrationTokens : Table("registration_tokens") {
+    val token = varchar("token", 255).uniqueIndex()
+    val usesAllowed = integer("uses_allowed").nullable() // null = unlimited
+    val pending = integer("pending").default(0)
+    val completed = integer("completed").default(0)
+    val expiryTime = long("expiry_time").nullable() // null = never expires
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(token)
+}
+
+object ServerKeys : Table("server_keys") {
+    val serverName = varchar("server_name", 255)
+    val keyId = varchar("key_id", 255)
+    val publicKey = text("public_key") // PEM format
+    val keyValidUntilTs = long("key_valid_until_ts")
+    val tsAddedTs = long("ts_added_ts").default(System.currentTimeMillis())
+    val tsValidUntilTs = long("ts_valid_until_ts")
+
+    override val primaryKey = PrimaryKey(serverName, keyId)
+}
