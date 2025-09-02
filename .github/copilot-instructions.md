@@ -123,6 +123,7 @@ DEVELOPMENT RULES:
 - If the project setup information has additional rules, follow them strictly.
 - Local testing has a working login as per `config.yml` with credentials: `@testuser:localhost|test_access_token`
 - This is a Windows machine using PowerShell - do not use bash commands
+- For all local testing, `start-server.bat` should be used in a background process. It is blocking, trying to test in the same session will stop the server from running
 <!--Added by Ed-->
 - This is a Matrix Server. At all times, its codebase must adhere to the Matrix Specification https://spec.matrix.org/v1.15/
 <!--/Added by Ed-->
