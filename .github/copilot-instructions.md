@@ -121,6 +121,7 @@ DEVELOPMENT RULES:
 - Use VS Code API tool only for VS Code extension projects.
 - Once the project is created, it is already opened in Visual Studio Code—do not suggest commands to open this project in Visual Studio again.
 - If the project setup information has additional rules, follow them strictly.
+- Local testing has a working login as per `config.yml` with credentials: `@testuser:localhost|test_access_token`
 <!--Added by Ed-->
 - This is a Matrix Server. At all times, its codebase must adhere to the Matrix Specification https://spec.matrix.org/v1.15/
 <!--/Added by Ed-->

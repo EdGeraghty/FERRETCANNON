@@ -164,7 +164,13 @@ fun main() {
 
             logger.trace("Installing ContentNegotiation plugin...")
             install(ContentNegotiation) {
-                json()
+                json(Json {
+                    prettyPrint = true
+                    isLenient = true
+                    ignoreUnknownKeys = true
+                    allowStructuredMapKeys = true
+                    encodeDefaults = false
+                })
             }
             logger.debug("✅ ContentNegotiation plugin installed")
 

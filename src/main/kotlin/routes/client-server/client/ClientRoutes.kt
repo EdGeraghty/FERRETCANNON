@@ -1750,7 +1750,14 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 return@post
                             }
 
-                            val json = Json.parseToJsonElement(request).jsonObject
+                            // Use configured Json instance with lenient parsing
+                            val jsonConfig = Json {
+                                isLenient = true
+                                ignoreUnknownKeys = true
+                                allowStructuredMapKeys = true
+                                encodeDefaults = false
+                            }
+                            val json = jsonConfig.parseToJsonElement(request).jsonObject
 
                             // Extract device_keys object containing user IDs to query
                             val deviceKeys = json["device_keys"]?.jsonObject
