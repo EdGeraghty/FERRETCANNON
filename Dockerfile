@@ -45,4 +45,4 @@ ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
 # Force clean build - version 4
 # Run the application directly
-CMD ["./bin/FERRETCANNON"]
+CMD ["sh", "-c", "rm -f /data/ferretcannon.db && ./bin/FERRETCANNON"]
