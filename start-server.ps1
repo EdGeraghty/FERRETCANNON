@@ -25,7 +25,28 @@ Write-Host "Server will be available at http://localhost:8080" -ForegroundColor 
 Write-Host ""
 
 try {
-    & "gradle" "run" "--console=plain"
+    # Run the server in background
+    $job = Start-Job -ScriptBlock {
+        Set-Location $using:PWD
+        & "gradle" "run" "--console=plain" 2>&1 | Out-File -FilePath "server_output.log" -Append
+    }
+
+    # Wait a moment for server to start
+    Start-Sleep -Seconds 5
+
+    # Check if server is running
+    $javaProcess = Get-Process -Name "java" -ErrorAction SilentlyContinue
+    if ($javaProcess) {
+        Write-Host "Server started successfully (PID: $($javaProcess.Id))" -ForegroundColor Green
+        Write-Host "Server output is being logged to server_output.log" -ForegroundColor Cyan
+        Write-Host "Use 'Get-Job' to check job status or 'Stop-Job' to stop the server" -ForegroundColor Cyan
+    } else {
+        Write-Host "Warning: Java process not found after startup" -ForegroundColor Yellow
+    }
+
+    if (-not $NoPrompt) {
+        Read-Host "Press Enter to exit (server will continue running)"
+    }
 } catch {
     Write-Host "Error starting server: $($_.Exception.Message)" -ForegroundColor Red
     if (-not $NoPrompt) {

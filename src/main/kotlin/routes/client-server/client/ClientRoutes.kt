@@ -1741,8 +1741,9 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 return@post
                             }
 
-                            val request = call.receiveText()
-                            if (request.isBlank()) {
+                            // Receive the request body as text to handle parsing manually
+                            val requestBody = call.receiveText()
+                            if (requestBody.isBlank()) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
                                     "errcode" to "M_BAD_JSON",
                                     "error" to "Request body is empty"
@@ -1750,14 +1751,18 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 return@post
                             }
 
-                            // Use configured Json instance with lenient parsing
+                            // Use the same Json configuration as Main.kt for consistency
                             val jsonConfig = Json {
                                 isLenient = true
                                 ignoreUnknownKeys = true
                                 allowStructuredMapKeys = true
                                 encodeDefaults = false
+                                // Additional lenient settings
                             }
-                            val json = jsonConfig.parseToJsonElement(request).jsonObject
+
+                            // Parse the JSON manually with lenient parsing
+                            val jsonElement = jsonConfig.parseToJsonElement(requestBody)
+                            val json = jsonElement.jsonObject
 
                             // Extract device_keys object containing user IDs to query
                             val deviceKeys = json["device_keys"]?.jsonObject
