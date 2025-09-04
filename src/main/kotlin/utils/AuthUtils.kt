@@ -637,27 +637,30 @@ object AuthUtils {
      */
     fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, Map<String, Any>>> {
         return transaction {
-            val result = mutableMapOf<String, Map<String, Map<String, Any>>>()
+            val result = hashMapOf<String, Map<String, Map<String, Any>>>()
 
             userIds.forEach { userId ->
-                val userDevices = Devices.select { Devices.userId eq userId }
-                    .filter { deviceRow ->
-                        deviceRow[Devices.ed25519Key] != null && deviceRow[Devices.curve25519Key] != null
-                    }
-                    .associate { deviceRow ->
+                val allDevices = Devices.select { Devices.userId eq userId }
+                val userDevices = hashMapOf<String, Map<String, Any>>()
+                allDevices.forEach { deviceRow ->
+                    val hasEd25519 = deviceRow[Devices.ed25519Key] != null
+                    val hasCurve25519 = deviceRow[Devices.curve25519Key] != null
+
+                    if (hasEd25519 && hasCurve25519) {
                         val deviceId = deviceRow[Devices.deviceId]
-                        val deviceKeys = mapOf(
+                        val deviceKeys = hashMapOf(
                             "algorithms" to listOf("m.olm.v1.curve25519-aes-sha2", "m.megolm.v1.aes-sha2"),
                             "device_id" to deviceId,
-                            "keys" to mapOf(
+                            "keys" to hashMapOf(
                                 "curve25519:$deviceId" to deviceRow[Devices.curve25519Key],
                                 "ed25519:$deviceId" to deviceRow[Devices.ed25519Key]
                             ),
-                            "signatures" to mapOf<String, Any>(),
+                            "signatures" to hashMapOf<String, Any>(),
                             "user_id" to userId
                         )
-                        deviceId to deviceKeys
+                        userDevices[deviceId] = deviceKeys
                     }
+                }
 
                 if (userDevices.isNotEmpty()) {
                     result[userId] = userDevices

@@ -69,6 +69,8 @@ fun Application.clientRoutes(config: ServerConfig) {
                              call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
                              call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
 
+            println("DEBUG: Authentication middleware - accessToken: '$accessToken'")
+
             if (accessToken != null) {
                 // Validate token using new authentication system
                 val result = AuthUtils.validateAccessToken(accessToken)
@@ -80,17 +82,21 @@ fun Application.clientRoutes(config: ServerConfig) {
                     call.attributes.put(MATRIX_TOKEN_KEY, accessToken)
                     call.attributes.put(MATRIX_USER_ID_KEY, userId)
                     call.attributes.put(MATRIX_DEVICE_ID_KEY, deviceId)
+                    println("DEBUG: Authentication successful for user: $userId")
                 } else {
                     // Invalid token - will be handled by individual endpoints
                     call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
+                    println("DEBUG: Invalid token")
                 }
             } else {
                 // No token provided - will be handled by individual endpoints
                 call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
+                println("DEBUG: No token provided")
             }
         } catch (e: Exception) {
             // Handle authentication errors gracefully
             call.attributes.put(MATRIX_INVALID_TOKEN_KEY, "auth_error")
+            println("DEBUG: Authentication error: ${e.message}")
         }
     }
 
@@ -1685,9 +1691,12 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /keys/query - Query device keys for users
                     post("/keys/query") {
                         try {
-                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+                            // Extract access token directly (same logic as middleware)
+                            val accessToken = call.request.queryParameters["access_token"] ?:
+                                             call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
+                                             call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
 
-                            if (userId == null) {
+                            if (accessToken == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
                                     "errcode" to "M_MISSING_TOKEN",
                                     "error" to "Missing access token"
@@ -1695,9 +1704,23 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 return@post
                             }
 
-                            // Receive the request body as text to handle parsing manually
-                            val requestBody = call.receiveText()
-                            if (requestBody.isBlank()) {
+                            // Validate token directly
+                            val result = AuthUtils.validateAccessToken(accessToken)
+                            if (result == null) {
+                                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                                    "errcode" to "M_UNKNOWN_TOKEN",
+                                    "error" to "Unrecognised access token"
+                                ))
+                                return@post
+                            }
+
+                            val (userId, deviceId) = result
+
+                            // Try to receive the request body as text first
+                            val rawBody = call.receiveText()
+                            println("DEBUG: Successfully received raw body: '$rawBody'")
+
+                            if (rawBody.isBlank()) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
                                     "errcode" to "M_BAD_JSON",
                                     "error" to "Request body is empty"
@@ -1705,22 +1728,19 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 return@post
                             }
 
-                            // Use the same Json configuration as Main.kt for consistency
-                            val jsonConfig = Json {
-                                isLenient = true
-                                ignoreUnknownKeys = true
-                                allowStructuredMapKeys = true
-                                encodeDefaults = false
-                                // Additional lenient settings
+                            // Parse the JSON manually to avoid serialization issues
+                            val jsonText = rawBody.trim()
+                            if (!jsonText.startsWith("{") || !jsonText.endsWith("}")) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_BAD_JSON",
+                                    "error" to "Request body must be a JSON object"
+                                ))
+                                return@post
                             }
 
-                            // Parse the JSON manually with lenient parsing
-                            val jsonElement = jsonConfig.parseToJsonElement(requestBody)
-                            val json = jsonElement.jsonObject
-
-                            // Extract device_keys object containing user IDs to query
-                            val deviceKeys = json["device_keys"]?.jsonObject
-                            if (deviceKeys == null) {
+                            // Extract device_keys manually
+                            val deviceKeysStart = jsonText.indexOf("\"device_keys\"")
+                            if (deviceKeysStart == -1) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
                                     "errcode" to "M_INVALID_PARAM",
                                     "error" to "Missing device_keys parameter"
@@ -1728,8 +1748,53 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 return@post
                             }
 
-                            // Extract user IDs from the device_keys object
-                            val userIds = deviceKeys.keys.toList()
+                            // Simple parsing - find the device_keys object
+                            val colonIndex = jsonText.indexOf(":", deviceKeysStart)
+                            val braceStart = jsonText.indexOf("{", colonIndex)
+                            val braceEnd = jsonText.lastIndexOf("}")
+
+                            if (braceStart == -1 || braceEnd == -1) {
+                                call.respond(HttpStatusCode.BadRequest, mapOf(
+                                    "errcode" to "M_BAD_JSON",
+                                    "error" to "Invalid device_keys format"
+                                ))
+                                return@post
+                            }
+
+                            val deviceKeysJson = jsonText.substring(braceStart, braceEnd + 1)
+                            println("DEBUG: Device keys JSON: $deviceKeysJson")
+
+                            // Helper function to extract user IDs from device_keys JSON
+                            fun extractUserIdsFromJson(json: String): List<String> {
+                                val userIds = mutableListOf<String>()
+                                var i = 0
+                                while (i < json.length) {
+                                    // Look for quoted strings that look like user IDs
+                                    if (json[i] == '"' && i + 1 < json.length) {
+                                        val start = i + 1
+                                        var end = start
+                                        while (end < json.length && json[end] != '"') {
+                                            if (json[end] == '\\') end++ // Skip escaped quotes
+                                            end++
+                                        }
+                                        if (end < json.length) {
+                                            val potentialUserId = json.substring(start, end)
+                                            // Check if it looks like a Matrix user ID
+                                            if (potentialUserId.startsWith("@") && potentialUserId.contains(":")) {
+                                                userIds.add(potentialUserId)
+                                            }
+                                        }
+                                        i = end + 1
+                                    } else {
+                                        i++
+                                    }
+                                }
+                                return userIds
+                            }
+
+                            // Extract user IDs from the device_keys JSON
+                            val userIds = extractUserIdsFromJson(deviceKeysJson)
+                            println("DEBUG: Extracted user IDs: $userIds")
 
                             if (userIds.isEmpty()) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -1742,23 +1807,33 @@ fun Application.clientRoutes(config: ServerConfig) {
                             // Query device keys for the specified users
                             val deviceKeysMap = AuthUtils.getDeviceKeysForUsers(userIds)
 
-                            // Build response according to Matrix specification
-                            val response = mapOf(
-                                "device_keys" to deviceKeysMap,
-                                "failures" to emptyMap<String, Any>()
-                            )
+                            // Build JSON response manually to avoid serialization issues
+                            val responseDeviceKeysJson = deviceKeysMap.entries.joinToString(",", "{", "}") { (userId, userDevices) ->
+                                val userDevicesJson = userDevices.entries.joinToString(",", "{", "}") { (deviceId, deviceKeys) ->
+                                    val keysJson = (deviceKeys["keys"] as? Map<*, *>)?.entries?.joinToString(",", "{", "}") { (key, value) ->
+                                        "\"$key\":\"$value\""
+                                    } ?: "{}"
+                                    val algorithmsJson = (deviceKeys["algorithms"] as? List<*>)?.joinToString(",", "[", "]") { "\"$it\"" } ?: "[]"
+                                    "\"$deviceId\":{\"algorithms\":$algorithmsJson,\"device_id\":\"$deviceId\",\"keys\":$keysJson,\"signatures\":{},\"user_id\":\"$userId\"}"
+                                }
+                                "\"$userId\":$userDevicesJson"
+                            }
 
-                            call.respond(response)
+                            val jsonResponse = "{\"device_keys\":$responseDeviceKeysJson,\"failures\":{}}"
+                            call.respondText(jsonResponse, ContentType.Application.Json)
 
                         } catch (e: kotlinx.serialization.SerializationException) {
+                            println("DEBUG: SerializationException: ${e.message}")
                             call.respond(HttpStatusCode.BadRequest, mapOf(
                                 "errcode" to "M_BAD_JSON",
-                                "error" to "Invalid JSON format in request body"
+                                "error" to "Invalid JSON format in request body: ${e.message}"
                             ))
                         } catch (e: Exception) {
+                            println("DEBUG: Exception: ${e.message}")
+                            e.printStackTrace()
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
-                                "error" to "Internal server error"
+                                "error" to "Internal server error: ${e.message}"
                             ))
                         }
                     }
