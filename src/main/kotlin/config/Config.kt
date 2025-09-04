@@ -78,5 +78,6 @@ data class DevelopmentSettings(
     val testPassword: String = "TestPass123!",
     val testDisplayName: String = "Test User",
     val enableDebugLogging: Boolean = true,
-    val enableWebSocketDebug: Boolean = false
+    val enableWebSocketDebug: Boolean = false,
+    val isDebug: Boolean = true
 )

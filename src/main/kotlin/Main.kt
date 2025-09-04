@@ -47,6 +47,8 @@ import org.slf4j.LoggerFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlin.reflect.KClass
+import routes.client_server.client.UserIdPrincipal
+import java.io.File
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -68,6 +70,15 @@ fun main() {
     logger.debug("Server config: host=${config.server.host}, port=${config.server.port}")
     logger.debug("Database config: ${config.database.url}")
     logger.debug("Media config: maxUploadSize=${config.media.maxUploadSize}")
+
+    // Delete database on debug run
+    if (config.development.isDebug) {
+        val dbFile = File("ferretcannon.db")
+        if (dbFile.exists()) {
+            dbFile.delete()
+            logger.info("🗑️ Database deleted for debug run")
+        }
+    }
 
     // Database setup with configurable connection
     logger.debug("Connecting to database...")
@@ -182,6 +193,23 @@ fun main() {
                 masking = false
             }
             logger.debug("✅ WebSockets plugin installed")
+
+            logger.trace("Installing Authentication plugin...")
+            install(Authentication) {
+                // Temporarily disable bearer authentication to avoid conflicts with attribute-based auth
+                // bearer("matrix-auth") {
+                //     authenticate { tokenCredential ->
+                //         // Use new database-backed authentication
+                //         val result = AuthUtils.validateAccessToken(tokenCredential.token)
+                //         if (result != null) {
+                //             UserIdPrincipal(result.first)
+                //         } else {
+                //             null
+                //         }
+                //     }
+                // }
+            }
+            logger.debug("✅ Authentication plugin installed")
             
             // Call route setup functions on the application
             logger.debug("Setting up client routes...")

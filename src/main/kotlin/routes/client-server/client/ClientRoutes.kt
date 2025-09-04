@@ -61,20 +61,6 @@ fun Application.clientRoutes(config: ServerConfig) {
         }
     }
 
-    install(Authentication) {
-        bearer("matrix-auth") {
-            authenticate { tokenCredential ->
-                // Use new database-backed authentication
-                val result = AuthUtils.validateAccessToken(tokenCredential.token)
-                if (result != null) {
-                    UserIdPrincipal(result.first)
-                } else {
-                    null
-                }
-            }
-        }
-    }
-
     // Enhanced authentication middleware for Matrix access tokens
     intercept(ApplicationCallPipeline.Call) {
         // Extract access token from multiple sources as per Matrix spec
