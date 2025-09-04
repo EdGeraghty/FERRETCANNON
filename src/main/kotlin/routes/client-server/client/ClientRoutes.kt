@@ -63,29 +63,34 @@ fun Application.clientRoutes(config: ServerConfig) {
 
     // Enhanced authentication middleware for Matrix access tokens
     intercept(ApplicationCallPipeline.Call) {
-        // Extract access token from multiple sources as per Matrix spec
-        val accessToken = call.request.queryParameters["access_token"] ?:
-                         call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
-                         call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
+        try {
+            // Extract access token from multiple sources as per Matrix spec
+            val accessToken = call.request.queryParameters["access_token"] ?:
+                             call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
+                             call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
 
-        if (accessToken != null) {
-            // Validate token using new authentication system
-            val result = AuthUtils.validateAccessToken(accessToken)
+            if (accessToken != null) {
+                // Validate token using new authentication system
+                val result = AuthUtils.validateAccessToken(accessToken)
 
-            if (result != null) {
-                val (userId, deviceId) = result
-                // Store authenticated user information with static AttributeKeys
-                call.attributes.put(MATRIX_USER_KEY, UserIdPrincipal(userId))
-                call.attributes.put(MATRIX_TOKEN_KEY, accessToken)
-                call.attributes.put(MATRIX_USER_ID_KEY, userId)
-                call.attributes.put(MATRIX_DEVICE_ID_KEY, deviceId)
+                if (result != null) {
+                    val (userId, deviceId) = result
+                    // Store authenticated user information with static AttributeKeys
+                    call.attributes.put(MATRIX_USER_KEY, UserIdPrincipal(userId))
+                    call.attributes.put(MATRIX_TOKEN_KEY, accessToken)
+                    call.attributes.put(MATRIX_USER_ID_KEY, userId)
+                    call.attributes.put(MATRIX_DEVICE_ID_KEY, deviceId)
+                } else {
+                    // Invalid token - will be handled by individual endpoints
+                    call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
+                }
             } else {
-                // Invalid token - will be handled by individual endpoints
-                call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
+                // No token provided - will be handled by individual endpoints
+                call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
             }
-        } else {
-            // No token provided - will be handled by individual endpoints
-            call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
+        } catch (e: Exception) {
+            // Handle authentication errors gracefully
+            call.attributes.put(MATRIX_INVALID_TOKEN_KEY, "auth_error")
         }
     }
 
@@ -3523,7 +3528,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // ===== PUSH NOTIFICATIONS =====
 
                     // GET /pushrules/ - Get push rules
-                    get("/pushrules/") {
+                    get("/pushrules") {
                         try {
                             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
@@ -3536,46 +3541,54 @@ ${String(thumbnailData, Charsets.UTF_8)}
                             }
 
                             // Get user's push rules (simplified - in real implementation, query push rules table)
-                            val pushRules = mapOf(
-                                "global" to mapOf(
-                                    "override" to emptyList<Map<String, Any>>(),
-                                    "underride" to emptyList<Map<String, Any>>(),
-                                    "sender" to emptyList<Map<String, Any>>(),
-                                    "room" to emptyList<Map<String, Any>>(),
-                                    "content" to listOf(
-                                        mapOf(
-                                            "rule_id" to "content",
-                                            "default" to true,
-                                            "enabled" to true,
-                                            "conditions" to listOf(
-                                                mapOf(
-                                                    "kind" to "event_match",
-                                                    "key" to "content.body",
-                                                    "pattern" to "*"
-                                                )
-                                            ),
-                                            "actions" to listOf(
-                                                mapOf(
-                                                    "set_tweak" to "highlight",
-                                                    "value" to false
-                                                ),
-                                                mapOf(
-                                                    "set_tweak" to "sound",
-                                                    "value" to "default"
-                                                ),
-                                                "notify"
-                                            )
-                                        )
-                                    )
-                                )
-                            )
+                            val pushRules = JsonObject(mapOf(
+                                "global" to JsonObject(mapOf(
+                                    "override" to JsonArray(emptyList()),
+                                    "underride" to JsonArray(emptyList()),
+                                    "sender" to JsonArray(emptyList()),
+                                    "room" to JsonArray(emptyList()),
+                                    "content" to JsonArray(listOf(
+                                        JsonObject(mapOf(
+                                            "rule_id" to JsonPrimitive("content"),
+                                            "default" to JsonPrimitive(true),
+                                            "enabled" to JsonPrimitive(true),
+                                            "conditions" to JsonArray(listOf(
+                                                JsonObject(mapOf(
+                                                    "kind" to JsonPrimitive("event_match"),
+                                                    "key" to JsonPrimitive("content.body"),
+                                                    "pattern" to JsonPrimitive("*")
+                                                ))
+                                            )),
+                                            "actions" to JsonArray(listOf(
+                                                JsonObject(mapOf(
+                                                    "set_tweak" to JsonPrimitive("highlight"),
+                                                    "value" to JsonPrimitive(false)
+                                                )),
+                                                JsonObject(mapOf(
+                                                    "set_tweak" to JsonPrimitive("sound"),
+                                                    "value" to JsonPrimitive("default")
+                                                )),
+                                                JsonPrimitive("notify")
+                                            ))
+                                        ))
+                                    ))
+                                ))
+                            ))
 
-                            call.respond(pushRules)
+                            call.respondText(pushRules.toString(), ContentType.Application.Json)
 
+                        } catch (e: kotlinx.serialization.SerializationException) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                                "errcode" to "M_BAD_JSON",
+                                "error" to "JSON serialization error"
+                            ))
                         } catch (e: Exception) {
+                            // Log the actual error for debugging
+                            println("Push rules error: ${e.message}")
+                            e.printStackTrace()
                             call.respond(HttpStatusCode.InternalServerError, mapOf(
                                 "errcode" to "M_UNKNOWN",
-                                "error" to "Internal server error"
+                                "error" to "Internal server error: ${e.message}"
                             ))
                         }
                     }
