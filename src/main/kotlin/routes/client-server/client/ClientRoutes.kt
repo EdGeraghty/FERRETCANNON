@@ -40,6 +40,14 @@ import utils.OAuthConfig
 import config.ServerConfig
 import utils.MatrixPagination
 
+// Static AttributeKey constants to avoid creating multiple instances
+private val MATRIX_USER_KEY = AttributeKey<UserIdPrincipal>("matrix-user")
+private val MATRIX_TOKEN_KEY = AttributeKey<String>("matrix-token")
+private val MATRIX_USER_ID_KEY = AttributeKey<String>("matrix-user-id")
+private val MATRIX_DEVICE_ID_KEY = AttributeKey<String>("matrix-device-id")
+private val MATRIX_INVALID_TOKEN_KEY = AttributeKey<String>("matrix-invalid-token")
+private val MATRIX_NO_TOKEN_KEY = AttributeKey<Boolean>("matrix-no-token")
+
 fun Application.clientRoutes(config: ServerConfig) {
     // Request size limiting - simplified version
     intercept(ApplicationCallPipeline.Call) {
@@ -80,26 +88,26 @@ fun Application.clientRoutes(config: ServerConfig) {
 
             if (result != null) {
                 val (userId, deviceId) = result
-                // Store authenticated user information with properly typed AttributeKeys
-                call.attributes.put(AttributeKey<UserIdPrincipal>("matrix-user"), UserIdPrincipal(userId))
-                call.attributes.put(AttributeKey<String>("matrix-token"), accessToken)
-                call.attributes.put(AttributeKey<String>("matrix-user-id"), userId)
-                call.attributes.put(AttributeKey<String>("matrix-device-id"), deviceId)
+                // Store authenticated user information with static AttributeKeys
+                call.attributes.put(MATRIX_USER_KEY, UserIdPrincipal(userId))
+                call.attributes.put(MATRIX_TOKEN_KEY, accessToken)
+                call.attributes.put(MATRIX_USER_ID_KEY, userId)
+                call.attributes.put(MATRIX_DEVICE_ID_KEY, deviceId)
             } else {
                 // Invalid token - will be handled by individual endpoints
-                call.attributes.put(AttributeKey<String>("matrix-invalid-token"), accessToken)
+                call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
             }
         } else {
             // No token provided - will be handled by individual endpoints
-            call.attributes.put(AttributeKey<Boolean>("matrix-no-token"), true)
+            call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
         }
     }
 
     // Helper function for token validation and error responses
     suspend fun ApplicationCall.validateAccessToken(): String? {
-        val accessToken = attributes.getOrNull(AttributeKey<String>("matrix-token"))
-        val invalidToken = attributes.getOrNull(AttributeKey<String>("matrix-invalid-token"))
-        val noToken = attributes.getOrNull(AttributeKey<Boolean>("matrix-no-token"))
+        val accessToken = attributes.getOrNull(MATRIX_TOKEN_KEY)
+        val invalidToken = attributes.getOrNull(MATRIX_INVALID_TOKEN_KEY)
+        val noToken = attributes.getOrNull(MATRIX_NO_TOKEN_KEY)
 
         return when {
             noToken == true -> {
@@ -129,9 +137,9 @@ fun Application.clientRoutes(config: ServerConfig) {
 
     // Helper function to get authenticated user information
     fun ApplicationCall.getAuthenticatedUser(): Triple<String, String, String>? {
-        val userId = attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
-        val deviceId = attributes.getOrNull(AttributeKey<String>("matrix-device-id"))
-        val token = attributes.getOrNull(AttributeKey<String>("matrix-token"))
+        val userId = attributes.getOrNull(MATRIX_USER_ID_KEY)
+        val deviceId = attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
+        val token = attributes.getOrNull(MATRIX_TOKEN_KEY)
 
         return if (userId != null && deviceId != null && token != null) {
             Triple(userId, deviceId, token)
@@ -237,7 +245,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val accessToken = call.validateAccessToken() ?: return@put
 
                             // Validate that the authenticated user matches the userId in the path
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
                             if (authenticatedUserId != userId) {
                                 call.respond(HttpStatusCode.Forbidden, mapOf(
                                     "errcode" to "M_FORBIDDEN",
@@ -307,7 +315,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /rooms/{roomId}/upgrade - Upgrade room to new version
                     post("/rooms/{roomId}/upgrade") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
                             val roomId = call.parameters["roomId"]
 
                             if (userId == null) {
@@ -573,7 +581,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /search - Search for events
                     post("/search") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -717,7 +725,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // GET /_matrix/client/v3/events - Get events for room previews (public rooms)
                     get("/events") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
                             val roomId = call.request.queryParameters["room_id"]
                             val timeout = call.request.queryParameters["timeout"]?.toLongOrNull() ?: 30000L
 
@@ -909,7 +917,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val accessToken = call.validateAccessToken() ?: return@get
 
                             // Get authenticated user information
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             // Return server capabilities according to Matrix Client-Server API v1.15
                             val capabilities = mapOf(
@@ -1293,7 +1301,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     put("/profile/{userId}/displayname") {
                         try {
                             val userId = call.parameters["userId"]
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -1349,7 +1357,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     put("/profile/{userId}/avatar_url") {
                         try {
                             val userId = call.parameters["userId"]
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -1406,7 +1414,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /account/password - Change password
                     post("/account/password") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1516,7 +1524,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // GET /user/devices - Get user's devices
                     get("/user/devices") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
                                 ?: return@get call.respond(HttpStatusCode.Unauthorized, mapOf(
                                     "errcode" to "M_MISSING_TOKEN",
                                     "error" to "Missing access token"
@@ -1536,7 +1544,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     get("/user/devices/{deviceId}") {
                         try {
                             val deviceId = call.parameters["deviceId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1573,7 +1581,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     put("/user/devices/{deviceId}") {
                         try {
                             val deviceId = call.parameters["deviceId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1617,7 +1625,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     delete("/user/devices/{deviceId}") {
                         try {
                             val deviceId = call.parameters["deviceId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1686,7 +1694,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /keys/query - Query device keys for users
                     post("/keys/query") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -1771,7 +1779,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                         try {
                             val userId = call.parameters["userId"]
                             val type = call.parameters["type"]
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null || type == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -1830,7 +1838,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                         try {
                             val userId = call.parameters["userId"]
                             val type = call.parameters["type"]
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null || type == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -1894,7 +1902,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val userId = call.parameters["userId"]
                             val roomId = call.parameters["roomId"]
                             val type = call.parameters["type"]
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null || roomId == null || type == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -1954,7 +1962,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val userId = call.parameters["userId"]
                             val roomId = call.parameters["roomId"]
                             val type = call.parameters["type"]
-                            val authenticatedUserId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val authenticatedUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null || roomId == null || type == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2017,7 +2025,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /createRoom - Create a new room
                     post("/createRoom") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -2147,7 +2155,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     post("/rooms/{roomId}/join") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2227,7 +2235,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     post("/rooms/{roomId}/leave") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2290,7 +2298,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     get("/rooms/{roomId}/members") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2345,7 +2353,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     get("/rooms/{roomId}/state") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2398,7 +2406,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val roomId = call.parameters["roomId"]
                             val eventType = call.parameters["eventType"]
                             val stateKey = call.parameters["stateKey"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null || eventType == null || stateKey == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2458,7 +2466,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val roomId = call.parameters["roomId"]
                             val eventType = call.parameters["eventType"]
                             val stateKey = call.parameters["stateKey"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null || eventType == null || stateKey == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2528,7 +2536,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     get("/rooms/{roomId}/messages") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2651,7 +2659,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                         try {
                             val roomId = call.parameters["roomId"]
                             val eventId = call.parameters["eventId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null || eventId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2782,7 +2790,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val roomId = call.parameters["roomId"]
                             val eventId = call.parameters["eventId"]
                             val txnId = call.parameters["txnId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null || eventId == null || txnId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2852,7 +2860,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                         try {
                             val roomId = call.parameters["roomId"]
                             val eventId = call.parameters["eventId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null || eventId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2917,7 +2925,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                             val roomId = call.parameters["roomId"]
                             val eventId = call.parameters["eventId"]
                             val relType = call.parameters["relType"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null || eventId == null || relType == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -2981,7 +2989,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     post("/rooms/{roomId}/invite") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3056,7 +3064,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     post("/rooms/{roomId}/kick") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3138,7 +3146,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     post("/rooms/{roomId}/ban") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3221,7 +3229,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // POST /upload - Upload media
                     post("/upload") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -3294,7 +3302,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                         try {
                             val serverName = call.parameters["serverName"]
                             val mediaId = call.parameters["mediaId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (serverName == null || mediaId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3377,7 +3385,7 @@ ${String(content, Charsets.UTF_8)}
                         try {
                             val serverName = call.parameters["serverName"]
                             val mediaId = call.parameters["mediaId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (serverName == null || mediaId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3493,7 +3501,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /config - Get upload configuration
                     get("/config") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -3531,7 +3539,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /pushrules/ - Get push rules
                     get("/pushrules/") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -3591,7 +3599,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                         try {
                             val kind = call.parameters["kind"]
                             val ruleId = call.parameters["ruleId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (kind == null || ruleId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3655,7 +3663,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                         try {
                             val kind = call.parameters["kind"]
                             val ruleId = call.parameters["ruleId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (kind == null || ruleId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3704,7 +3712,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                         try {
                             val kind = call.parameters["kind"]
                             val ruleId = call.parameters["ruleId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (kind == null || ruleId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3736,7 +3744,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /admin/server_version - Get server version
                     get("/admin/server_version") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -3773,7 +3781,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /admin/crypto_test - Test cryptographic compliance with Matrix specification
                     get("/admin/crypto_test") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -3816,7 +3824,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     post("/admin/whois/{userId}") {
                         try {
                             val targetUserId = call.parameters["userId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (targetUserId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3877,7 +3885,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     post("/admin/server_notice/{userId}") {
                         try {
                             val targetUserId = call.parameters["userId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (targetUserId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -3930,7 +3938,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /admin/registration_tokens - Get registration tokens
                     get("/admin/registration_tokens") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -3973,7 +3981,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // POST /admin/registration_tokens - Create registration token
                     post("/admin/registration_tokens") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -4022,7 +4030,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     delete("/admin/registration_tokens/{token}") {
                         try {
                             val token = call.parameters["token"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (token == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4064,7 +4072,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     post("/admin/deactivate/{userId}") {
                         try {
                             val targetUserId = call.parameters["userId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (targetUserId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4106,7 +4114,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     get("/admin/rooms/{roomId}") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4166,7 +4174,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     delete("/admin/rooms/{roomId}") {
                         try {
                             val roomId = call.parameters["roomId"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (roomId == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4219,7 +4227,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /thirdparty/protocols - Get available protocols
                     get("/thirdparty/protocols") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -4265,7 +4273,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     get("/thirdparty/protocol/{protocol}") {
                         try {
                             val protocol = call.parameters["protocol"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (protocol == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4323,7 +4331,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     get("/thirdparty/user/{protocol}") {
                         try {
                             val protocol = call.parameters["protocol"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (protocol == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4366,7 +4374,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     get("/thirdparty/location/{protocol}") {
                         try {
                             val protocol = call.parameters["protocol"]
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (protocol == null) {
                                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -4408,7 +4416,7 @@ ${String(thumbnailData, Charsets.UTF_8)}
                     // GET /thirdparty/location - Get all locations
                     get("/thirdparty/location") {
                         try {
-                            val userId = call.attributes.getOrNull(AttributeKey<String>("matrix-user-id"))
+                            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
                             if (userId == null) {
                                 call.respond(HttpStatusCode.Unauthorized, mapOf(
