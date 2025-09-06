@@ -58,7 +58,7 @@ fun Route.contentRoutes(config: ServerConfig) {
             }
 
             // Generate content URI
-            val contentUri = "mxc://localhost/${System.currentTimeMillis()}"
+            val contentUri = "mxc://${config.federation.serverName}/${System.currentTimeMillis()}"
 
             // TODO: Store file using MediaStorage
             // MediaStorage.saveFile(contentUri, fileBytes!!, contentType)

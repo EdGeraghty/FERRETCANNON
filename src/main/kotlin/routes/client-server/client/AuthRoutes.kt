@@ -41,10 +41,10 @@ fun Route.authRoutes(config: ServerConfig) {
             // TODO: Implement actual authentication
             // For now, return a mock response
             call.respond(mapOf(
-                "user_id" to "@$user:localhost",
+                "user_id" to "@$user:${config.federation.serverName}",
                 "access_token" to "mock_access_token_${System.currentTimeMillis()}",
                 "device_id" to "mock_device",
-                "home_server" to "localhost"
+                "home_server" to config.federation.serverName
             ))
 
         } catch (e: Exception) {
@@ -60,15 +60,36 @@ fun Route.authRoutes(config: ServerConfig) {
         try {
             // Parse request body
             val requestBody = call.receiveText()
+            
+            // Handle empty request body (initial registration request)
+            if (requestBody.isBlank()) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_PARAM",
+                    "error" to "Missing parameters",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
+                ))
+                return@post
+            }
+            
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val username = jsonBody["username"]?.jsonPrimitive?.content
             val password = jsonBody["password"]?.jsonPrimitive?.content
             val auth = jsonBody["auth"]
 
+            // If no username/password provided, this might be an initial request
             if (username == null || password == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_BAD_JSON",
-                    "error" to "Missing username or password"
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_PARAM", 
+                    "error" to "Missing username or password",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
                 ))
                 return@post
             }
@@ -76,10 +97,10 @@ fun Route.authRoutes(config: ServerConfig) {
             // TODO: Implement actual registration
             // For now, return a mock response
             call.respond(mapOf(
-                "user_id" to "@$username:localhost",
+                "user_id" to "@$username:${config.federation.serverName}",
                 "access_token" to "mock_access_token_${System.currentTimeMillis()}",
                 "device_id" to "mock_device",
-                "home_server" to "localhost"
+                "home_server" to config.federation.serverName
             ))
 
         } catch (e: Exception) {

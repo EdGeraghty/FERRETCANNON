@@ -64,7 +64,7 @@ fun Route.adminRoutes(config: ServerConfig) {
             call.respond(mapOf(
                 "user_count" to userCount,
                 "room_count" to roomCount,
-                "server_name" to "localhost"
+                "server_name" to config.federation.serverName
             ))
 
         } catch (e: Exception) {

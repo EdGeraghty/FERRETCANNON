@@ -80,7 +80,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val roomTopic = jsonBody["topic"]?.jsonPrimitive?.content
 
             // Generate room ID
-            val roomId = "!room_${System.currentTimeMillis()}:localhost"
+            val roomId = "!room_${System.currentTimeMillis()}:${config.federation.serverName}"
 
             // TODO: Store room in database
             // TODO: Add creator as room member

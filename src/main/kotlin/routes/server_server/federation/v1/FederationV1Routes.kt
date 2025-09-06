@@ -213,7 +213,7 @@ fun Application.federationV1Routes() {
                         // Placeholder: return auth chain
                         val authChain = listOf<Map<String, Any>>() // Empty for now
                         call.respond(mapOf(
-                            "origin" to "localhost",
+                            "origin" to utils.ServerNameResolver.getServerName(),
                             "origin_server_ts" to System.currentTimeMillis(),
                             "pdus" to authChain
                         ))
