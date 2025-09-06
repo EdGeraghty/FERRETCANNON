@@ -217,8 +217,13 @@ fun Route.authRoutes(config: ServerConfig) {
             } else {
                 // For other IllegalArgumentException cases, return a generic error
                 call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_INVALID_PARAM",
-                    "error" to "Invalid registration parameters"
+                    "errcode" to "M_MISSING_PARAM",
+                    "error" to "Missing parameters",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
                 ))
             }
         } catch (e: Exception) {
