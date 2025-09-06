@@ -36,6 +36,8 @@
 	<!-- Enhanced access token implementation according to Matrix Client-Server API v1.15 specification. Added comprehensive middleware supporting both query parameter and Authorization header token inclusion, proper token validation, Matrix-compliant error responses (M_MISSING_TOKEN, M_UNKNOWN_TOKEN), helper functions for consistent token handling, and a token validation endpoint for testing. Project compiles successfully. -->
 - [x] Implement Account Registration
 	<!-- Complete account registration implementation including user registration, username availability checking, email validation token requests, and phone number validation token requests according to Matrix Client-Server API v1.15 specification. All endpoints include proper validation, Matrix-compliant error handling, and support for User-Interactive Authentication (UIA) flows. Project compiles successfully. -->
+- [x] Fix Registration Methods Query
+	<!-- GET /_matrix/client/v3/register endpoint implemented according to Matrix Client-Server API v1.15 specification to return supported registration flows. Also added GET /_matrix/client/v3/login endpoint for supported login flows. Project compiles successfully. -->
 - [x] Implement Guest Access
 	<!-- Complete guest access implementation according to Matrix Client-Server API v1.15 specification. Enhanced registration endpoint with guest user support, account upgrade functionality, and guest access validation in room join operations. Project compiles successfully. -->
 - [x] Implement OAuth 2.0 API

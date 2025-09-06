@@ -9,6 +9,17 @@ import kotlinx.serialization.json.*
 import config.ServerConfig
 
 fun Route.authRoutes(config: ServerConfig) {
+    // GET /login - Get available login flows
+    get("/login") {
+        call.respond(mapOf(
+            "flows" to listOf(
+                mapOf(
+                    "type" to "m.login.password"
+                )
+            )
+        ))
+    }
+
     // POST /login - User login
     post("/login") {
         try {
@@ -111,6 +122,17 @@ fun Route.authRoutes(config: ServerConfig) {
         // For now, assume available
         call.respond(mapOf(
             "available" to true
+        ))
+    }
+
+    // GET /register - Query supported registration methods
+    get("/register") {
+        call.respond(mapOf(
+            "flows" to listOf(
+                mapOf(
+                    "stages" to listOf("m.login.password")
+                )
+            )
         ))
     }
 }
