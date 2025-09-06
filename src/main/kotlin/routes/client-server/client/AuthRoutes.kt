@@ -59,11 +59,9 @@ fun Route.authRoutes(config: ServerConfig) {
     // POST /register - User registration
     post("/register") {
         try {
-            // Parse request body
-            val requestBody = call.receiveText()
-            
-            // Handle empty request body (initial registration request)
-            if (requestBody.isBlank()) {
+            // Check Content-Length header for empty body
+            val contentLength = call.request.headers["Content-Length"]?.toIntOrNull()
+            if (contentLength == 0 || contentLength == null) {
                 call.respond(HttpStatusCode.Unauthorized, mapOf(
                     "errcode" to "M_MISSING_PARAM",
                     "error" to "Missing parameters",
@@ -76,13 +74,85 @@ fun Route.authRoutes(config: ServerConfig) {
                 return@post
             }
             
-            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            // Parse request body
+            val requestBody = try {
+                call.receiveText()
+            } catch (e: IllegalArgumentException) {
+                // Handle case where there's no request body or invalid body
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_PARAM",
+                    "error" to "Missing parameters",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
+                ))
+                return@post
+            } catch (e: Exception) {
+                // Handle case where there's no request body
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_PARAM",
+                    "error" to "Missing parameters",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
+                ))
+                return@post
+            }
+            
+            // Handle empty request body (initial registration request)
+            if (requestBody.isBlank() || requestBody.trim().isEmpty() || requestBody.trim() == "{}" || requestBody.trim() == "" || requestBody.length == 0 || requestBody == "{}" || requestBody == "") {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_PARAM",
+                    "error" to "Missing parameters",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
+                ))
+                return@post
+            }
+            
+            val jsonBody = try {
+                Json.parseToJsonElement(requestBody).jsonObject
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Invalid JSON in request body"
+                ))
+                return@post
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Invalid JSON in request body"
+                ))
+                return@post
+            }
+            
+            // Check if JSON object is empty (no registration parameters provided)
+            if (jsonBody.isEmpty() || !jsonBody.containsKey("username") || !jsonBody.containsKey("password")) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_PARAM",
+                    "error" to "Missing parameters",
+                    "flows" to listOf(
+                        mapOf(
+                            "stages" to listOf("m.login.password")
+                        )
+                    )
+                ))
+                return@post
+            }
+            
             val username = jsonBody["username"]?.jsonPrimitive?.content
             val password = jsonBody["password"]?.jsonPrimitive?.content
             val auth = jsonBody["auth"]
 
             // If no username/password provided, this might be an initial request
-            if (username == null || password == null) {
+            if (username.isNullOrBlank() || password.isNullOrBlank()) {
                 call.respond(HttpStatusCode.Unauthorized, mapOf(
                     "errcode" to "M_MISSING_PARAM", 
                     "error" to "Missing username or password",
@@ -138,10 +208,19 @@ fun Route.authRoutes(config: ServerConfig) {
             ))
 
         } catch (e: IllegalArgumentException) {
-            call.respond(HttpStatusCode.BadRequest, mapOf(
-                "errcode" to "M_USER_IN_USE",
-                "error" to "Username already exists"
-            ))
+            // Check if this is specifically about username already existing
+            if (e.message?.contains("Username already exists") == true) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_USER_IN_USE",
+                    "error" to "Username already taken"
+                ))
+            } else {
+                // For other IllegalArgumentException cases, return a generic error
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Invalid registration parameters"
+                ))
+            }
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
