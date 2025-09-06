@@ -7,7 +7,7 @@ FROM eclipse-temurin:17-jdk-alpine as builder
 WORKDIR /app
 
 # Copy the Gradle wrapper and build files
-COPY gradlew* build.gradle.kts settings.gradle.kts gradle.properties* ./
+COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties* ./
 COPY gradle/ gradle/
 
 # Copy the source code
