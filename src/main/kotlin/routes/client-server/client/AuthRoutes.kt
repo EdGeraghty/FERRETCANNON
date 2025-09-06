@@ -12,13 +12,13 @@ import utils.AuthUtils
 fun Route.authRoutes(config: ServerConfig) {
     // GET /login - Get available login flows
     get("/login") {
-        call.respond(mapOf(
-            "flows" to listOf(
-                mapOf(
-                    "type" to "m.login.password"
-                )
-            )
-        ))
+        call.respond(buildJsonObject {
+            putJsonArray("flows") {
+                addJsonObject {
+                    put("type", "m.login.password")
+                }
+            }
+        })
     }
 
     // POST /login - User login
@@ -32,27 +32,27 @@ fun Route.authRoutes(config: ServerConfig) {
             val type = jsonBody["type"]?.jsonPrimitive?.content ?: "m.login.password"
 
             if (user == null || password == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_BAD_JSON",
-                    "error" to "Missing user or password"
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_BAD_JSON")
+                    put("error", "Missing user or password")
+                })
                 return@post
             }
 
             // TODO: Implement actual authentication
             // For now, return a mock response
-            call.respond(mapOf(
-                "user_id" to "@$user:${config.federation.serverName}",
-                "access_token" to "mock_access_token_${System.currentTimeMillis()}",
-                "device_id" to "mock_device",
-                "home_server" to config.federation.serverName
-            ))
+            call.respond(buildJsonObject {
+                put("user_id", "@$user:${config.federation.serverName}")
+                put("access_token", "mock_access_token_${System.currentTimeMillis()}")
+                put("device_id", "mock_device")
+                put("home_server", config.federation.serverName)
+            })
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
@@ -65,16 +65,18 @@ fun Route.authRoutes(config: ServerConfig) {
 
             // Check if this is an initial registration request (empty or minimal body)
             if (jsonBody.isEmpty() || (!jsonBody.containsKey("username") && !jsonBody.containsKey("password"))) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_PARAM",
-                    "error" to "Missing parameters",
-                    "flows" to listOf(
-                        mapOf(
-                            "stages" to listOf("m.login.password")
-                        )
-                    ),
-                    "session" to "dummy_session_${System.currentTimeMillis()}"
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_PARAM")
+                    put("error", "Missing parameters")
+                    putJsonArray("flows") {
+                        addJsonObject {
+                            putJsonArray("stages") {
+                                add("m.login.password")
+                            }
+                        }
+                    }
+                    put("session", "dummy_session_${System.currentTimeMillis()}")
+                })
                 return@post
             }
 
@@ -87,52 +89,54 @@ fun Route.authRoutes(config: ServerConfig) {
             if (auth != null) {
                 val authType = auth["type"]?.jsonPrimitive?.content
                 if (authType != "m.login.password" && authType != "m.login.dummy") {
-                    call.respond(HttpStatusCode.Unauthorized, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Unsupported authentication type"
-                    ))
+                    call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                        put("errcode", "M_UNKNOWN")
+                        put("error", "Unsupported authentication type")
+                    })
                     return@post
                 }
             }
 
             if (username.isNullOrBlank() || password.isNullOrBlank()) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_PARAM",
-                    "error" to "Missing username or password",
-                    "flows" to listOf(
-                        mapOf(
-                            "stages" to listOf("m.login.password")
-                        )
-                    )
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_PARAM")
+                    put("error", "Missing username or password")
+                    putJsonArray("flows") {
+                        addJsonObject {
+                            putJsonArray("stages") {
+                                add("m.login.password")
+                            }
+                        }
+                    }
+                })
                 return@post
             }
 
             // Validate username format
             if (!username.matches(Regex("^[a-zA-Z0-9._-]+$")) || username.length < 1 || username.length > 255) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_INVALID_USERNAME",
-                    "error" to "Invalid username format"
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_USERNAME")
+                    put("error", "Invalid username format")
+                })
                 return@post
             }
 
             // Check if username is available
             if (!AuthUtils.isUsernameAvailable(username)) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_USER_IN_USE",
-                    "error" to "Username already taken"
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_USER_IN_USE")
+                    put("error", "Username already taken")
+                })
                 return@post
             }
 
             // Validate password strength
             val (isValidPassword, passwordError) = AuthUtils.validatePasswordStrength(password)
             if (!isValidPassword) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_WEAK_PASSWORD",
-                    "error" to passwordError
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_WEAK_PASSWORD")
+                    put("error", passwordError)
+                })
                 return@post
             }
 
@@ -143,35 +147,45 @@ fun Route.authRoutes(config: ServerConfig) {
             val deviceId = AuthUtils.generateDeviceId()
             val accessToken = AuthUtils.createAccessToken(userId, deviceId)
 
-            call.respond(mapOf(
-                "user_id" to userId,
-                "access_token" to accessToken,
-                "device_id" to deviceId,
-                "home_server" to config.federation.serverName
-            ))
+            call.respond(buildJsonObject {
+                put("user_id", userId)
+                put("access_token", accessToken)
+                put("device_id", deviceId)
+                put("home_server", config.federation.serverName)
+            })
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error: ${e.message}"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error: ${e.message}")
+            })
         }
     }
 
     // GET /capabilities - Server capabilities
     get("/capabilities") {
-        call.respond(mapOf(
-            "capabilities" to mapOf(
-                "m.change_password" to mapOf("enabled" to true),
-                "m.room_versions" to mapOf(
-                    "default" to "9",
-                    "available" to mapOf("9" to "stable")
-                ),
-                "m.set_displayname" to mapOf("enabled" to true),
-                "m.set_avatar_url" to mapOf("enabled" to true),
-                "m.3pid_changes" to mapOf("enabled" to true)
-            )
-        ))
+        call.respond(buildJsonObject {
+            putJsonObject("capabilities") {
+                putJsonObject("m.change_password") {
+                    put("enabled", true)
+                }
+                putJsonObject("m.room_versions") {
+                    put("default", "9")
+                    putJsonObject("available") {
+                        put("9", "stable")
+                    }
+                }
+                putJsonObject("m.set_displayname") {
+                    put("enabled", true)
+                }
+                putJsonObject("m.set_avatar_url") {
+                    put("enabled", true)
+                }
+                putJsonObject("m.3pid_changes") {
+                    put("enabled", true)
+                }
+            }
+        })
     }
 
     // GET /register/available - Check username availability
@@ -179,28 +193,30 @@ fun Route.authRoutes(config: ServerConfig) {
         val username = call.request.queryParameters["username"]
 
         if (username == null) {
-            call.respond(HttpStatusCode.BadRequest, mapOf(
-                "errcode" to "M_INVALID_PARAM",
-                "error" to "Missing username parameter"
-            ))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing username parameter")
+            })
             return@get
         }
 
         // Check actual availability in database
         val available = AuthUtils.isUsernameAvailable(username)
-        call.respond(mapOf(
-            "available" to available
-        ))
+        call.respond(buildJsonObject {
+            put("available", available)
+        })
     }
 
     // GET /register - Query supported registration methods
     get("/register") {
-        call.respond(mapOf(
-            "flows" to listOf(
-                mapOf(
-                    "stages" to listOf("m.login.password")
-                )
-            )
-        ))
+        call.respond(buildJsonObject {
+            putJsonArray("flows") {
+                addJsonObject {
+                    putJsonArray("stages") {
+                        add("m.login.password")
+                    }
+                }
+            }
+        })
     }
 }

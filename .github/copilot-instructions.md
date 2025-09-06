@@ -1,6 +1,7 @@
 # Progress Tracking
 
-- [x] Verify that the - [x] Implement Content Repository
+- [x] Fix Matrix Registration Serialization Error
+	<!-- Fixed Kotlin serialization issue in AuthRoutes.kt by replacing all mapOf responses with buildJsonObject to resolve LinkedHashMap polymorphic serialization error. All authentication endpoints (GET/POST /login, GET/POST /register, GET /capabilities, GET /register/available) now return proper JSON responses. Project compiles successfully and registration works correctly. -->
 	<!-- GET /_matrix/federation/v1/media/download/{mediaId} and GET /_matrix/federation/v1/media/thumbnail/{mediaId} endpoints implemented according to Matrix Server-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->opilot-instructions.md file in the .github directory is created.
 - [x] Clarify Project Requirements
 - [x] Scaffold the Project
