@@ -7,6 +7,7 @@ import io.ktor.server.request.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
 import config.ServerConfig
+import utils.AuthUtils
 
 fun Route.authRoutes(config: ServerConfig) {
     // GET /login - Get available login flows
@@ -94,19 +95,57 @@ fun Route.authRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // TODO: Implement actual registration
-            // For now, return a mock response
+            // Validate username format
+            if (!username.matches(Regex("^[a-zA-Z0-9._-]+$")) || username.length < 1 || username.length > 255) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_INVALID_USERNAME",
+                    "error" to "Invalid username format"
+                ))
+                return@post
+            }
+
+            // Check if username is available
+            if (!AuthUtils.isUsernameAvailable(username)) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_USER_IN_USE",
+                    "error" to "Username already taken"
+                ))
+                return@post
+            }
+
+            // Validate password strength
+            val (isValidPassword, passwordError) = AuthUtils.validatePasswordStrength(password)
+            if (!isValidPassword) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_WEAK_PASSWORD",
+                    "error" to passwordError
+                ))
+                return@post
+            }
+
+            // Create the user
+            val userId = AuthUtils.createUser(username, password, serverName = config.federation.serverName)
+
+            // Generate device ID and create access token
+            val deviceId = AuthUtils.generateDeviceId()
+            val accessToken = AuthUtils.createAccessToken(userId, deviceId)
+
             call.respond(mapOf(
-                "user_id" to "@$username:${config.federation.serverName}",
-                "access_token" to "mock_access_token_${System.currentTimeMillis()}",
-                "device_id" to "mock_device",
+                "user_id" to userId,
+                "access_token" to accessToken,
+                "device_id" to deviceId,
                 "home_server" to config.federation.serverName
             ))
 
+        } catch (e: IllegalArgumentException) {
+            call.respond(HttpStatusCode.BadRequest, mapOf(
+                "errcode" to "M_USER_IN_USE",
+                "error" to "Username already exists"
+            ))
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
+                "error" to "Internal server error: ${e.message}"
             ))
         }
     }
@@ -139,10 +178,10 @@ fun Route.authRoutes(config: ServerConfig) {
             return@get
         }
 
-        // TODO: Check actual availability in database
-        // For now, assume available
+        // Check actual availability in database
+        val available = AuthUtils.isUsernameAvailable(username)
         call.respond(mapOf(
-            "available" to true
+            "available" to available
         ))
     }
 
