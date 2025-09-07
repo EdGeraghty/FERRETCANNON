@@ -1,0 +1,182 @@
+package routes.client_server.client
+
+import io.ktor.server.application.*
+import io.ktor.server.routing.*
+import io.ktor.server.response.*
+import io.ktor.server.request.*
+import io.ktor.http.*
+import kotlinx.serialization.json.*
+import utils.AuthUtils
+
+fun Route.keysRoutes() {
+    // POST /keys/query - Query device keys for users
+    post("/keys/query") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@post
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val deviceKeys = jsonBody["device_keys"]?.jsonObject ?: JsonObject(emptyMap())
+
+            // Process device keys query
+            val result = mutableMapOf<String, Map<String, Map<String, Any>>>()
+
+            for (queryUserId in deviceKeys.keys) {
+                val requestedDevices = deviceKeys[queryUserId]
+
+                if (requestedDevices is JsonNull) {
+                    // Return all devices for this user
+                    val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
+                    if (userDeviceKeys.containsKey(queryUserId)) {
+                        result[queryUserId] = userDeviceKeys[queryUserId]!!
+                    }
+                } else if (requestedDevices is JsonObject) {
+                    val deviceIds = requestedDevices["device_ids"]?.jsonArray ?: JsonArray(emptyList())
+                    if (deviceIds.isNotEmpty()) {
+                        // Return only requested devices
+                        val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
+                        val filteredDevices = mutableMapOf<String, Map<String, Any>>()
+
+                        deviceIds.forEach { deviceIdElement ->
+                            val deviceId = deviceIdElement.jsonPrimitive.content
+                            val userDevices = userDeviceKeys[queryUserId]
+                            if (userDevices != null && userDevices.containsKey(deviceId)) {
+                                filteredDevices[deviceId] = userDevices[deviceId]!!
+                            }
+                        }
+
+                        if (filteredDevices.isNotEmpty()) {
+                            result[queryUserId] = filteredDevices
+                        }
+                    }
+                }
+            }
+
+            // Return the device keys
+            val response = mapOf("device_keys" to result)
+            call.respond(response)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // POST /keys/claim - Claim one-time keys
+    post("/keys/claim") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@post
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val oneTimeKeys = jsonBody["one_time_keys"]?.jsonObject ?: JsonObject(emptyMap())
+
+            // Process one-time key claims
+            val result = mutableMapOf<String, Map<String, Map<String, Any>>>()
+
+            for (claimUserId in oneTimeKeys.keys) {
+                val userRequestedKeys = oneTimeKeys[claimUserId]?.jsonObject ?: JsonObject(emptyMap())
+                val userClaimedKeys = mutableMapOf<String, Map<String, Any>>()
+
+                for (keyId in userRequestedKeys.keys) {
+                    // Parse the key ID (format: algorithm:key_id)
+                    val parts = keyId.split(":", limit = 2)
+                    if (parts.size == 2) {
+                        val algorithm = parts[0]
+                        val keyIdValue = parts[1]
+
+                        // For now, return a placeholder response
+                        // In a full implementation, this would claim actual one-time keys
+                        userClaimedKeys[keyId] = mapOf(
+                            "key" to "placeholder_key_data",
+                            "signatures" to mapOf<String, Any>()
+                        )
+                    }
+                }
+
+                if (userClaimedKeys.isNotEmpty()) {
+                    result[claimUserId] = userClaimedKeys
+                }
+            }
+
+            // Return the claimed keys
+            val response = mapOf("one_time_keys" to result)
+            call.respond(response)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // POST /keys/upload - Upload device and one-time keys
+    post("/keys/upload") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val deviceId = call.attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
+
+            if (userId == null || deviceId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@post
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+            val deviceKeys = jsonBody["device_keys"]?.jsonObject
+            val oneTimeKeys = jsonBody["one_time_keys"]?.jsonObject
+
+            // Process device keys upload
+            if (deviceKeys != null) {
+                AuthUtils.updateDeviceKeys(userId, deviceId)
+            }
+
+            // Process one-time keys upload
+            if (oneTimeKeys != null) {
+                // In a full implementation, this would store the one-time keys
+                // For now, just acknowledge the upload
+            }
+
+            // Return success response with key counts
+            val response = mapOf(
+                "one_time_key_counts" to mapOf(
+                    "curve25519" to 0,  // Placeholder
+                    "signed_curve25519" to 0  // Placeholder
+                )
+            )
+            call.respond(response)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+}

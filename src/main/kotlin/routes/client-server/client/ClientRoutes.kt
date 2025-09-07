@@ -52,6 +52,7 @@ import routes.client_server.client.adminRoutes
 import routes.client_server.client.thirdPartyRoutes
 import routes.client_server.client.oauthRoutes
 import routes.client_server.client.syncRoutes
+import routes.client_server.client.keysRoutes
 
 // Attribute keys for authentication
 val MATRIX_USER_KEY = AttributeKey<UserIdPrincipal>("MatrixUser")
@@ -250,6 +251,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     thirdPartyRoutes(config)
                     oauthRoutes(config)
                     syncRoutes(config)
+                    keysRoutes()
                 }
             }
         }
