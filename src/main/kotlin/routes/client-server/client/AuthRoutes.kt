@@ -27,22 +27,49 @@ fun Route.authRoutes(config: ServerConfig) {
             // Parse request body
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
-            val user = jsonBody["user"]?.jsonPrimitive?.content
             val password = jsonBody["password"]?.jsonPrimitive?.content
-            val type = jsonBody["type"]?.jsonPrimitive?.content ?: "m.login.password"
             val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content ?: "default_device"
-            val initialDeviceDisplayName = jsonBody["initial_device_display_name"]?.jsonPrimitive?.content
 
-            if (user == null || password == null) {
+            // Extract user identifier
+            var username: String?
+            val identifier = jsonBody["identifier"]?.jsonObject
+            if (identifier != null) {
+                val idType = identifier["type"]?.jsonPrimitive?.content
+                when (idType) {
+                    "m.id.user" -> {
+                        username = identifier["user"]?.jsonPrimitive?.content
+                    }
+                    "m.id.thirdparty" -> {
+                        // For now, we don't support 3PID login
+                        call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                            put("errcode", "M_UNKNOWN")
+                            put("error", "Third-party login not supported")
+                        })
+                        return@post
+                    }
+                    else -> {
+                        call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                            put("errcode", "M_UNKNOWN")
+                            put("error", "Unknown identifier type")
+                        })
+                        return@post
+                    }
+                }
+            } else {
+                // Fallback to old format for backward compatibility
+                username = jsonBody["user"]?.jsonPrimitive?.content
+            }
+
+            if (username.isNullOrBlank() || password.isNullOrBlank()) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                     put("errcode", "M_BAD_JSON")
-                    put("error", "Missing user or password")
+                    put("error", "Missing user identifier or password")
                 })
                 return@post
             }
 
             // Authenticate user
-            val authenticatedUserId = AuthUtils.authenticateUser(user, password)
+            val authenticatedUserId = AuthUtils.authenticateUser(username, password)
             if (authenticatedUserId == null) {
                 call.respond(HttpStatusCode.Forbidden, buildJsonObject {
                     put("errcode", "M_FORBIDDEN")
@@ -82,11 +109,15 @@ fun Route.authRoutes(config: ServerConfig) {
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
 
-            // Check if this is an initial registration request (empty or minimal body)
-            if (jsonBody.isEmpty() || (!jsonBody.containsKey("username") && !jsonBody.containsKey("password"))) {
+            val username = jsonBody["username"]?.jsonPrimitive?.content
+            val password = jsonBody["password"]?.jsonPrimitive?.content
+            val auth = jsonBody["auth"]?.jsonObject
+            val inhibitLogin = jsonBody["inhibit_login"]?.jsonPrimitive?.boolean ?: false
+
+            // Check if auth is provided
+            if (auth == null) {
+                // No auth provided - return UIA challenge
                 call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                    put("errcode", "M_MISSING_PARAM")
-                    put("error", "Missing parameters")
                     putJsonArray("flows") {
                         addJsonObject {
                             putJsonArray("stages") {
@@ -94,28 +125,74 @@ fun Route.authRoutes(config: ServerConfig) {
                             }
                         }
                     }
-                    put("session", "dummy_session_${System.currentTimeMillis()}")
+                    put("session", "reg_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
                 })
                 return@post
             }
 
-            val username = jsonBody["username"]?.jsonPrimitive?.content
-            val password = jsonBody["password"]?.jsonPrimitive?.content
-            val auth = jsonBody["auth"]?.jsonObject
-            val initialDeviceDisplayName = jsonBody["initial_device_display_name"]?.jsonPrimitive?.content
+            // Validate auth object
+            val authType = auth["type"]?.jsonPrimitive?.content
+            val authSession = auth["session"]?.jsonPrimitive?.content
 
-            // Validate auth if provided
-            if (auth != null) {
-                val authType = auth["type"]?.jsonPrimitive?.content
-                if (authType != "m.login.password" && authType != "m.login.dummy") {
-                    call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                        put("errcode", "M_UNKNOWN")
-                        put("error", "Unsupported authentication type")
-                    })
-                    return@post
-                }
+            if (authType == null) {
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_PARAM")
+                    put("error", "Missing auth type")
+                    putJsonArray("flows") {
+                        addJsonObject {
+                            putJsonArray("stages") {
+                                add("m.login.password")
+                            }
+                        }
+                    }
+                    put("session", authSession ?: "reg_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
+                })
+                return@post
             }
 
+            if (authType != "m.login.password" && authType != "m.login.dummy") {
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_UNKNOWN")
+                    put("error", "Unsupported authentication type")
+                    putJsonArray("flows") {
+                        addJsonObject {
+                            putJsonArray("stages") {
+                                add("m.login.password")
+                            }
+                        }
+                    }
+                    put("session", authSession ?: "reg_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
+                })
+                return@post
+            }
+
+            // For m.login.dummy, we don't need credentials
+            if (authType == "m.login.dummy") {
+                // Generate a random username if not provided
+                val finalUsername = username ?: "user_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}"
+                val finalPassword = "dummy_password_${System.currentTimeMillis()}"
+
+                // Create the user
+                val userId = AuthUtils.createUser(finalUsername, finalPassword, serverName = config.federation.serverName)
+
+                // Generate device ID and create access token
+                val deviceId = AuthUtils.generateDeviceId()
+                val accessToken = AuthUtils.createAccessToken(userId, deviceId)
+
+                val response = buildJsonObject {
+                    put("user_id", userId)
+                    put("device_id", deviceId)
+                    put("home_server", config.federation.serverName)
+                    if (!inhibitLogin) {
+                        put("access_token", accessToken)
+                    }
+                }
+
+                call.respond(response)
+                return@post
+            }
+
+            // For m.login.password, validate credentials
             if (username.isNullOrBlank() || password.isNullOrBlank()) {
                 call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                     put("errcode", "M_MISSING_PARAM")
@@ -127,12 +204,13 @@ fun Route.authRoutes(config: ServerConfig) {
                             }
                         }
                     }
+                    put("session", authSession ?: "reg_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
                 })
                 return@post
             }
 
             // Validate username format
-            if (!username.matches(Regex("^[a-zA-Z0-9._-]+$")) || username.length < 1 || username.length > 255) {
+            if (!username.matches(Regex("^[a-zA-Z0-9._-]+\$")) || username.length < 1 || username.length > 255) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                     put("errcode", "M_INVALID_USERNAME")
                     put("error", "Invalid username format")
@@ -166,12 +244,16 @@ fun Route.authRoutes(config: ServerConfig) {
             val deviceId = AuthUtils.generateDeviceId()
             val accessToken = AuthUtils.createAccessToken(userId, deviceId)
 
-            call.respond(buildJsonObject {
+            val response = buildJsonObject {
                 put("user_id", userId)
-                put("access_token", accessToken)
                 put("device_id", deviceId)
                 put("home_server", config.federation.serverName)
-            })
+                if (!inhibitLogin) {
+                    put("access_token", accessToken)
+                }
+            }
+
+            call.respond(response)
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
@@ -213,7 +295,7 @@ fun Route.authRoutes(config: ServerConfig) {
 
         if (username == null) {
             call.respond(HttpStatusCode.BadRequest, buildJsonObject {
-                put("errcode", "M_INVALID_PARAM")
+                put("errcode", "M_MISSING_PARAM")
                 put("error", "Missing username parameter")
             })
             return@get
