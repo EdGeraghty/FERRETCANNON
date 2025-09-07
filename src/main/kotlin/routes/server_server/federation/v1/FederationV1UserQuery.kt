@@ -18,7 +18,10 @@ fun Route.federationV1UserQuery() {
         val roomAlias = call.request.queryParameters["room_alias"]
 
         if (roomAlias == null) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing room_alias parameter"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing room_alias parameter")
+            })
             return@get
         }
 
@@ -27,26 +30,35 @@ fun Route.federationV1UserQuery() {
             val roomId = findRoomByAlias(roomAlias)
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room alias not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room alias not found")
+                })
                 return@get
             }
 
             // Get room information
             val roomInfo = getRoomInfo(roomId)
             if (roomInfo == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@get
             }
 
             val servers = listOf("localhost") // In a real implementation, this would include all servers that know about the room
 
-            call.respond(mapOf(
-                "room_id" to roomId,
-                "servers" to servers
-            ))
+            call.respond(buildJsonObject {
+                put("room_id", roomId)
+                put("servers", Json.encodeToJsonElement(servers))
+            })
         } catch (e: Exception) {
             println("Query directory error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
     get("/query/profile") {
@@ -54,14 +66,20 @@ fun Route.federationV1UserQuery() {
         val field = call.request.queryParameters["field"]
 
         if (userId == null) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing user_id parameter"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing user_id parameter")
+            })
             return@get
         }
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -71,25 +89,37 @@ fun Route.federationV1UserQuery() {
             if (profile != null) {
                 call.respond(profile)
             } else {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "User not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "User not found")
+                })
             }
         } catch (e: Exception) {
             println("Query profile error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
     get("/query/displayname") {
         val userId = call.request.queryParameters["user_id"]
 
         if (userId == null) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing user_id parameter"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing user_id parameter")
+            })
             return@get
         }
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -97,27 +127,41 @@ fun Route.federationV1UserQuery() {
             // Get user display name specifically
             val profile = getUserProfile(userId, "displayname")
             if (profile != null && profile.containsKey("displayname")) {
-                call.respond(mapOf("displayname" to profile["displayname"]))
+                call.respond(buildJsonObject {
+                    put("displayname", Json.encodeToJsonElement(profile["displayname"]))
+                })
             } else {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "User display name not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "User display name not found")
+                })
             }
         } catch (e: Exception) {
             println("Query displayname error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
     get("/query/avatar_url") {
         val userId = call.request.queryParameters["user_id"]
 
         if (userId == null) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing user_id parameter"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing user_id parameter")
+            })
             return@get
         }
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -125,21 +169,29 @@ fun Route.federationV1UserQuery() {
             // Get user avatar URL specifically
             val profile = getUserProfile(userId, "avatar_url")
             if (profile != null && profile.containsKey("avatar_url")) {
-                call.respond(mapOf("avatar_url" to profile["avatar_url"]))
+                call.respond(buildJsonObject {
+                    put("avatar_url", Json.encodeToJsonElement(profile["avatar_url"]))
+                })
             } else {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "User avatar URL not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "User avatar URL not found")
+                })
             }
         } catch (e: Exception) {
             println("Query avatar_url error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
     get("/query") {
         // Generic /query endpoint - returns information about available query types
-        call.respond(HttpStatusCode.BadRequest, mapOf(
-            "errcode" to "M_INVALID_PARAM",
-            "error" to "Query type required. Available query types: directory, profile, displayname, avatar_url"
-        ))
+        call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+            put("errcode", "M_INVALID_PARAM")
+            put("error", "Query type required. Available query types: directory, profile, displayname, avatar_url")
+        })
     }
     get("/query/{queryType}") {
         val queryType = call.parameters["queryType"] ?: return@get call.respond(HttpStatusCode.BadRequest)
@@ -147,7 +199,10 @@ fun Route.federationV1UserQuery() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -155,20 +210,32 @@ fun Route.federationV1UserQuery() {
             when (queryType) {
                 "directory" -> {
                     // This is handled by the specific directory endpoint above
-                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Use /query/directory endpoint"))
+                    call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                        put("errcode", "M_UNRECOGNIZED")
+                        put("error", "Use /query/directory endpoint")
+                    })
                 }
                 "profile" -> {
                     // This is handled by the specific profile endpoint above
-                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Use /query/profile endpoint"))
+                    call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                        put("errcode", "M_UNRECOGNIZED")
+                        put("error", "Use /query/profile endpoint")
+                    })
                 }
                 else -> {
                     // Unknown query type
-                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_UNRECOGNIZED", "error" to "Unknown query type: $queryType"))
+                    call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                        put("errcode", "M_UNRECOGNIZED")
+                        put("error", "Unknown query type: $queryType")
+                    })
                 }
             }
         } catch (e: Exception) {
             println("Query error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
 }

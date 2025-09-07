@@ -35,31 +35,31 @@ fun Application.federationV1Routes() {
                 route("/v1") {
                     get("/version") {
                         // For now, skip auth for version, as per spec it's public
-                        call.respond(mapOf(
-                            "server" to mapOf(
-                                "name" to "FERRETCANNON",
-                                "version" to "1.0.0"
-                            ),
-                            "spec_versions" to mapOf(
-                                "federation" to "v1.15",
-                                "client_server" to "v1.15"
-                            )
-                        ))
+                        call.respond(buildJsonObject {
+                            putJsonObject("server") {
+                                put("name", "FERRETCANNON")
+                                put("version", "1.0.0")
+                            }
+                            putJsonObject("spec_versions") {
+                                put("federation", "v1.15")
+                                put("client_server", "v1.15")
+                            }
+                        })
                     }
                     put("/send/{txnId}") {
                         try {
-                            val txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf(
-                                "errcode" to "M_INVALID_PARAM",
-                                "error" to "Missing transaction ID"
-                            ))
+                            val txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("errcode", "M_INVALID_PARAM")
+                                put("error", "Missing transaction ID")
+                            })
 
                             // Validate content type
                             val contentType = call.request.contentType()
                             if (contentType != ContentType.Application.Json) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_NOT_JSON",
-                                    "error" to "Content-Type must be application/json"
-                                ))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_NOT_JSON")
+                                    put("error", "Content-Type must be application/json")
+                                })
                                 return@put
                             }
 
@@ -67,25 +67,25 @@ fun Application.federationV1Routes() {
 
                             // Validate request size
                             if (body.length > 1024 * 1024) { // 1MB limit
-                                call.respond(HttpStatusCode.BadRequest, mapOf(
-                                    "errcode" to "M_TOO_LARGE",
-                                    "error" to "Request too large"
-                                ))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_TOO_LARGE")
+                                    put("error", "Request too large")
+                                })
                                 return@put
                             }
 
                             val authHeader = call.request.headers["Authorization"]
                             if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-                                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                                    "errcode" to "M_UNAUTHORIZED",
-                                    "error" to "Invalid signature"
-                                ))
+                                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                    put("errcode", "M_UNAUTHORIZED")
+                                    put("error", "Invalid signature")
+                                })
                                 return@put
                             }
 
                             // Process transaction
                             val result = processTransaction(body)
-                            if (result.containsKey("errcode")) {
+                            if (result is JsonObject && result.containsKey("errcode")) {
                                 call.respond(HttpStatusCode.BadRequest, result)
                             } else {
                                 call.respond(HttpStatusCode.OK, result)
@@ -93,16 +93,16 @@ fun Application.federationV1Routes() {
                         } catch (e: Exception) {
                             when (e) {
                                 is kotlinx.serialization.SerializationException -> {
-                                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                                        "errcode" to "M_BAD_JSON",
-                                        "error" to "Invalid JSON"
-                                    ))
+                                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                        put("errcode", "M_BAD_JSON")
+                                        put("error", "Invalid JSON")
+                                    })
                                 }
                                 else -> {
-                                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                        "errcode" to "M_UNKNOWN",
-                                        "error" to "Internal server error"
-                                    ))
+                                    call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                        put("errcode", "M_UNKNOWN")
+                                        put("error", "Internal server error")
+                                    })
                                 }
                             }
                         }

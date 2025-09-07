@@ -18,7 +18,10 @@ fun Route.federationV1ThirdParty() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@put
         }
 
@@ -31,7 +34,10 @@ fun Route.federationV1ThirdParty() {
             val mxid = bindRequest["mxid"]?.jsonPrimitive?.content
 
             if (medium == null || address == null || mxid == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing required fields"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing required fields")
+                })
                 return@put
             }
 
@@ -44,10 +50,15 @@ fun Route.federationV1ThirdParty() {
             // For now, just acknowledge the binding
             println("Third-party invite bound: $medium:$address -> $mxid")
 
-            call.respond(mapOf("success" to true))
+            call.respond(buildJsonObject {
+                put("success", true)
+            })
         } catch (e: Exception) {
             println("3PID onbind error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
     put("/exchange_third_party_invite/{roomId}") {
@@ -57,7 +68,10 @@ fun Route.federationV1ThirdParty() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@put
         }
 
@@ -70,7 +84,10 @@ fun Route.federationV1ThirdParty() {
             val sender = exchangeRequest["sender"]?.jsonPrimitive?.content
 
             if (medium == null || address == null || sender == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing required fields"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing required fields")
+                })
                 return@put
             }
 
@@ -80,7 +97,10 @@ fun Route.federationV1ThirdParty() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@put
             }
 
@@ -91,31 +111,34 @@ fun Route.federationV1ThirdParty() {
             // 4. Return the invite event
 
             // For now, create a basic invite event
-            val inviteEvent: Map<String, Any> = mapOf(
-                "event_id" to "\$${System.currentTimeMillis()}_invite",
-                "type" to "m.room.member",
-                "room_id" to roomId,
-                "sender" to sender,
-                "content" to mapOf<String, Any>(
-                    "membership" to "invite",
-                    "third_party_invite" to mapOf<String, Any>(
-                        "display_name" to address,
-                        "signed" to mapOf<String, Any>(
-                            "mxid" to "@$address:$medium",
-                            "token" to "placeholder_token",
-                            "signatures" to emptyMap<String, Any>()
-                        )
-                    )
-                ),
-                "state_key" to "@$address:$medium",
-                "origin_server_ts" to System.currentTimeMillis(),
-                "origin" to "localhost"
-            )
+            val inviteEvent = buildJsonObject {
+                put("event_id", "\$${System.currentTimeMillis()}_invite")
+                put("type", "m.room.member")
+                put("room_id", roomId)
+                put("sender", sender)
+                putJsonObject("content") {
+                    put("membership", "invite")
+                    putJsonObject("third_party_invite") {
+                        put("display_name", address)
+                        putJsonObject("signed") {
+                            put("mxid", "@$address:$medium")
+                            put("token", "placeholder_token")
+                            put("signatures", JsonObject(emptyMap()))
+                        }
+                    }
+                }
+                put("state_key", "@$address:$medium")
+                put("origin_server_ts", System.currentTimeMillis())
+                put("origin", "localhost")
+            }
 
             call.respond(inviteEvent)
         } catch (e: Exception) {
             println("Exchange third party invite error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
 }

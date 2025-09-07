@@ -29,55 +29,94 @@ import utils.ServerKeys
 import models.Events
 import models.Rooms
 
-fun processPDU(pdu: JsonElement): Map<String, String>? {
+fun processPDU(pdu: JsonElement): JsonElement? {
     return try {
         val event = pdu.jsonObject
 
         // 1. Check validity: has room_id
-        if (event["room_id"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing room_id")
+        if (event["room_id"] == null) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing room_id")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
-        val roomId = event["room_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing room_id")
+        val roomId = event["room_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing room_id")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // Validate room_id format
         if (!roomId.startsWith("!") || !roomId.contains(":")) {
-            return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid room_id format")
+            return buildJsonObject {
+                put("errcode", "M_INVALID_EVENT")
+                put("error", "Invalid room_id format")
+            }.toString().let { Json.parseToJsonElement(it).jsonObject }
         }
 
         // 2. Check validity: has sender
-        if (event["sender"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing sender")
+        if (event["sender"] == null) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing sender")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
-        val sender = event["sender"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing sender")
+        val sender = event["sender"]?.jsonPrimitive?.content ?: return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing sender")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // Validate sender format
         if (!sender.startsWith("@") || !sender.contains(":")) {
-            return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid sender format")
+            return buildJsonObject {
+                put("errcode", "M_INVALID_EVENT")
+                put("error", "Invalid sender format")
+            }.toString().let { Json.parseToJsonElement(it).jsonObject }
         }
 
         // 3. Check validity: has event_id
-        if (event["event_id"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing event_id")
+        if (event["event_id"] == null) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing event_id")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
-        val eventId = event["event_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing event_id")
+        val eventId = event["event_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing event_id")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // Validate event_id format
         if (!eventId.startsWith("$")) {
-            return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid event_id format")
+            return buildJsonObject {
+                put("errcode", "M_INVALID_EVENT")
+                put("error", "Invalid event_id format")
+            }.toString().let { Json.parseToJsonElement(it).jsonObject }
         }
 
         // 4. Check validity: has type
-        if (event["type"] == null) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Missing type")
+        if (event["type"] == null) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Missing type")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // 5. Check hash
-        if (!MatrixAuth.verifyEventHash(event)) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid hash")
+        if (!MatrixAuth.verifyEventHash(event)) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Invalid hash")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // 6. Check signatures
         val sigValid = runBlocking { MatrixAuth.verifyEventSignatures(event) }
-        if (!sigValid) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Invalid signature")
+        if (!sigValid) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Invalid signature")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // 7. Get auth state from auth_events
         val authState = getAuthState(event, roomId)
 
         // 8. Check auth based on auth_events
-        if (!stateResolver.checkAuthRules(event, authState)) return mapOf("errcode" to "M_INVALID_EVENT", "error" to "Auth check failed")
+        if (!stateResolver.checkAuthRules(event, authState)) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Auth check failed")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // 9. Get current state
         val currentState = stateResolver.getResolvedState(roomId)
@@ -129,11 +168,14 @@ fun processPDU(pdu: JsonElement): Map<String, String>? {
         }
         null // Success
     } catch (e: Exception) {
-        mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid PDU JSON")
+        buildJsonObject {
+            put("errcode", "M_BAD_JSON")
+            put("error", "Invalid PDU JSON")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
     }
 }
 
-fun processTransaction(body: String): Map<String, Any> {
+fun processTransaction(body: String): JsonElement {
     return try {
         val json = Json.parseToJsonElement(body).jsonObject
         val pdus = json["pdus"]?.jsonArray ?: JsonArray(emptyList())
@@ -141,11 +183,17 @@ fun processTransaction(body: String): Map<String, Any> {
 
         // Validate limits
         if (pdus.size > 50 || edus.size > 100) {
-            return mapOf("errcode" to "M_TOO_LARGE", "error" to "Transaction too large")
+            return buildJsonObject {
+                put("errcode", "M_TOO_LARGE")
+                put("error", "Transaction too large")
+            }.toString().let { Json.parseToJsonElement(it).jsonObject }
         }
 
         // Get server name from transaction origin
-        val origin = json["origin"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing origin")
+        val origin = json["origin"]?.jsonPrimitive?.content ?: return buildJsonObject {
+            put("errcode", "M_INVALID_PARAM")
+            put("error", "Missing origin")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // Process PDUs with ACL checks
         for (pdu in pdus) {
@@ -202,38 +250,62 @@ fun processTransaction(body: String): Map<String, Any> {
         }
 
         // Return success
-        emptyMap() // 200 OK with empty body
+        JsonObject(emptyMap()) // 200 OK with empty body
     } catch (e: Exception) {
-        mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON")
+        buildJsonObject {
+            put("errcode", "M_BAD_JSON")
+            put("error", "Invalid JSON")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
     }
 }
 
-fun processEDU(edu: JsonElement): Map<String, String>? {
+fun processEDU(edu: JsonElement): JsonElement? {
     return try {
         val eduObj = edu.jsonObject
-        val eduType = eduObj["edu_type"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing edu_type")
+        val eduType = eduObj["edu_type"]?.jsonPrimitive?.content ?: return buildJsonObject {
+            put("errcode", "M_INVALID_EDU")
+            put("error", "Missing edu_type")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         when (eduType) {
             "m.typing" -> {
-                val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
-                val roomId = content["room_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing room_id")
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing user_id")
+                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing content")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val roomId = content["room_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing room_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing user_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 val typing = content["typing"]?.jsonPrimitive?.boolean ?: false
 
                 // Additional validation
                 if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid user_id format")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid user_id format")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 if (!roomId.startsWith("!") || !roomId.contains(":")) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid room_id format")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid room_id format")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Verify user is in room
                 val currentState = stateResolver.getResolvedState(roomId)
                 val membership = currentState["m.room.member:$userId"]
                 if (membership?.get("membership")?.jsonPrimitive?.content != "join") {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "User not in room")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "User not in room")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Update typing status with timestamp
@@ -269,7 +341,10 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 null
             }
             "m.receipt" -> {
-                val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
+                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing content")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
                 // Handle receipts: content is {roomId: {eventId: {userId: {receiptType: {data: {ts: ts}}}}}}
                 val processedRooms = mutableSetOf<String>()
@@ -349,7 +424,9 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                             roomData[eventId] = mutableMapOf<String, Any>()
                         }
                         val eventData = roomData[eventId] as? MutableMap<String, Any> ?: continue
-                        eventData[userId] = mapOf("ts" to timestamp)
+                        eventData[userId] = buildJsonObject {
+                            put("ts", timestamp)
+                        }
                     }
                 }
 
@@ -377,19 +454,34 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 null
             }
             "m.presence" -> {
-                val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing user_id")
-                val presence = content["presence"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing presence")
+                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing content")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing user_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val presence = content["presence"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing presence")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
                 // Validate user_id format
                 if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid user_id format")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid user_id format")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Validate presence state
                 val validPresenceStates = setOf("online", "offline", "unavailable")
                 if (presence !in validPresenceStates) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid presence state")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid presence state")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Extract additional presence fields
@@ -437,14 +529,29 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 null
             }
             "m.device_list_update" -> {
-                val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing user_id")
-                val deviceId = content["device_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing device_id")
-                val streamId = content["stream_id"]?.jsonPrimitive?.long ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing stream_id")
+                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing content")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing user_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val deviceId = content["device_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing device_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val streamId = content["stream_id"]?.jsonPrimitive?.long ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing stream_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
                 // Validate user_id format
                 if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid user_id format")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid user_id format")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Get or create user's device map
@@ -483,12 +590,21 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 null
             }
             "m.signing_key_update" -> {
-                val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing user_id")
+                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing content")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing user_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
                 // Validate user_id format
                 if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid user_id format")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid user_id format")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Extract cross-signing keys
@@ -513,23 +629,44 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                 null
             }
             "m.direct_to_device" -> {
-                val content = eduObj["content"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing content")
-                val sender = content["sender"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing sender")
-                val type = content["type"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing type")
-                val messageId = content["message_id"]?.jsonPrimitive?.content ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing message_id")
+                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing content")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val sender = content["sender"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing sender")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val type = content["type"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing type")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+                val messageId = content["message_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing message_id")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
                 // Validate sender format
                 if (!sender.startsWith("@") || !sender.contains(":")) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Invalid sender format")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Invalid sender format")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Validate message_id length (max 32 codepoints as per spec)
                 if (messageId.length > 32) {
-                    return mapOf("errcode" to "M_INVALID_EDU", "error" to "Message ID too long")
+                    return buildJsonObject {
+                        put("errcode", "M_INVALID_EDU")
+                        put("error", "Message ID too long")
+                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
                 }
 
                 // Extract messages - this is a map of user_id -> device_id -> message
-                val messages = content["messages"]?.jsonObject ?: return mapOf("errcode" to "M_INVALID_EDU", "error" to "Missing messages")
+                val messages = content["messages"]?.jsonObject ?: return buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Missing messages")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
                 // Process messages for each user
                 for (targetUserId in messages.keys) {
@@ -552,14 +689,14 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                             for ((deviceId, _) in userDevices) {
                                 try {
                                     // Create device-specific message
-                                    val deviceMessage = mapOf(
-                                        "sender" to sender,
-                                        "type" to type,
-                                        "content" to wildcardMessage,
-                                        "device_id" to deviceId,
-                                        "message_id" to messageId,
-                                        "received_at" to System.currentTimeMillis()
-                                    )
+                                    val deviceMessage = buildJsonObject {
+                                        put("sender", sender)
+                                        put("type", type)
+                                        put("content", wildcardMessage)
+                                        put("device_id", deviceId)
+                                        put("message_id", messageId)
+                                        put("received_at", System.currentTimeMillis())
+                                    }
 
                                     println("Direct-to-device message (wildcard) from $sender to $targetUserId:$deviceId of type $type (ID: $messageId)")
 
@@ -597,14 +734,14 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
                                 }
 
                                 // Store the direct-to-device message for delivery
-                                val messageData = mapOf(
-                                    "sender" to sender,
-                                    "type" to type,
-                                    "content" to messageContent,
-                                    "device_id" to deviceId,
-                                    "message_id" to messageId,
-                                    "received_at" to System.currentTimeMillis()
-                                )
+                                val messageData = buildJsonObject {
+                                    put("sender", sender)
+                                    put("type", type)
+                                    put("content", messageContent)
+                                    put("device_id", deviceId)
+                                    put("message_id", messageId)
+                                    put("received_at", System.currentTimeMillis())
+                                }
 
                                 println("Direct-to-device message from $sender to $targetUserId:$deviceId of type $type (ID: $messageId)")
 
@@ -637,11 +774,17 @@ fun processEDU(edu: JsonElement): Map<String, String>? {
             }
             else -> {
                 // Unknown EDU type
-                mapOf("errcode" to "M_INVALID_EDU", "error" to "Unknown EDU type: $eduType")
+                buildJsonObject {
+                    put("errcode", "M_INVALID_EDU")
+                    put("error", "Unknown EDU type: $eduType")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
             }
         }
     } catch (e: Exception) {
-        mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid EDU JSON")
+        buildJsonObject {
+            put("errcode", "M_BAD_JSON")
+            put("error", "Invalid EDU JSON")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
     }
 }
 

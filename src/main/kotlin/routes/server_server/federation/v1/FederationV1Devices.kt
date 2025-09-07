@@ -18,10 +18,10 @@ fun Route.federationV1Devices() {
     get("/openid/userinfo") {
         val accessToken = call.request.queryParameters["access_token"]
         if (accessToken == null) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf(
-                "errcode" to "M_UNKNOWN_TOKEN",
-                "error" to "Access token required"
-            ))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNKNOWN_TOKEN")
+                put("error", "Access token required")
+            })
             return@get
         }
 
@@ -31,14 +31,16 @@ fun Route.federationV1Devices() {
                 .singleOrNull()?.get(AccessTokens.userId)
         }
         if (userId == null) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf(
-                "errcode" to "M_UNKNOWN_TOKEN",
-                "error" to "Access token unknown or expired"
-            ))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNKNOWN_TOKEN")
+                put("error", "Access token unknown or expired")
+            })
             return@get
         }
 
-        call.respond(mapOf("sub" to userId))
+        call.respond(buildJsonObject {
+            put("sub", userId)
+        })
     }
     get("/user/devices/{userId}") {
         val userId = call.parameters["userId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
@@ -46,7 +48,10 @@ fun Route.federationV1Devices() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -56,11 +61,11 @@ fun Route.federationV1Devices() {
 
             // Convert devices to the expected format
             val devices = userDevices.map { (deviceId, deviceInfo) ->
-                mapOf<String, Any?>(
-                    "device_id" to deviceId,
-                    "device_display_name" to deviceInfo["device_display_name"],
-                    "keys" to deviceInfo["keys"]
-                ).filterValues { it != null }
+                buildJsonObject {
+                    put("device_id", deviceId)
+                    put("device_display_name", Json.encodeToJsonElement(deviceInfo["device_display_name"]))
+                    put("keys", Json.encodeToJsonElement(deviceInfo["keys"]))
+                }
             }
 
             // Get cross-signing keys
@@ -70,24 +75,25 @@ fun Route.federationV1Devices() {
             // Get stream ID for device list
             val streamId = deviceListStreamIds.getOrPut(userId) { 0L }
 
-            val response = mutableMapOf<String, Any>(
-                "devices" to devices,
-                "stream_id" to streamId,
-                "user_id" to userId
-            )
-
-            if (masterKey != null) {
-                response["master_key"] = masterKey
-            }
-
-            if (selfSigningKey != null) {
-                response["self_signing_key"] = selfSigningKey
+            val response = buildJsonObject {
+                put("devices", Json.encodeToJsonElement(devices))
+                put("stream_id", streamId)
+                put("user_id", userId)
+                if (masterKey != null) {
+                    put("master_key", Json.encodeToJsonElement(masterKey))
+                }
+                if (selfSigningKey != null) {
+                    put("self_signing_key", Json.encodeToJsonElement(selfSigningKey))
+                }
             }
 
             call.respond(response)
         } catch (e: Exception) {
             println("Get devices error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
     post("/user/keys/claim") {
@@ -95,7 +101,10 @@ fun Route.federationV1Devices() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@post
         }
 
@@ -126,10 +135,10 @@ fun Route.federationV1Devices() {
 
                     if (availableKey != null) {
                         val (foundKeyId, keyData) = availableKey
-                        userClaimedKeys[foundKeyId] = mapOf(
-                            "key" to (keyData["key"] as? String),
-                            "signatures" to keyData["signatures"]
-                        )
+                        userClaimedKeys[foundKeyId] = buildJsonObject {
+                            put("key", Json.encodeToJsonElement(keyData["key"]))
+                            put("signatures", Json.encodeToJsonElement(keyData["signatures"]))
+                        }.jsonObject
 
                         // Remove the claimed key from available keys
                         val userKeysMap = utils.oneTimeKeys.getOrPut(userId) { mutableMapOf<String, Map<String, Any?>>() }
@@ -142,10 +151,15 @@ fun Route.federationV1Devices() {
                 }
             }
 
-            call.respond(mapOf("one_time_keys" to claimedKeys))
+            call.respond(buildJsonObject {
+                put("one_time_keys", Json.encodeToJsonElement(claimedKeys))
+            })
         } catch (e: Exception) {
             println("Claim keys error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
     post("/user/keys/query") {
@@ -153,15 +167,16 @@ fun Route.federationV1Devices() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@post
         }
 
         try {
             val requestBody = Json.parseToJsonElement(body).jsonObject
             val deviceKeys = requestBody["device_keys"]?.jsonObject ?: JsonObject(emptyMap())
-
-            val response = mutableMapOf<String, Any>()
 
             // Process device keys
             val deviceKeysResponse = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>()
@@ -195,37 +210,42 @@ fun Route.federationV1Devices() {
                 }
             }
 
-            if (deviceKeysResponse.isNotEmpty()) {
-                response["device_keys"] = deviceKeysResponse
-            }
-
-            // Add cross-signing keys if available
-            val masterKeys = mutableMapOf<String, Map<String, Any?>>()
-            val selfSigningKeys = mutableMapOf<String, Map<String, Any?>>()
-
-            for (userId in deviceKeys.keys) {
-                val masterKey = crossSigningKeys["${userId}_master"]
-                val selfSigningKey = crossSigningKeys["${userId}_self_signing"]
-
-                if (masterKey != null) {
-                    masterKeys[userId] = masterKey
+            val response = buildJsonObject {
+                if (deviceKeysResponse.isNotEmpty()) {
+                    put("device_keys", Json.encodeToJsonElement(deviceKeysResponse))
                 }
-                if (selfSigningKey != null) {
-                    selfSigningKeys[userId] = selfSigningKey
-                }
-            }
 
-            if (masterKeys.isNotEmpty()) {
-                response["master_keys"] = masterKeys
-            }
-            if (selfSigningKeys.isNotEmpty()) {
-                response["self_signing_keys"] = selfSigningKeys
+                // Add cross-signing keys if available
+                val masterKeys = mutableMapOf<String, Map<String, Any?>>()
+                val selfSigningKeys = mutableMapOf<String, Map<String, Any?>>()
+
+                for (userId in deviceKeys.keys) {
+                    val masterKey = crossSigningKeys["${userId}_master"]
+                    val selfSigningKey = crossSigningKeys["${userId}_self_signing"]
+
+                    if (masterKey != null) {
+                        masterKeys[userId] = masterKey
+                    }
+                    if (selfSigningKey != null) {
+                        selfSigningKeys[userId] = selfSigningKey
+                    }
+                }
+
+                if (masterKeys.isNotEmpty()) {
+                    put("master_keys", Json.encodeToJsonElement(masterKeys))
+                }
+                if (selfSigningKeys.isNotEmpty()) {
+                    put("self_signing_keys", Json.encodeToJsonElement(selfSigningKeys))
+                }
             }
 
             call.respond(response)
         } catch (e: Exception) {
             println("Query keys error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
 }

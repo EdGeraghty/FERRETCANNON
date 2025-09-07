@@ -19,7 +19,10 @@ fun Route.federationV1ServerKeys() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -27,7 +30,10 @@ fun Route.federationV1ServerKeys() {
             // Get server keys for the requested server
             val serverKeys = ServerKeys.getServerKeys(serverName)
             if (serverKeys == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Server keys not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Server keys not found")
+                })
                 return@get
             }
 
@@ -35,7 +41,10 @@ fun Route.federationV1ServerKeys() {
             call.respond(serverKeys)
         } catch (e: Exception) {
             println("Server keys error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
 }

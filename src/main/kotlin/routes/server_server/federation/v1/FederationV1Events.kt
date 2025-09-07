@@ -25,23 +25,29 @@ fun Route.federationV1Events() {
             // Authenticate the request
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_UNAUTHORIZED")
+                    put("error", "Invalid signature")
+                })
                 return@get
             }
 
             // Check Server ACL
             val serverName = extractServerNameFromAuth(authHeader)
             if (serverName != null && !checkServerACL(roomId, serverName)) {
-                call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+                call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                    put("errcode", "M_FORBIDDEN")
+                    put("error", "Server access denied by ACL")
+                })
                 return@get
             }
             // Placeholder: return auth chain
             val authChain = listOf<Map<String, Any>>() // Empty for now
-            call.respond(mapOf(
-                "origin" to utils.ServerNameResolver.getServerName(),
-                "origin_server_ts" to System.currentTimeMillis(),
-                "pdus" to authChain
-            ))
+            call.respond(buildJsonObject {
+                put("origin", utils.ServerNameResolver.getServerName())
+                put("origin_server_ts", System.currentTimeMillis())
+                put("pdus", Json.encodeToJsonElement(authChain))
+            })
         }
     }
     get("/backfill/{roomId}") {
@@ -52,14 +58,20 @@ fun Route.federationV1Events() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -77,21 +89,23 @@ fun Route.federationV1Events() {
                     .map { row ->
                         try {
                             // Convert database row back to event JSON
-                            mapOf(
-                                "event_id" to row[Events.eventId],
-                                "type" to row[Events.type],
-                                "room_id" to row[Events.roomId],
-                                "sender" to row[Events.sender],
-                                "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
-                                "auth_events" to Json.parseToJsonElement(row[Events.authEvents]).jsonArray,
-                                "prev_events" to Json.parseToJsonElement(row[Events.prevEvents]).jsonArray,
-                                "depth" to row[Events.depth],
-                                "hashes" to Json.parseToJsonElement(row[Events.hashes]).jsonObject,
-                                "signatures" to Json.parseToJsonElement(row[Events.signatures]).jsonObject,
-                                "origin_server_ts" to row[Events.originServerTs],
-                                "state_key" to row[Events.stateKey],
-                                "unsigned" to if (row[Events.unsigned] != null) Json.parseToJsonElement(row[Events.unsigned]!!).jsonObject else null
-                            ).filterValues { it != null }
+                            buildJsonObject {
+                                put("event_id", row[Events.eventId])
+                                put("type", row[Events.type])
+                                put("room_id", row[Events.roomId])
+                                put("sender", row[Events.sender])
+                                put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                                put("auth_events", Json.parseToJsonElement(row[Events.authEvents]).jsonArray)
+                                put("prev_events", Json.parseToJsonElement(row[Events.prevEvents]).jsonArray)
+                                put("depth", row[Events.depth])
+                                put("hashes", Json.parseToJsonElement(row[Events.hashes]).jsonObject)
+                                put("signatures", Json.parseToJsonElement(row[Events.signatures]).jsonObject)
+                                put("origin_server_ts", row[Events.originServerTs])
+                                put("state_key", row[Events.stateKey])
+                                if (row[Events.unsigned] != null) {
+                                    put("unsigned", Json.parseToJsonElement(row[Events.unsigned]!!).jsonObject)
+                                }
+                            }
                         } catch (e: Exception) {
                             println("Error parsing event ${row[Events.eventId]}: ${e.message}")
                             null
@@ -99,14 +113,16 @@ fun Route.federationV1Events() {
                     }.filterNotNull()
             }
 
-            call.respond(mapOf(
-                "origin" to "localhost",
-                "origin_server_ts" to System.currentTimeMillis(),
-                "pdus" to events
-            ))
+            call.respond(buildJsonObject {
+                put("origin", "localhost")
+                put("origin_server_ts", System.currentTimeMillis())
+                put("pdus", Json.encodeToJsonElement(events))
+            })
         } catch (e: Exception) {
             println("Backfill error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
     post("/get_missing_events/{roomId}") {
@@ -116,14 +132,20 @@ fun Route.federationV1Events() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@post
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@post
         }
 
@@ -136,17 +158,23 @@ fun Route.federationV1Events() {
             val limit = requestJson["limit"]?.jsonPrimitive?.int ?: 10
 
             if (earliestEvents.isEmpty() || latestEvents.isEmpty()) {
-                return@post call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing earliest_events or latest_events"))
+                return@post call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing earliest_events or latest_events")
+                })
             }
 
             // Find missing events using a breadth-first search
             val missingEvents = findMissingEvents(roomId, earliestEvents, latestEvents, limit)
 
-            call.respond(mapOf(
-                "events" to missingEvents
-            ))
+            call.respond(buildJsonObject {
+                put("events", Json.encodeToJsonElement(missingEvents))
+            })
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
     get("/event/{eventId}") {
@@ -155,7 +183,10 @@ fun Route.federationV1Events() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
@@ -164,26 +195,31 @@ fun Route.federationV1Events() {
         }
 
         if (event == null) {
-            call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Event not found"))
+            call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                put("errcode", "M_NOT_FOUND")
+                put("error", "Event not found")
+            })
             return@get
         }
 
         // Convert database row to event format
-        val eventData = mapOf(
-            "event_id" to event[Events.eventId],
-            "type" to event[Events.type],
-            "room_id" to event[Events.roomId],
-            "sender" to event[Events.sender],
-            "content" to Json.parseToJsonElement(event[Events.content]).jsonObject,
-            "auth_events" to Json.parseToJsonElement(event[Events.authEvents]).jsonArray,
-            "prev_events" to Json.parseToJsonElement(event[Events.prevEvents]).jsonArray,
-            "depth" to event[Events.depth],
-            "hashes" to Json.parseToJsonElement(event[Events.hashes]).jsonObject,
-            "signatures" to Json.parseToJsonElement(event[Events.signatures]).jsonObject,
-            "origin_server_ts" to event[Events.originServerTs],
-            "state_key" to event[Events.stateKey],
-            "unsigned" to if (event[Events.unsigned] != null) Json.parseToJsonElement(event[Events.unsigned]!!).jsonObject else null
-        ).filterValues { it != null }
+        val eventData = buildJsonObject {
+            put("event_id", event[Events.eventId])
+            put("type", event[Events.type])
+            put("room_id", event[Events.roomId])
+            put("sender", event[Events.sender])
+            put("content", Json.parseToJsonElement(event[Events.content]).jsonObject)
+            put("auth_events", Json.parseToJsonElement(event[Events.authEvents]).jsonArray)
+            put("prev_events", Json.parseToJsonElement(event[Events.prevEvents]).jsonArray)
+            put("depth", event[Events.depth])
+            put("hashes", Json.parseToJsonElement(event[Events.hashes]).jsonObject)
+            put("signatures", Json.parseToJsonElement(event[Events.signatures]).jsonObject)
+            put("origin_server_ts", event[Events.originServerTs])
+            put("state_key", event[Events.stateKey])
+            if (event[Events.unsigned] != null) {
+                put("unsigned", Json.parseToJsonElement(event[Events.unsigned]!!).jsonObject)
+            }
+        }
 
         call.respond(eventData)
     }
@@ -193,14 +229,20 @@ fun Route.federationV1Events() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -208,12 +250,18 @@ fun Route.federationV1Events() {
         val dir = call.request.queryParameters["dir"] ?: "f"
 
         if (ts == null) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing or invalid ts parameter"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing or invalid ts parameter")
+            })
             return@get
         }
 
         if (dir !in setOf("f", "b")) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid dir parameter"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Invalid dir parameter")
+            })
             return@get
         }
 
@@ -235,20 +283,26 @@ fun Route.federationV1Events() {
             }
 
             if (event == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "No event found near timestamp"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "No event found near timestamp")
+                })
                 return@get
             }
 
             // Convert to event format
-            val eventData = mapOf(
-                "event_id" to event[Events.eventId],
-                "origin_server_ts" to event[Events.originServerTs]
-            )
+            val eventData = buildJsonObject {
+                put("event_id", event[Events.eventId])
+                put("origin_server_ts", event[Events.originServerTs])
+            }
 
             call.respond(eventData)
         } catch (e: Exception) {
             println("Timestamp to event error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
 }

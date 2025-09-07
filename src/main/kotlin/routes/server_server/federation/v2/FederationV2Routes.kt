@@ -32,14 +32,20 @@ fun Application.federationV2Routes() {
                         val body = call.receiveText()
                         val authHeader = call.request.headers["Authorization"]
                         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                put("errcode", "M_UNAUTHORIZED")
+                                put("error", "Invalid signature")
+                            })
                             return@put
                         }
 
                         // Check Server ACL
                         val serverName = extractServerNameFromAuth(authHeader)
                         if (serverName != null && !checkServerACL(roomId, serverName)) {
-                            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+                            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                                put("errcode", "M_FORBIDDEN")
+                                put("error", "Server access denied by ACL")
+                            })
                             return@put
                         }
 
@@ -48,17 +54,26 @@ fun Application.federationV2Routes() {
 
                             // Validate the event
                             if (joinEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Event ID mismatch")
+                                })
                                 return@put
                             }
 
                             if (joinEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Room ID mismatch")
+                                })
                                 return@put
                             }
 
                             if (joinEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Invalid event type")
+                                })
                                 return@put
                             }
 
@@ -75,12 +90,15 @@ fun Application.federationV2Routes() {
                             }
 
                             if (processedEvent == null) {
-                                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Failed to store event")
+                                })
                                 return@put
                             }
 
                             // Get current state for v2 response
-                            val currentState = transaction {
+                            val currentState: List<JsonObject> = transaction {
                                 val stateEvents = Events.select {
                                     (Events.roomId eq roomId) and
                                     (Events.outlier eq false) and
@@ -89,49 +107,53 @@ fun Application.federationV2Routes() {
                                     .orderBy(Events.originServerTs, SortOrder.DESC)
                                     .limit(50) // Limit for performance
                                     .map { row ->
-                                        mapOf(
-                                            "event_id" to row[Events.eventId],
-                                            "type" to row[Events.type],
-                                            "room_id" to row[Events.roomId],
-                                            "sender" to row[Events.sender],
-                                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
-                                            "auth_events" to Json.parseToJsonElement(row[Events.authEvents]).jsonArray,
-                                            "prev_events" to Json.parseToJsonElement(row[Events.prevEvents]).jsonArray,
-                                            "depth" to row[Events.depth],
-                                            "hashes" to Json.parseToJsonElement(row[Events.hashes]).jsonObject,
-                                            "signatures" to Json.parseToJsonElement(row[Events.signatures]).jsonObject,
-                                            "origin_server_ts" to row[Events.originServerTs],
-                                            "state_key" to row[Events.stateKey],
-                                            "unsigned" to if (row[Events.unsigned] != null) Json.parseToJsonElement(row[Events.unsigned]!!).jsonObject else null
-                                        ).filterValues { it != null }
+                                        buildJsonObject {
+                                            put("event_id", row[Events.eventId])
+                                            put("type", row[Events.type])
+                                            put("room_id", row[Events.roomId])
+                                            put("sender", row[Events.sender])
+                                            put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                                            put("auth_events", Json.parseToJsonElement(row[Events.authEvents]).jsonArray)
+                                            put("prev_events", Json.parseToJsonElement(row[Events.prevEvents]).jsonArray)
+                                            put("depth", row[Events.depth])
+                                            put("hashes", Json.parseToJsonElement(row[Events.hashes]).jsonObject)
+                                            put("signatures", Json.parseToJsonElement(row[Events.signatures]).jsonObject)
+                                            put("origin_server_ts", row[Events.originServerTs])
+                                            if (row[Events.stateKey] != null) put("state_key", row[Events.stateKey])
+                                            if (row[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(row[Events.unsigned]!!).jsonObject)
+                                        }
                                     }
+                                return@transaction stateEvents
                             }
 
                             // Return the v2 response format
-                            val response = mapOf(
-                                "event" to mapOf(
-                                    "event_id" to processedEvent[Events.eventId],
-                                    "type" to processedEvent[Events.type],
-                                    "room_id" to processedEvent[Events.roomId],
-                                    "sender" to processedEvent[Events.sender],
-                                    "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                                    "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                                    "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                                    "depth" to processedEvent[Events.depth],
-                                    "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                                    "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                                    "origin_server_ts" to processedEvent[Events.originServerTs],
-                                    "state_key" to processedEvent[Events.stateKey],
-                                    "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-                                ).filterValues { it != null },
-                                "state" to currentState,
-                                "auth_chain" to emptyList<Map<String, Any>>() // Simplified for now
-                            )
+                            val response = buildJsonObject {
+                                putJsonObject("event") {
+                                    put("event_id", processedEvent[Events.eventId])
+                                    put("type", processedEvent[Events.type])
+                                    put("room_id", processedEvent[Events.roomId])
+                                    put("sender", processedEvent[Events.sender])
+                                    put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                                    put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                                    put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                                    put("depth", processedEvent[Events.depth])
+                                    put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                                    put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                                    put("origin_server_ts", processedEvent[Events.originServerTs])
+                                    if (processedEvent[Events.stateKey] != null) put("state_key", processedEvent[Events.stateKey])
+                                    if (processedEvent[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                                }
+                                put("state", JsonArray(currentState.map { Json.encodeToJsonElement(it) }))
+                                put("auth_chain", JsonArray(emptyList<JsonElement>()))
+                            }
 
                             call.respond(response)
                         } catch (e: Exception) {
                             println("Send join v2 error: ${e.message}")
-                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("errcode", "M_BAD_JSON")
+                                put("error", "Invalid JSON")
+                            })
                         }
                     }
                     put("/invite/{roomId}/{eventId}") {
@@ -142,14 +164,20 @@ fun Application.federationV2Routes() {
                         val body = call.receiveText()
                         val authHeader = call.request.headers["Authorization"]
                         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                put("errcode", "M_UNAUTHORIZED")
+                                put("error", "Invalid signature")
+                            })
                             return@put
                         }
 
                         // Check Server ACL
                         val serverName = extractServerNameFromAuth(authHeader)
                         if (serverName != null && !checkServerACL(roomId, serverName)) {
-                            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+                            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                                put("errcode", "M_FORBIDDEN")
+                                put("error", "Server access denied by ACL")
+                            })
                             return@put
                         }
 
@@ -158,17 +186,26 @@ fun Application.federationV2Routes() {
 
                             // Validate the event
                             if (inviteEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Event ID mismatch")
+                                })
                                 return@put
                             }
 
                             if (inviteEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Room ID mismatch")
+                                })
                                 return@put
                             }
 
                             if (inviteEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Invalid event type")
+                                })
                                 return@put
                             }
 
@@ -185,33 +222,39 @@ fun Application.federationV2Routes() {
                             }
 
                             if (processedEvent == null) {
-                                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Failed to store event")
+                                })
                                 return@put
                             }
 
                             // Return the v2 response format
-                            val response = mapOf(
-                                "event" to mapOf(
-                                    "event_id" to processedEvent[Events.eventId],
-                                    "type" to processedEvent[Events.type],
-                                    "room_id" to processedEvent[Events.roomId],
-                                    "sender" to processedEvent[Events.sender],
-                                    "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                                    "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                                    "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                                    "depth" to processedEvent[Events.depth],
-                                    "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                                    "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                                    "origin_server_ts" to processedEvent[Events.originServerTs],
-                                    "state_key" to processedEvent[Events.stateKey],
-                                    "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-                                ).filterValues { it != null }
-                            )
+                            val response = buildJsonObject {
+                                putJsonObject("event") {
+                                    put("event_id", processedEvent[Events.eventId])
+                                    put("type", processedEvent[Events.type])
+                                    put("room_id", processedEvent[Events.roomId])
+                                    put("sender", processedEvent[Events.sender])
+                                    put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                                    put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                                    put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                                    put("depth", processedEvent[Events.depth])
+                                    put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                                    put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                                    put("origin_server_ts", processedEvent[Events.originServerTs])
+                                    if (processedEvent[Events.stateKey] != null) put("state_key", processedEvent[Events.stateKey])
+                                    if (processedEvent[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                                }
+                            }
 
                             call.respond(response)
                         } catch (e: Exception) {
                             println("Invite v2 error: ${e.message}")
-                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("errcode", "M_BAD_JSON")
+                                put("error", "Invalid JSON")
+                            })
                         }
                     }
                     put("/send_leave/{roomId}/{eventId}") {
@@ -222,14 +265,20 @@ fun Application.federationV2Routes() {
                         val body = call.receiveText()
                         val authHeader = call.request.headers["Authorization"]
                         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-                            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+                            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                                put("errcode", "M_UNAUTHORIZED")
+                                put("error", "Invalid signature")
+                            })
                             return@put
                         }
 
                         // Check Server ACL
                         val serverName = extractServerNameFromAuth(authHeader)
                         if (serverName != null && !checkServerACL(roomId, serverName)) {
-                            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+                            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                                put("errcode", "M_FORBIDDEN")
+                                put("error", "Server access denied by ACL")
+                            })
                             return@put
                         }
 
@@ -238,17 +287,26 @@ fun Application.federationV2Routes() {
 
                             // Validate the event
                             if (leaveEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Event ID mismatch")
+                                })
                                 return@put
                             }
 
                             if (leaveEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Room ID mismatch")
+                                })
                                 return@put
                             }
 
                             if (leaveEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                    put("errcode", "M_INVALID_PARAM")
+                                    put("error", "Invalid event type")
+                                })
                                 return@put
                             }
 
@@ -265,33 +323,39 @@ fun Application.federationV2Routes() {
                             }
 
                             if (processedEvent == null) {
-                                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Failed to store event")
+                                })
                                 return@put
                             }
 
                             // Return the v2 response format
-                            val response = mapOf(
-                                "event" to mapOf(
-                                    "event_id" to processedEvent[Events.eventId],
-                                    "type" to processedEvent[Events.type],
-                                    "room_id" to processedEvent[Events.roomId],
-                                    "sender" to processedEvent[Events.sender],
-                                    "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                                    "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                                    "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                                    "depth" to processedEvent[Events.depth],
-                                    "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                                    "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                                    "origin_server_ts" to processedEvent[Events.originServerTs],
-                                    "state_key" to processedEvent[Events.stateKey],
-                                    "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-                                ).filterValues { it != null }
-                            )
+                            val response = buildJsonObject {
+                                putJsonObject("event") {
+                                    put("event_id", processedEvent[Events.eventId])
+                                    put("type", processedEvent[Events.type])
+                                    put("room_id", processedEvent[Events.roomId])
+                                    put("sender", processedEvent[Events.sender])
+                                    put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                                    put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                                    put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                                    put("depth", processedEvent[Events.depth])
+                                    put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                                    put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                                    put("origin_server_ts", processedEvent[Events.originServerTs])
+                                    if (processedEvent[Events.stateKey] != null) put("state_key", processedEvent[Events.stateKey])
+                                    if (processedEvent[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                                }
+                            }
 
                             call.respond(response)
                         } catch (e: Exception) {
                             println("Send leave v2 error: ${e.message}")
-                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("errcode", "M_BAD_JSON")
+                                put("error", "Invalid JSON")
+                            })
                         }
                     }
                 }

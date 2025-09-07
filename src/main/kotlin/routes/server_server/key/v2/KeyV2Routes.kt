@@ -115,7 +115,10 @@ fun Application.keyV2Routes() {
                             call.respond(response)
                         } catch (e: Exception) {
                             logger.error("Key query error", e)
-                            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+                            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                put("errcode", "M_BAD_JSON")
+                                put("error", "Invalid JSON")
+                            })
                         }
                     }
                     get("/query/{serverName}") {
@@ -141,7 +144,10 @@ fun Application.keyV2Routes() {
                                     call.respond(fetchedKeys)
                                 } else {
                                     logger.warn("Failed to fetch server keys for $serverName")
-                                    call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Server keys not found"))
+                                    call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                                        put("errcode", "M_NOT_FOUND")
+                                        put("error", "Server keys not found")
+                                    })
                                 }
                             } else {
                                 logger.debug("Serving cached server keys for $serverName")
@@ -149,7 +155,10 @@ fun Application.keyV2Routes() {
                             }
                         } catch (e: Exception) {
                             logger.error("Query server keys error for $serverName", e)
-                            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+                            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                put("errcode", "M_UNKNOWN")
+                                put("error", e.message)
+                            })
                         }
                     }
                 }

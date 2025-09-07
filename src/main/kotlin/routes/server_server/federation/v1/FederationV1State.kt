@@ -20,14 +20,20 @@ fun Route.federationV1State() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -39,11 +45,11 @@ fun Route.federationV1State() {
             getCurrentStateEvents(roomId)
         }
 
-        call.respond(mapOf(
-            "origin" to "localhost",
-            "origin_server_ts" to System.currentTimeMillis(),
-            "pdus" to stateEvents
-        ))
+        call.respond(buildJsonObject {
+            put("origin", "localhost")
+            put("origin_server_ts", System.currentTimeMillis())
+            put("pdus", Json.encodeToJsonElement(stateEvents))
+        })
     }
     get("/state_ids/{roomId}") {
         val roomId = call.parameters["roomId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
@@ -52,14 +58,20 @@ fun Route.federationV1State() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -71,10 +83,10 @@ fun Route.federationV1State() {
             getCurrentStateEventIds(roomId)
         }
 
-        call.respond(mapOf(
-            "origin" to "localhost",
-            "origin_server_ts" to System.currentTimeMillis(),
-            "pdu_ids" to stateEventIds
-        ))
+        call.respond(buildJsonObject {
+            put("origin", "localhost")
+            put("origin_server_ts", System.currentTimeMillis())
+            put("pdu_ids", Json.encodeToJsonElement(stateEventIds))
+        })
     }
 }

@@ -28,7 +28,10 @@ fun Route.federationV1Spaces() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@get
             }
 
@@ -38,7 +41,10 @@ fun Route.federationV1Spaces() {
             // Check if this is actually a space
             val roomType = createEvent?.get("type")?.jsonPrimitive?.content
             if (roomType != "m.space") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room is not a space"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Room is not a space")
+                })
                 return@get
             }
 
@@ -69,18 +75,20 @@ fun Route.federationV1Spaces() {
                 }
             }
 
-            val response = mutableMapOf<String, Any?>(
-                "rooms" to children
-            )
-
-            if (nextToken != null) {
-                response["next_batch"] = nextToken
+            val response = buildJsonObject {
+                put("rooms", Json.encodeToJsonElement(children))
+                if (nextToken != null) {
+                    put("next_batch", nextToken)
+                }
             }
 
             call.respond(response)
         } catch (e: Exception) {
             println("Hierarchy error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message)
+            })
         }
     }
 }

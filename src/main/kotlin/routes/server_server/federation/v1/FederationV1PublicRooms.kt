@@ -51,26 +51,29 @@ fun Route.federationV1PublicRooms() {
                     val worldReadable = currentState["m.room.history_visibility:"]?.get("history_visibility")?.jsonPrimitive?.content == "world_readable"
                     val guestCanJoin = joinRules == "public"
 
-                    mapOf<String, Any?>(
-                        "room_id" to roomId,
-                        "name" to name,
-                        "topic" to topic,
-                        "canonical_alias" to canonicalAlias,
-                        "num_joined_members" to joinedMembers,
-                        "world_readable" to worldReadable,
-                        "guest_can_join" to guestCanJoin,
-                        "avatar_url" to avatarUrl
-                    ).filterValues { it != null }
+                    buildJsonObject {
+                        put("room_id", roomId)
+                        if (name != null) put("name", name)
+                        if (topic != null) put("topic", topic)
+                        if (canonicalAlias != null) put("canonical_alias", canonicalAlias)
+                        put("num_joined_members", joinedMembers)
+                        put("world_readable", worldReadable)
+                        put("guest_can_join", guestCanJoin)
+                        if (avatarUrl != null) put("avatar_url", avatarUrl)
+                    }
                 }
             }
 
-            call.respond(mapOf(
-                "chunk" to publishedRooms,
-                "total_room_count_estimate" to publishedRooms.size
-            ))
+            call.respond(buildJsonObject {
+                put("chunk", JsonArray(publishedRooms.map { Json.encodeToJsonElement(it) }))
+                put("total_room_count_estimate", publishedRooms.size)
+            })
         } catch (e: Exception) {
             println("Public rooms error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
     post("/publicRooms") {
@@ -78,7 +81,10 @@ fun Route.federationV1PublicRooms() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@post
         }
 
@@ -88,12 +94,18 @@ fun Route.federationV1PublicRooms() {
             val visibility = requestBody["visibility"]?.jsonPrimitive?.content ?: "public"
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Missing room_id"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing room_id")
+                })
                 return@post
             }
 
             if (visibility != "public") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Only public visibility is supported"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Only public visibility is supported")
+                })
                 return@post
             }
 
@@ -103,7 +115,10 @@ fun Route.federationV1PublicRooms() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@post
             }
 
@@ -114,10 +129,15 @@ fun Route.federationV1PublicRooms() {
                 }
             }
 
-            call.respond(mapOf("success" to true))
+            call.respond(buildJsonObject {
+                put("success", true)
+            })
         } catch (e: Exception) {
             println("Publish room error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
 }

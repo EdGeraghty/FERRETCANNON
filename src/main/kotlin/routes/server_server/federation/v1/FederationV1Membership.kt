@@ -21,14 +21,20 @@ fun Route.federationV1Membership() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -39,7 +45,10 @@ fun Route.federationV1Membership() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@get
             }
 
@@ -52,7 +61,10 @@ fun Route.federationV1Membership() {
             if (existingMembership != null) {
                 val membership = existingMembership["membership"]?.jsonPrimitive?.content
                 if (membership == "join" || membership == "invite") {
-                    call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_ALREADY_JOINED", "error" to "User is already joined or invited"))
+                    call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                        put("errcode", "M_ALREADY_JOINED")
+                        put("error", "User is already joined or invited")
+                    })
                     return@get
                 }
             }
@@ -63,7 +75,10 @@ fun Route.federationV1Membership() {
                 // Check if user has invite
                 val inviteMembership = roomState["m.room.member:$userId"]
                 if (inviteMembership?.get("membership")?.jsonPrimitive?.content != "invite") {
-                    call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Room requires invite"))
+                    call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                        put("errcode", "M_FORBIDDEN")
+                        put("error", "Room requires invite")
+                    })
                     return@get
                 }
             }
@@ -111,24 +126,29 @@ fun Route.federationV1Membership() {
             val tempEventId = "\$${System.currentTimeMillis()}_join"
 
             // Create join event template
-            val joinEvent = mapOf(
-                "event_id" to tempEventId,
-                "type" to "m.room.member",
-                "room_id" to roomId,
-                "sender" to userId,
-                "content" to mapOf("membership" to "join"),
-                "state_key" to userId,
-                "origin_server_ts" to System.currentTimeMillis(),
-                "depth" to depth,
-                "prev_events" to prevEvents,
-                "auth_events" to authEvents,
-                "origin" to "localhost"
-            )
+            val joinEvent = buildJsonObject {
+                put("event_id", tempEventId)
+                put("type", "m.room.member")
+                put("room_id", roomId)
+                put("sender", userId)
+                putJsonObject("content") {
+                    put("membership", "join")
+                }
+                put("state_key", userId)
+                put("origin_server_ts", System.currentTimeMillis())
+                put("depth", depth)
+                put("prev_events", Json.encodeToJsonElement(prevEvents))
+                put("auth_events", Json.encodeToJsonElement(authEvents))
+                put("origin", "localhost")
+            }
 
             call.respond(joinEvent)
         } catch (e: Exception) {
             println("Make join error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
     put("/send_join/{roomId}/{eventId}") {
@@ -139,14 +159,20 @@ fun Route.federationV1Membership() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@put
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@put
         }
 
@@ -155,17 +181,26 @@ fun Route.federationV1Membership() {
 
             // Validate the event
             if (joinEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Event ID mismatch")
+                })
                 return@put
             }
 
             if (joinEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Room ID mismatch")
+                })
                 return@put
             }
 
             if (joinEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid event type")
+                })
                 return@put
             }
 
@@ -182,31 +217,39 @@ fun Route.federationV1Membership() {
             }
 
             if (processedEvent == null) {
-                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                    put("errcode", "M_UNKNOWN")
+                    put("error", "Failed to store event")
+                })
                 return@put
             }
 
             // Return the event
-            val eventData = mapOf(
-                "event_id" to processedEvent[Events.eventId],
-                "type" to processedEvent[Events.type],
-                "room_id" to processedEvent[Events.roomId],
-                "sender" to processedEvent[Events.sender],
-                "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                "depth" to processedEvent[Events.depth],
-                "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                "origin_server_ts" to processedEvent[Events.originServerTs],
-                "state_key" to processedEvent[Events.stateKey],
-                "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-            ).filterValues { it != null }
+            val eventData = buildJsonObject {
+                put("event_id", processedEvent[Events.eventId])
+                put("type", processedEvent[Events.type])
+                put("room_id", processedEvent[Events.roomId])
+                put("sender", processedEvent[Events.sender])
+                put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                put("depth", processedEvent[Events.depth])
+                put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                put("origin_server_ts", processedEvent[Events.originServerTs])
+                put("state_key", processedEvent[Events.stateKey])
+                if (processedEvent[Events.unsigned] != null) {
+                    put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                }
+            }
 
             call.respond(eventData)
         } catch (e: Exception) {
             println("Send join error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
     get("/make_knock/{roomId}/{userId}") {
@@ -216,14 +259,20 @@ fun Route.federationV1Membership() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -234,7 +283,10 @@ fun Route.federationV1Membership() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@get
             }
 
@@ -247,7 +299,10 @@ fun Route.federationV1Membership() {
             if (existingMembership != null) {
                 val membership = existingMembership["membership"]?.jsonPrimitive?.content
                 if (membership == "join" || membership == "invite" || membership == "knock") {
-                    call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_ALREADY_JOINED", "error" to "User is already joined, invited, or knocking"))
+                    call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                        put("errcode", "M_ALREADY_JOINED")
+                        put("error", "User is already joined, invited, or knocking")
+                    })
                     return@get
                 }
             }
@@ -256,7 +311,10 @@ fun Route.federationV1Membership() {
             val joinRules = roomState["m.room.join_rules:"]?.get("join_rule")?.jsonPrimitive?.content ?: "invite"
             if (joinRules == "public") {
                 // For public rooms, users can join directly, no need to knock
-                call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_CANNOT_KNOCK", "error" to "Room is public, use make_join instead"))
+                call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                    put("errcode", "M_CANNOT_KNOCK")
+                    put("error", "Room is public, use make_join instead")
+                })
                 return@get
             }
 
@@ -303,24 +361,29 @@ fun Route.federationV1Membership() {
             val tempEventId = "\$${System.currentTimeMillis()}_knock"
 
             // Create knock event template
-            val knockEvent = mapOf(
-                "event_id" to tempEventId,
-                "type" to "m.room.member",
-                "room_id" to roomId,
-                "sender" to userId,
-                "content" to mapOf("membership" to "knock"),
-                "state_key" to userId,
-                "origin_server_ts" to System.currentTimeMillis(),
-                "depth" to depth,
-                "prev_events" to prevEvents,
-                "auth_events" to authEvents,
-                "origin" to "localhost"
-            )
+            val knockEvent = buildJsonObject {
+                put("event_id", tempEventId)
+                put("type", "m.room.member")
+                put("room_id", roomId)
+                put("sender", userId)
+                putJsonObject("content") {
+                    put("membership", "knock")
+                }
+                put("state_key", userId)
+                put("origin_server_ts", System.currentTimeMillis())
+                put("depth", depth)
+                put("prev_events", Json.encodeToJsonElement(prevEvents))
+                put("auth_events", Json.encodeToJsonElement(authEvents))
+                put("origin", "localhost")
+            }
 
             call.respond(knockEvent)
         } catch (e: Exception) {
             println("Make knock error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
     put("/send_knock/{roomId}/{eventId}") {
@@ -331,14 +394,20 @@ fun Route.federationV1Membership() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@put
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@put
         }
 
@@ -347,23 +416,35 @@ fun Route.federationV1Membership() {
 
             // Validate the event
             if (knockEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Event ID mismatch")
+                })
                 return@put
             }
 
             if (knockEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Room ID mismatch")
+                })
                 return@put
             }
 
             if (knockEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid event type")
+                })
                 return@put
             }
 
             val membership = knockEvent["content"]?.jsonObject?.get("membership")?.jsonPrimitive?.content
             if (membership != "knock") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid membership type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid membership type")
+                })
                 return@put
             }
 
@@ -380,31 +461,39 @@ fun Route.federationV1Membership() {
             }
 
             if (processedEvent == null) {
-                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                    put("errcode", "M_UNKNOWN")
+                    put("error", "Failed to store event")
+                })
                 return@put
             }
 
             // Return the event
-            val eventData = mapOf(
-                "event_id" to processedEvent[Events.eventId],
-                "type" to processedEvent[Events.type],
-                "room_id" to processedEvent[Events.roomId],
-                "sender" to processedEvent[Events.sender],
-                "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                "depth" to processedEvent[Events.depth],
-                "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                "origin_server_ts" to processedEvent[Events.originServerTs],
-                "state_key" to processedEvent[Events.stateKey],
-                "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-            ).filterValues { it != null }
+            val eventData = buildJsonObject {
+                put("event_id", processedEvent[Events.eventId])
+                put("type", processedEvent[Events.type])
+                put("room_id", processedEvent[Events.roomId])
+                put("sender", processedEvent[Events.sender])
+                put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                put("depth", processedEvent[Events.depth])
+                put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                put("origin_server_ts", processedEvent[Events.originServerTs])
+                put("state_key", processedEvent[Events.stateKey])
+                if (processedEvent[Events.unsigned] != null) {
+                    put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                }
+            }
 
             call.respond(eventData)
         } catch (e: Exception) {
             println("Send knock error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
     put("/invite/{roomId}/{eventId}") {
@@ -415,14 +504,20 @@ fun Route.federationV1Membership() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@put
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@put
         }
 
@@ -431,23 +526,35 @@ fun Route.federationV1Membership() {
 
             // Validate the event
             if (inviteEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Event ID mismatch")
+                })
                 return@put
             }
 
             if (inviteEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Room ID mismatch")
+                })
                 return@put
             }
 
             if (inviteEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid event type")
+                })
                 return@put
             }
 
             val membership = inviteEvent["content"]?.jsonObject?.get("membership")?.jsonPrimitive?.content
             if (membership != "invite") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid membership type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid membership type")
+                })
                 return@put
             }
 
@@ -457,7 +564,10 @@ fun Route.federationV1Membership() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@put
             }
 
@@ -472,7 +582,10 @@ fun Route.federationV1Membership() {
             if (existingMembership != null) {
                 val currentMembership = existingMembership["membership"]?.jsonPrimitive?.content
                 if (currentMembership == "join" || currentMembership == "invite") {
-                    call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_ALREADY_JOINED", "error" to "User is already joined or invited"))
+                    call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                        put("errcode", "M_ALREADY_JOINED")
+                        put("error", "User is already joined or invited")
+                    })
                     return@put
                 }
             }
@@ -490,31 +603,39 @@ fun Route.federationV1Membership() {
             }
 
             if (processedEvent == null) {
-                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                    put("errcode", "M_UNKNOWN")
+                    put("error", "Failed to store event")
+                })
                 return@put
             }
 
             // Return the event
-            val eventData = mapOf(
-                "event_id" to processedEvent[Events.eventId],
-                "type" to processedEvent[Events.type],
-                "room_id" to processedEvent[Events.roomId],
-                "sender" to processedEvent[Events.sender],
-                "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                "depth" to processedEvent[Events.depth],
-                "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                "origin_server_ts" to processedEvent[Events.originServerTs],
-                "state_key" to processedEvent[Events.stateKey],
-                "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-            ).filterValues { it != null }
+            val eventData = buildJsonObject {
+                put("event_id", processedEvent[Events.eventId])
+                put("type", processedEvent[Events.type])
+                put("room_id", processedEvent[Events.roomId])
+                put("sender", processedEvent[Events.sender])
+                put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                put("depth", processedEvent[Events.depth])
+                put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                put("origin_server_ts", processedEvent[Events.originServerTs])
+                put("state_key", processedEvent[Events.stateKey])
+                if (processedEvent[Events.unsigned] != null) {
+                    put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                }
+            }
 
             call.respond(eventData)
         } catch (e: Exception) {
             println("Invite error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
     get("/make_leave/{roomId}/{userId}") {
@@ -524,14 +645,20 @@ fun Route.federationV1Membership() {
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@get
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@get
         }
 
@@ -542,7 +669,10 @@ fun Route.federationV1Membership() {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf("errcode" to "M_NOT_FOUND", "error" to "Room not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Room not found")
+                })
                 return@get
             }
 
@@ -553,13 +683,19 @@ fun Route.federationV1Membership() {
             val membershipKey = "m.room.member:$userId"
             val existingMembership = roomState[membershipKey]
             if (existingMembership == null) {
-                call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_NOT_MEMBER", "error" to "User is not a member of this room"))
+                call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                    put("errcode", "M_NOT_MEMBER")
+                    put("error", "User is not a member of this room")
+                })
                 return@get
             }
 
             val currentMembership = existingMembership["membership"]?.jsonPrimitive?.content
             if (currentMembership == "leave" || currentMembership == "ban") {
-                call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_ALREADY_LEFT", "error" to "User has already left or been banned from this room"))
+                call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                    put("errcode", "M_ALREADY_LEFT")
+                    put("error", "User has already left or been banned from this room")
+                })
                 return@get
             }
 
@@ -606,24 +742,29 @@ fun Route.federationV1Membership() {
             val tempEventId = "\$${System.currentTimeMillis()}_leave"
 
             // Create leave event template
-            val leaveEvent = mapOf(
-                "event_id" to tempEventId,
-                "type" to "m.room.member",
-                "room_id" to roomId,
-                "sender" to userId,
-                "content" to mapOf("membership" to "leave"),
-                "state_key" to userId,
-                "origin_server_ts" to System.currentTimeMillis(),
-                "depth" to depth,
-                "prev_events" to prevEvents,
-                "auth_events" to authEvents,
-                "origin" to "localhost"
-            )
+            val leaveEvent = buildJsonObject {
+                put("event_id", tempEventId)
+                put("type", "m.room.member")
+                put("room_id", roomId)
+                put("sender", userId)
+                putJsonObject("content") {
+                    put("membership", "leave")
+                }
+                put("state_key", userId)
+                put("origin_server_ts", System.currentTimeMillis())
+                put("depth", depth)
+                put("prev_events", Json.encodeToJsonElement(prevEvents))
+                put("auth_events", Json.encodeToJsonElement(authEvents))
+                put("origin", "localhost")
+            }
 
             call.respond(leaveEvent)
         } catch (e: Exception) {
             println("Make leave error: ${e.message}")
-            call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to e.message))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", e.message ?: "Unknown error")
+            })
         }
     }
     put("/send_leave/{roomId}/{eventId}") {
@@ -634,14 +775,20 @@ fun Route.federationV1Membership() {
         val body = call.receiveText()
         val authHeader = call.request.headers["Authorization"]
         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("errcode" to "M_UNAUTHORIZED", "error" to "Invalid signature"))
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
             return@put
         }
 
         // Check Server ACL
         val serverName = extractServerNameFromAuth(authHeader)
         if (serverName != null && !checkServerACL(roomId, serverName)) {
-            call.respond(HttpStatusCode.Forbidden, mapOf("errcode" to "M_FORBIDDEN", "error" to "Server access denied by ACL"))
+            call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                put("errcode", "M_FORBIDDEN")
+                put("error", "Server access denied by ACL")
+            })
             return@put
         }
 
@@ -650,23 +797,35 @@ fun Route.federationV1Membership() {
 
             // Validate the event
             if (leaveEvent["event_id"]?.jsonPrimitive?.content != eventId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Event ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Event ID mismatch")
+                })
                 return@put
             }
 
             if (leaveEvent["room_id"]?.jsonPrimitive?.content != roomId) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Room ID mismatch"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Room ID mismatch")
+                })
                 return@put
             }
 
             if (leaveEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid event type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid event type")
+                })
                 return@put
             }
 
             val membership = leaveEvent["content"]?.jsonObject?.get("membership")?.jsonPrimitive?.content
             if (membership != "leave") {
-                call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_INVALID_PARAM", "error" to "Invalid membership type"))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Invalid membership type")
+                })
                 return@put
             }
 
@@ -683,31 +842,39 @@ fun Route.federationV1Membership() {
             }
 
             if (processedEvent == null) {
-                call.respond(HttpStatusCode.InternalServerError, mapOf("errcode" to "M_UNKNOWN", "error" to "Failed to store event"))
+                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                    put("errcode", "M_UNKNOWN")
+                    put("error", "Failed to store event")
+                })
                 return@put
             }
 
             // Return the event
-            val eventData = mapOf(
-                "event_id" to processedEvent[Events.eventId],
-                "type" to processedEvent[Events.type],
-                "room_id" to processedEvent[Events.roomId],
-                "sender" to processedEvent[Events.sender],
-                "content" to Json.parseToJsonElement(processedEvent[Events.content]).jsonObject,
-                "auth_events" to Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray,
-                "prev_events" to Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray,
-                "depth" to processedEvent[Events.depth],
-                "hashes" to Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject,
-                "signatures" to Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject,
-                "origin_server_ts" to processedEvent[Events.originServerTs],
-                "state_key" to processedEvent[Events.stateKey],
-                "unsigned" to if (processedEvent[Events.unsigned] != null) Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject else null
-            ).filterValues { it != null }
+            val eventData = buildJsonObject {
+                put("event_id", processedEvent[Events.eventId])
+                put("type", processedEvent[Events.type])
+                put("room_id", processedEvent[Events.roomId])
+                put("sender", processedEvent[Events.sender])
+                put("content", Json.parseToJsonElement(processedEvent[Events.content]).jsonObject)
+                put("auth_events", Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray)
+                put("prev_events", Json.parseToJsonElement(processedEvent[Events.prevEvents]).jsonArray)
+                put("depth", processedEvent[Events.depth])
+                put("hashes", Json.parseToJsonElement(processedEvent[Events.hashes]).jsonObject)
+                put("signatures", Json.parseToJsonElement(processedEvent[Events.signatures]).jsonObject)
+                put("origin_server_ts", processedEvent[Events.originServerTs])
+                put("state_key", processedEvent[Events.stateKey])
+                if (processedEvent[Events.unsigned] != null) {
+                    put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
+                }
+            }
 
             call.respond(eventData)
         } catch (e: Exception) {
             println("Send leave error: ${e.message}")
-            call.respond(HttpStatusCode.BadRequest, mapOf("errcode" to "M_BAD_JSON", "error" to "Invalid JSON"))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_BAD_JSON")
+                put("error", "Invalid JSON")
+            })
         }
     }
 }
