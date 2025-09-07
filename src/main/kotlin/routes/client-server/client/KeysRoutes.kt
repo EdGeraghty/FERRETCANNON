@@ -16,10 +16,10 @@ fun Route.keysRoutes(config: ServerConfig) {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_TOKEN")
+                    put("error", "Missing access token")
+                })
                 return@post
             }
 
@@ -63,14 +63,16 @@ fun Route.keysRoutes(config: ServerConfig) {
             }
 
             // Return the device keys
-            val response = mapOf("device_keys" to result)
+            val response = buildJsonObject {
+                put("device_keys", Json.encodeToJsonElement(result))
+            }
             call.respond(response)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
@@ -80,10 +82,10 @@ fun Route.keysRoutes(config: ServerConfig) {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_TOKEN")
+                    put("error", "Missing access token")
+                })
                 return@post
             }
 
@@ -108,10 +110,10 @@ fun Route.keysRoutes(config: ServerConfig) {
 
                         // For now, return a placeholder response
                         // In a full implementation, this would claim actual one-time keys
-                        userClaimedKeys[keyId] = mapOf(
-                            "key" to "placeholder_key_data",
-                            "signatures" to mapOf<String, Any>()
-                        )
+                        userClaimedKeys[keyId] = buildJsonObject {
+                            put("key", "placeholder_key_data")
+                            put("signatures", JsonObject(emptyMap()))
+                        }
                     }
                 }
 
@@ -121,14 +123,16 @@ fun Route.keysRoutes(config: ServerConfig) {
             }
 
             // Return the claimed keys
-            val response = mapOf("one_time_keys" to result)
+            val response = buildJsonObject {
+                put("one_time_keys", Json.encodeToJsonElement(result))
+            }
             call.respond(response)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
@@ -139,10 +143,10 @@ fun Route.keysRoutes(config: ServerConfig) {
             val deviceId = call.attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
 
             if (userId == null || deviceId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_TOKEN")
+                    put("error", "Missing access token")
+                })
                 return@post
             }
 
@@ -165,19 +169,19 @@ fun Route.keysRoutes(config: ServerConfig) {
             }
 
             // Return success response with key counts
-            val response = mapOf(
-                "one_time_key_counts" to mapOf(
-                    "curve25519" to 0,  // Placeholder
-                    "signed_curve25519" to 0  // Placeholder
-                )
-            )
+            val response = buildJsonObject {
+                putJsonObject("one_time_key_counts") {
+                    put("curve25519", 0)  // Placeholder
+                    put("signed_curve25519", 0)  // Placeholder
+                }
+            }
             call.respond(response)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 }

@@ -17,10 +17,10 @@ fun Route.syncRoutes(config: ServerConfig) {
         try {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_TOKEN")
+                    put("error", "Missing access token")
+                })
                 return@get
             }
 
@@ -39,25 +39,25 @@ fun Route.syncRoutes(config: ServerConfig) {
                 filter = filter
             )
 
-            // Convert SyncResponse to Map for JSON response
-            val responseMap = mapOf(
-                "next_batch" to syncResponse.nextBatch,
-                "rooms" to syncResponse.rooms,
-                "presence" to syncResponse.presence,
-                "account_data" to syncResponse.accountData,
-                "device_lists" to syncResponse.deviceLists,
-                "device_one_time_keys_count" to syncResponse.deviceOneTimeKeysCount,
-                "to_device" to syncResponse.toDevice
-            ).filterValues { it != null }
+            // Convert SyncResponse to JSON response
+            val responseJson = buildJsonObject {
+                put("next_batch", syncResponse.nextBatch)
+                put("rooms", Json.encodeToJsonElement(syncResponse.rooms))
+                put("presence", Json.encodeToJsonElement(syncResponse.presence))
+                put("account_data", Json.encodeToJsonElement(syncResponse.accountData))
+                put("device_lists", Json.encodeToJsonElement(syncResponse.deviceLists))
+                put("device_one_time_keys_count", Json.encodeToJsonElement(syncResponse.deviceOneTimeKeysCount))
+                put("to_device", Json.encodeToJsonElement(syncResponse.toDevice))
+            }
 
-            call.respond(responseMap)
+            call.respond(responseJson)
 
         } catch (e: Exception) {
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error: ${e.message}"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error: ${e.message}")
+            })
         }
     }
 }
