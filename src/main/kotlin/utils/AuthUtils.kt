@@ -21,13 +21,6 @@ object AuthUtils {
     private val random = SecureRandom()
 
     /**
-     * Hash a password using BCrypt
-     */
-    fun hashPassword(password: String): String {
-        return BCrypt.withDefaults().hashToString(12, password.toCharArray())
-    }
-
-    /**
      * Verify a password against its hash
      */
     fun verifyPassword(password: String, hash: String): Boolean {
@@ -36,6 +29,13 @@ object AuthUtils {
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * Hash a password using BCrypt
+     */
+    fun hashPassword(password: String): String {
+        return BCrypt.withDefaults().hashToString(12, password.toCharArray())
     }
 
     /**

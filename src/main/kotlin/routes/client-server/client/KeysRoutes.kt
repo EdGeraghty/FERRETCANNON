@@ -29,7 +29,7 @@ fun Route.keysRoutes(config: ServerConfig) {
             val deviceKeys = jsonBody["device_keys"]?.jsonObject ?: JsonObject(emptyMap())
 
             // Process device keys query
-            val result = mutableMapOf<String, Map<String, Map<String, Any>>>()
+            val result = mutableMapOf<String, JsonElement>()
 
             for (queryUserId in deviceKeys.keys) {
                 val requestedDevices = deviceKeys[queryUserId]
@@ -38,7 +38,7 @@ fun Route.keysRoutes(config: ServerConfig) {
                     // Return all devices for this user
                     val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
                     if (userDeviceKeys.containsKey(queryUserId)) {
-                        result[queryUserId] = userDeviceKeys[queryUserId]!!
+                        result[queryUserId] = Json.encodeToJsonElement(userDeviceKeys[queryUserId]!!)
                     }
                 } else if (requestedDevices is JsonObject) {
                     val deviceIds = requestedDevices["device_ids"]?.jsonArray ?: JsonArray(emptyList())
@@ -56,7 +56,7 @@ fun Route.keysRoutes(config: ServerConfig) {
                         }
 
                         if (filteredDevices.isNotEmpty()) {
-                            result[queryUserId] = filteredDevices
+                            result[queryUserId] = Json.encodeToJsonElement(filteredDevices)
                         }
                     }
                 }
@@ -95,7 +95,7 @@ fun Route.keysRoutes(config: ServerConfig) {
             val oneTimeKeys = jsonBody["one_time_keys"]?.jsonObject ?: JsonObject(emptyMap())
 
             // Process one-time key claims
-            val result = mutableMapOf<String, Map<String, Map<String, Any>>>()
+            val result = mutableMapOf<String, JsonElement>()
 
             for (claimUserId in oneTimeKeys.keys) {
                 val userRequestedKeys = oneTimeKeys[claimUserId]?.jsonObject ?: JsonObject(emptyMap())
@@ -118,7 +118,7 @@ fun Route.keysRoutes(config: ServerConfig) {
                 }
 
                 if (userClaimedKeys.isNotEmpty()) {
-                    result[claimUserId] = userClaimedKeys
+                    result[claimUserId] = Json.encodeToJsonElement(userClaimedKeys)
                 }
             }
 

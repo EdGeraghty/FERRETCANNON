@@ -42,12 +42,20 @@ fun Route.syncRoutes(config: ServerConfig) {
             // Convert SyncResponse to JSON response
             val responseJson = buildJsonObject {
                 put("next_batch", syncResponse.nextBatch)
-                put("rooms", Json.encodeToJsonElement(syncResponse.rooms))
-                put("presence", Json.encodeToJsonElement(syncResponse.presence))
-                put("account_data", Json.encodeToJsonElement(syncResponse.accountData))
-                put("device_lists", Json.encodeToJsonElement(syncResponse.deviceLists))
-                put("device_one_time_keys_count", Json.encodeToJsonElement(syncResponse.deviceOneTimeKeysCount))
-                put("to_device", Json.encodeToJsonElement(syncResponse.toDevice))
+                put("rooms", syncResponse.rooms)
+                put("presence", syncResponse.presence)
+                if (syncResponse.accountData != null) {
+                    put("account_data", syncResponse.accountData)
+                }
+                if (syncResponse.deviceLists != null) {
+                    put("device_lists", syncResponse.deviceLists)
+                }
+                if (syncResponse.deviceOneTimeKeysCount != null) {
+                    put("device_one_time_keys_count", syncResponse.deviceOneTimeKeysCount)
+                }
+                if (syncResponse.toDevice != null) {
+                    put("to_device", syncResponse.toDevice)
+                }
             }
 
             call.respond(responseJson)
