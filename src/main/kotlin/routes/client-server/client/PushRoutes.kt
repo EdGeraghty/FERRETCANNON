@@ -27,9 +27,38 @@ fun Route.pushRoutes(config: ServerConfig) {
 
             // TODO: Retrieve push rules from database
             // For now, return empty rules
-            call.respond(mapOf(
-                "global" to emptyMap<String, Any>()
+            val response = buildJsonObject {
+                put("global", buildJsonObject { })
+            }
+            call.respond(response)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
             ))
+        }
+    }
+
+    // GET /pushrules/ - Get push rules (with trailing slash)
+    get("/pushrules/") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@get
+            }
+
+            // TODO: Retrieve push rules from database
+            // For now, return empty rules
+            val response = buildJsonObject {
+                put("global", buildJsonObject { })
+            }
+            call.respond(response)
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(

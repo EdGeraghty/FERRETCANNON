@@ -30,6 +30,8 @@ fun Route.authRoutes(config: ServerConfig) {
             val user = jsonBody["user"]?.jsonPrimitive?.content
             val password = jsonBody["password"]?.jsonPrimitive?.content
             val type = jsonBody["type"]?.jsonPrimitive?.content ?: "m.login.password"
+            val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content ?: "default_device"
+            val initialDeviceDisplayName = jsonBody["initial_device_display_name"]?.jsonPrimitive?.content
 
             if (user == null || password == null) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
@@ -39,12 +41,29 @@ fun Route.authRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // TODO: Implement actual authentication
-            // For now, return a mock response
+            // Authenticate user
+            val authenticatedUserId = AuthUtils.authenticateUser(user, password)
+            if (authenticatedUserId == null) {
+                call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                    put("errcode", "M_FORBIDDEN")
+                    put("error", "Invalid username or password")
+                })
+                return@post
+            }
+
+            // Create access token
+            val accessToken = AuthUtils.createAccessToken(
+                userId = authenticatedUserId,
+                deviceId = deviceId,
+                userAgent = call.request.headers["User-Agent"],
+                ipAddress = call.request.headers["X-Forwarded-For"] ?: call.request.headers["X-Real-IP"]
+            )
+
+            // Return successful login response
             call.respond(buildJsonObject {
-                put("user_id", "@$user:${config.federation.serverName}")
-                put("access_token", "mock_access_token_${System.currentTimeMillis()}")
-                put("device_id", "mock_device")
+                put("user_id", authenticatedUserId)
+                put("access_token", accessToken)
+                put("device_id", deviceId)
                 put("home_server", config.federation.serverName)
             })
 
