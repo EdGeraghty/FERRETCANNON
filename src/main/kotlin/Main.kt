@@ -30,6 +30,7 @@ import models.PushRules
 import models.RoomAliases
 import models.RegistrationTokens
 import models.ServerKeys
+import models.Filters
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -90,7 +91,7 @@ fun main() {
 
     transaction {
         logger.debug("Creating database schema...")
-        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, ServerKeys)
+        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, ServerKeys, Filters)
         logger.info("✅ Database schema created/verified")
 
         // Create test user for development (if enabled in config)

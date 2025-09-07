@@ -60,6 +60,49 @@ val MATRIX_DEVICE_ID_KEY = AttributeKey<String>("MatrixDeviceId")
 val MATRIX_INVALID_TOKEN_KEY = AttributeKey<String>("MatrixInvalidToken")
 val MATRIX_NO_TOKEN_KEY = AttributeKey<Boolean>("MatrixNoToken")
 
+// Helper function for token validation and error responses
+suspend fun ApplicationCall.validateAccessToken(): String? {
+    val accessToken = attributes.getOrNull(MATRIX_TOKEN_KEY)
+    val invalidToken = attributes.getOrNull(MATRIX_INVALID_TOKEN_KEY)
+    val noToken = attributes.getOrNull(MATRIX_NO_TOKEN_KEY)
+
+    return when {
+        noToken == true -> {
+            respond(HttpStatusCode.Unauthorized, mapOf(
+                "errcode" to "M_MISSING_TOKEN",
+                "error" to "Missing access token"
+            ))
+            null
+        }
+        invalidToken != null -> {
+            respond(HttpStatusCode.Unauthorized, mapOf(
+                "errcode" to "M_UNKNOWN_TOKEN",
+                "error" to "Unrecognised access token"
+            ))
+            null
+        }
+        accessToken != null -> accessToken
+        else -> {
+            respond(HttpStatusCode.Unauthorized, mapOf(
+                "errcode" to "M_MISSING_TOKEN",
+                "error" to "Missing access token"
+            ))
+            null
+        }
+    }
+}
+
+// Helper function to get authenticated user information
+fun ApplicationCall.getAuthenticatedUser(): Triple<String, String, String>? {
+    val userId = attributes.getOrNull(MATRIX_USER_ID_KEY)
+    val deviceId = attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
+    val token = attributes.getOrNull(MATRIX_TOKEN_KEY)
+
+    return if (userId != null && deviceId != null && token != null) {
+        Triple(userId, deviceId, token)
+    } else null
+}
+
 fun Application.clientRoutes(config: ServerConfig) {
     // Request size limiting - simplified version
     intercept(ApplicationCallPipeline.Call) {
@@ -112,49 +155,6 @@ fun Application.clientRoutes(config: ServerConfig) {
         }
     }
 
-    // Helper function for token validation and error responses
-    suspend fun ApplicationCall.validateAccessToken(): String? {
-        val accessToken = attributes.getOrNull(MATRIX_TOKEN_KEY)
-        val invalidToken = attributes.getOrNull(MATRIX_INVALID_TOKEN_KEY)
-        val noToken = attributes.getOrNull(MATRIX_NO_TOKEN_KEY)
-
-        return when {
-            noToken == true -> {
-                respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                null
-            }
-            invalidToken != null -> {
-                respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_UNKNOWN_TOKEN",
-                    "error" to "Unrecognised access token"
-                ))
-                null
-            }
-            accessToken != null -> accessToken
-            else -> {
-                respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                null
-            }
-        }
-    }
-
-    // Helper function to get authenticated user information
-    fun ApplicationCall.getAuthenticatedUser(): Triple<String, String, String>? {
-        val userId = attributes.getOrNull(MATRIX_USER_ID_KEY)
-        val deviceId = attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
-        val token = attributes.getOrNull(MATRIX_TOKEN_KEY)
-
-        return if (userId != null && deviceId != null && token != null) {
-            Triple(userId, deviceId, token)
-        } else null
-    }
-
     routing {
         // Helper function to broadcast events to room clients
         suspend fun broadcastEvent(roomId: String, event: Map<String, Any>) {
@@ -170,40 +170,40 @@ fun Application.clientRoutes(config: ServerConfig) {
 
         route("/_matrix") {
             route("/client") {
-                // Server versions endpoint
-                get("/versions") {
-                    call.respondText("""
-                        {
-                            "versions": [
-                                "r0.0.1",
-                                "r0.1.0",
-                                "r0.2.0",
-                                "r0.3.0",
-                                "r0.4.0",
-                                "r0.5.0",
-                                "r0.6.0",
-                                "v1.1",
-                                "v1.2",
-                                "v1.3",
-                                "v1.4",
-                                "v1.5",
-                                "v1.6",
-                                "v1.7",
-                                "v1.8",
-                                "v1.9",
-                                "v1.10",
-                                "v1.11",
-                                "v1.12",
-                                "v1.13",
-                                "v1.14",
-                                "v1.15"
-                            ],
-                            "unstable_features": {}
-                        }
-                    """.trimIndent(), ContentType.Application.Json)
-                }
-
                 route("/v3") {
+                    // Server versions endpoint
+                    get("/versions") {
+                        call.respondText("""
+                            {
+                                "versions": [
+                                    "r0.0.1",
+                                    "r0.1.0",
+                                    "r0.2.0",
+                                    "r0.3.0",
+                                    "r0.4.0",
+                                    "r0.5.0",
+                                    "r0.6.0",
+                                    "v1.1",
+                                    "v1.2",
+                                    "v1.3",
+                                    "v1.4",
+                                    "v1.5",
+                                    "v1.6",
+                                    "v1.7",
+                                    "v1.8",
+                                    "v1.9",
+                                    "v1.10",
+                                    "v1.11",
+                                    "v1.12",
+                                    "v1.13",
+                                    "v1.14",
+                                    "v1.15"
+                                ],
+                                "unstable_features": {}
+                            }
+                        """.trimIndent(), ContentType.Application.Json)
+                    }
+
                     // Include all the modular route files
                     authRoutes(config)
                     userRoutes(config)

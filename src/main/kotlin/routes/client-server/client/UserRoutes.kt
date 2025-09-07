@@ -15,6 +15,7 @@ import io.ktor.http.content.*
 import io.ktor.http.content.PartData
 import models.Events
 import models.Rooms
+import models.Filters
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -622,6 +623,123 @@ fun Route.userRoutes(config: ServerConfig) {
                     ))
                 }
             }
+        }
+    }
+
+    // POST /user/{userId}/filter - Create a filter
+    post("/user/{userId}/filter") {
+        try {
+            val userId = call.parameters["userId"]
+            val accessToken = call.validateAccessToken() ?: return@post
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing userId parameter"
+                ))
+                return@post
+            }
+
+            // Verify the access token belongs to the user
+            val tokenUser = transaction {
+                AccessTokens.select { AccessTokens.token eq accessToken }
+                    .singleOrNull()?.get(AccessTokens.userId)
+            }
+
+            if (tokenUser != userId) {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "Access token does not match user"
+                ))
+                return@post
+            }
+
+            val filterJson = call.receiveText()
+
+            // Generate a unique filter ID
+            val filterId = "filter_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000, 9999)}"
+
+            // Store the filter
+            transaction {
+                Filters.insert {
+                    it[Filters.filterId] = filterId
+                    it[Filters.userId] = userId
+                    it[Filters.filterJson] = filterJson
+                }
+            }
+
+            call.respond(mapOf("filter_id" to filterId))
+
+        } catch (e: Exception) {
+            when (e) {
+                is kotlinx.serialization.SerializationException -> {
+                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                        "errcode" to "M_BAD_JSON",
+                        "error" to "Invalid JSON"
+                    ))
+                }
+                else -> {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf(
+                        "errcode" to "M_UNKNOWN",
+                        "error" to "Internal server error"
+                    ))
+                }
+            }
+        }
+    }
+
+    // GET /user/{userId}/filter/{filterId} - Get a filter
+    get("/user/{userId}/filter/{filterId}") {
+        try {
+            val userId = call.parameters["userId"]
+            val filterId = call.parameters["filterId"]
+            val accessToken = call.validateAccessToken() ?: return@get
+
+            if (userId == null || filterId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing userId or filterId parameter"
+                ))
+                return@get
+            }
+
+            // Verify the access token belongs to the user
+            val tokenUser = transaction {
+                AccessTokens.select { AccessTokens.token eq accessToken }
+                    .singleOrNull()?.get(AccessTokens.userId)
+            }
+
+            if (tokenUser != userId) {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "Access token does not match user"
+                ))
+                return@get
+            }
+
+            // Retrieve the filter
+            val filter = transaction {
+                Filters.select {
+                    (Filters.filterId eq filterId) and (Filters.userId eq userId)
+                }.singleOrNull()
+            }
+
+            if (filter == null) {
+                call.respond(HttpStatusCode.NotFound, mapOf(
+                    "errcode" to "M_NOT_FOUND",
+                    "error" to "Filter not found"
+                ))
+                return@get
+            }
+
+            val filterJson = filter[Filters.filterJson]
+            call.respondText(filterJson, ContentType.Application.Json)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 }

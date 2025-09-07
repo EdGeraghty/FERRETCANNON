@@ -218,3 +218,12 @@ object ServerKeys : Table("server_keys") {
 
     override val primaryKey = PrimaryKey(serverName, keyId)
 }
+
+object Filters : Table("filters") {
+    val filterId = varchar("filter_id", 255).uniqueIndex()
+    val userId = varchar("user_id", 255)
+    val filterJson = text("filter_json") // JSON representation of the filter
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(filterId)
+}
