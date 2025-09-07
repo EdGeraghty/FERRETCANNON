@@ -7,8 +7,9 @@ import io.ktor.server.request.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
 import utils.AuthUtils
+import config.ServerConfig
 
-fun Route.keysRoutes() {
+fun Route.keysRoutes(config: ServerConfig) {
     // POST /keys/query - Query device keys for users
     post("/keys/query") {
         try {
@@ -33,7 +34,7 @@ fun Route.keysRoutes() {
             for (queryUserId in deviceKeys.keys) {
                 val requestedDevices = deviceKeys[queryUserId]
 
-                if (requestedDevices is JsonNull) {
+                if (requestedDevices is JsonNull || (requestedDevices is JsonObject && requestedDevices.isEmpty())) {
                     // Return all devices for this user
                     val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
                     if (userDeviceKeys.containsKey(queryUserId)) {

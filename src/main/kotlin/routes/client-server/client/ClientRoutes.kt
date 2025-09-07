@@ -251,7 +251,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     thirdPartyRoutes(config)
                     oauthRoutes(config)
                     syncRoutes(config)
-                    keysRoutes()
+                    keysRoutes(config)
                 }
             }
         }
