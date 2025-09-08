@@ -174,20 +174,10 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
-            when (e) {
-                is kotlinx.serialization.SerializationException -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                        "errcode" to "M_BAD_JSON",
-                        "error" to "Invalid JSON"
-                    ))
-                }
-                else -> {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Internal server error"
-                    ))
-                }
-            }
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 
@@ -255,20 +245,10 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
-            when (e) {
-                is kotlinx.serialization.SerializationException -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                        "errcode" to "M_BAD_JSON",
-                        "error" to "Invalid JSON"
-                    ))
-                }
-                else -> {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Internal server error"
-                    ))
-                }
-            }
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 
@@ -368,7 +348,15 @@ fun Route.userRoutes(config: ServerConfig) {
             val jsonBody = if (requestBody.isBlank()) {
                 JsonObject(emptyMap())
             } else {
-                Json.parseToJsonElement(requestBody)
+                try {
+                    Json.parseToJsonElement(requestBody)
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                        "errcode" to "M_BAD_JSON",
+                        "error" to "Invalid JSON: ${e.message}"
+                    ))
+                    return@put
+                }
             }
 
             // Store account data in database
@@ -396,20 +384,10 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
-            when (e) {
-                is kotlinx.serialization.SerializationException -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                        "errcode" to "M_BAD_JSON",
-                        "error" to "Invalid JSON"
-                    ))
-                }
-                else -> {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Internal server error"
-                    ))
-                }
-            }
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 
@@ -511,7 +489,15 @@ fun Route.userRoutes(config: ServerConfig) {
             val jsonBody = if (requestBody.isBlank()) {
                 JsonObject(emptyMap())
             } else {
-                Json.parseToJsonElement(requestBody)
+                try {
+                    Json.parseToJsonElement(requestBody)
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                        "errcode" to "M_BAD_JSON",
+                        "error" to "Invalid JSON: ${e.message}"
+                    ))
+                    return@put
+                }
             }
 
             // Store room account data in database
@@ -539,20 +525,10 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
-            when (e) {
-                is kotlinx.serialization.SerializationException -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                        "errcode" to "M_BAD_JSON",
-                        "error" to "Invalid JSON"
-                    ))
-                }
-                else -> {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Internal server error"
-                    ))
-                }
-            }
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 
@@ -617,20 +593,10 @@ fun Route.userRoutes(config: ServerConfig) {
             ))
 
         } catch (e: Exception) {
-            when (e) {
-                is kotlinx.serialization.SerializationException -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                        "errcode" to "M_BAD_JSON",
-                        "error" to "Invalid JSON"
-                    ))
-                }
-                else -> {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Internal server error"
-                    ))
-                }
-            }
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 
@@ -679,20 +645,10 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(mapOf("filter_id" to filterId))
 
         } catch (e: Exception) {
-            when (e) {
-                is kotlinx.serialization.SerializationException -> {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
-                        "errcode" to "M_BAD_JSON",
-                        "error" to "Invalid JSON"
-                    ))
-                }
-                else -> {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Internal server error"
-                    ))
-                }
-            }
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
         }
     }
 
