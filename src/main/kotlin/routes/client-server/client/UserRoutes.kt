@@ -103,6 +103,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(response)
 
         } catch (e: Exception) {
+            println("ERROR: Exception in GET /profile/{userId}: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -174,6 +176,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
+            println("ERROR: Exception in PUT /profile/{userId}/displayname: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -245,6 +249,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
+            println("ERROR: Exception in PUT /profile/{userId}/avatar_url: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -290,7 +296,13 @@ fun Route.userRoutes(config: ServerConfig) {
                     (AccountData.type eq type) and
                     (AccountData.roomId.isNull())
                 }.singleOrNull()?.let { row ->
-                    Json.parseToJsonElement(row[AccountData.content])
+                    try {
+                        Json.parseToJsonElement(row[AccountData.content])
+                    } catch (e: Exception) {
+                        // Log the error and return null to treat as not found
+                        println("ERROR: Failed to parse account data JSON for user $userId, type $type: ${e.message}")
+                        null
+                    }
                 }
             }
 
@@ -305,6 +317,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(accountData)
 
         } catch (e: Exception) {
+            println("ERROR: Exception in GET /user/{userId}/account_data/{type}: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -384,6 +398,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
+            println("ERROR: Exception in PUT /user/{userId}/account_data/{type}: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -430,7 +446,13 @@ fun Route.userRoutes(config: ServerConfig) {
                     (AccountData.type eq type) and
                     (AccountData.roomId eq roomId)
                 }.singleOrNull()?.let { row ->
-                    Json.parseToJsonElement(row[AccountData.content])
+                    try {
+                        Json.parseToJsonElement(row[AccountData.content])
+                    } catch (e: Exception) {
+                        // Log the error and return null to treat as not found
+                        println("ERROR: Failed to parse room account data JSON for user $userId, room $roomId, type $type: ${e.message}")
+                        null
+                    }
                 }
             }
 
@@ -445,6 +467,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(accountData)
 
         } catch (e: Exception) {
+            println("ERROR: Exception in GET /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -525,6 +549,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
+            println("ERROR: Exception in PUT /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -593,6 +619,8 @@ fun Route.userRoutes(config: ServerConfig) {
             ))
 
         } catch (e: Exception) {
+            println("ERROR: Exception in POST /user_directory/search: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -645,6 +673,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respond(mapOf("filter_id" to filterId))
 
         } catch (e: Exception) {
+            println("ERROR: Exception in POST /user/{userId}/filter: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -700,6 +730,8 @@ fun Route.userRoutes(config: ServerConfig) {
             call.respondText(filterJson, ContentType.Application.Json)
 
         } catch (e: Exception) {
+            println("ERROR: Exception in GET /user/{userId}/filter/{filterId}: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
