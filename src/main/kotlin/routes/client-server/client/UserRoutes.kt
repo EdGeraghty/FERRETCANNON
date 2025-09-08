@@ -135,7 +135,15 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Parse request body
-            val requestBody = call.receiveText()
+            val requestBody = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Failed to read request body: ${e.message}"
+                ))
+                return@put
+            }
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val displayName = jsonBody["displayname"]?.jsonPrimitive?.content
 
@@ -208,7 +216,15 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Parse request body
-            val requestBody = call.receiveText()
+            val requestBody = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Failed to read request body: ${e.message}"
+                ))
+                return@put
+            }
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val avatarUrl = jsonBody["avatar_url"]?.jsonPrimitive?.content
 
@@ -391,7 +407,15 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Parse request body
-            val requestBody = call.receiveText()
+            val requestBody = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Failed to read request body: ${e.message}"
+                ))
+                return@put
+            }
             val jsonBody = if (requestBody.isBlank()) {
                 JsonObject(emptyMap())
             } else {
@@ -417,14 +441,14 @@ fun Route.userRoutes(config: ServerConfig) {
 
                     if (existing != null) {
                         AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId.isNull()) }) {
-                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                            it[AccountData.content] = jsonBody.toString()
                         }
                     } else {
                         AccountData.insert {
                             it[AccountData.userId] = userId
                             it[AccountData.type] = type
                             it[AccountData.roomId] = null
-                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                            it[AccountData.content] = jsonBody.toString()
                         }
                     }
                 }
@@ -595,14 +619,14 @@ fun Route.userRoutes(config: ServerConfig) {
 
                     if (existing != null) {
                         AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId eq roomId) }) {
-                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                            it[AccountData.content] = jsonBody.toString()
                         }
                     } else {
                         AccountData.insert {
                             it[AccountData.userId] = userId
                             it[AccountData.type] = type
                             it[AccountData.roomId] = roomId
-                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                            it[AccountData.content] = jsonBody.toString()
                         }
                     }
                 }
@@ -642,7 +666,15 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Parse request body
-            val requestBody = call.receiveText()
+            val requestBody = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Failed to read request body: ${e.message}"
+                ))
+                return@post
+            }
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val searchTerm = jsonBody["search_term"]?.jsonPrimitive?.content
             val limit = jsonBody["limit"]?.jsonPrimitive?.int ?: 10
@@ -726,7 +758,15 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@post
             }
 
-            val filterJson = call.receiveText()
+            val filterJson = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Failed to read request body: ${e.message}"
+                ))
+                return@post
+            }
 
             // Generate a unique filter ID
             val filterId = "filter_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000, 9999)}"
