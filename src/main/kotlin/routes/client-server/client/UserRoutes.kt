@@ -314,7 +314,7 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@get
             }
 
-            call.respond(accountData)
+            call.respondText(accountData.toString(), ContentType.Application.Json)
 
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/account_data/{type}: ${e.message}")
@@ -464,7 +464,7 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@get
             }
 
-            call.respond(accountData)
+            call.respondText(accountData.toString(), ContentType.Application.Json)
 
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
