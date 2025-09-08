@@ -261,9 +261,16 @@ fun Route.userRoutes(config: ServerConfig) {
     // GET /user/{userId}/account_data/{type} - Get global account data
     get("/user/{userId}/account_data/{type}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = try {
+                call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            } catch (e: Exception) {
+                println("ERROR: Failed to get userId from attributes: ${e.message}")
+                null
+            }
             val accountUserId = call.parameters["userId"]
             val type = call.parameters["type"]
+
+            println("DEBUG: GET account_data - userId: '$userId', accountUserId: '$accountUserId', type: '$type'")
 
             if (userId == null) {
                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -274,6 +281,7 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             if (accountUserId == null || userId != accountUserId) {
+                println("DEBUG: Access forbidden - userId != accountUserId")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
@@ -290,21 +298,38 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Get account data from database
-            val accountData = transaction {
-                AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq type) and
-                    (AccountData.roomId.isNull())
-                }.singleOrNull()?.let { row ->
+            val accountData = try {
+                transaction {
+                    println("DEBUG: Executing database query")
+                    val result = AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq type) and
+                        (AccountData.roomId.isNull())
+                    }.singleOrNull()
+                    println("DEBUG: Database query result: $result")
+                    result
+                }?.let { row ->
                     try {
-                        Json.parseToJsonElement(row[AccountData.content])
+                        val content = row[AccountData.content]
+                        println("DEBUG: Found content: '$content'")
+                        if (content.isBlank()) {
+                            JsonObject(emptyMap())
+                        } else {
+                            Json.parseToJsonElement(content)
+                        }
                     } catch (e: Exception) {
-                        // Log the error and return null to treat as not found
-                        println("ERROR: Failed to parse account data JSON for user $userId, type $type: ${e.message}")
+                        println("ERROR: Failed to parse account data JSON: ${e.message}")
+                        println("ERROR: Raw content: '$row[AccountData.content]'")
                         null
                     }
                 }
+            } catch (e: Exception) {
+                println("ERROR: Database transaction failed: ${e.message}")
+                e.printStackTrace()
+                null
             }
+
+            println("DEBUG: accountData result: $accountData")
 
             if (accountData == null) {
                 call.respond(HttpStatusCode.NotFound, mapOf(
@@ -314,7 +339,15 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@get
             }
 
-            call.respondText(accountData.toString(), ContentType.Application.Json)
+            try {
+                call.respondText(accountData.toString(), ContentType.Application.Json)
+            } catch (e: Exception) {
+                println("ERROR: Failed to send response: ${e.message}")
+                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                    "errcode" to "M_UNKNOWN",
+                    "error" to "Failed to serialize response"
+                ))
+            }
 
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/account_data/{type}: ${e.message}")
@@ -374,25 +407,35 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Store account data in database
-            transaction {
-                val existing = AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq type) and
-                    (AccountData.roomId.isNull())
-                }.singleOrNull()
+            try {
+                transaction {
+                    val existing = AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq type) and
+                        (AccountData.roomId.isNull())
+                    }.singleOrNull()
 
-                if (existing != null) {
-                    AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId.isNull()) }) {
-                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
-                    }
-                } else {
-                    AccountData.insert {
-                        it[AccountData.userId] = userId
-                        it[AccountData.type] = type
-                        it[AccountData.roomId] = null
-                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                    if (existing != null) {
+                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId.isNull()) }) {
+                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                        }
+                    } else {
+                        AccountData.insert {
+                            it[AccountData.userId] = userId
+                            it[AccountData.type] = type
+                            it[AccountData.roomId] = null
+                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                println("ERROR: Failed to store account data: ${e.message}")
+                e.printStackTrace()
+                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                    "errcode" to "M_UNKNOWN",
+                    "error" to "Failed to store account data"
+                ))
+                return@put
             }
 
             call.respond(emptyMap<String, Any>())
@@ -440,20 +483,29 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Get room account data from database
-            val accountData = transaction {
-                AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq type) and
-                    (AccountData.roomId eq roomId)
-                }.singleOrNull()?.let { row ->
-                    try {
-                        Json.parseToJsonElement(row[AccountData.content])
-                    } catch (e: Exception) {
-                        // Log the error and return null to treat as not found
-                        println("ERROR: Failed to parse room account data JSON for user $userId, room $roomId, type $type: ${e.message}")
-                        null
+            val accountData = try {
+                transaction {
+                    AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq type) and
+                        (AccountData.roomId eq roomId)
+                    }.singleOrNull()?.let { row ->
+                        try {
+                            val content = row[AccountData.content]
+                            if (content.isBlank()) {
+                                JsonObject(emptyMap())
+                            } else {
+                                Json.parseToJsonElement(content)
+                            }
+                        } catch (e: Exception) {
+                            println("ERROR: Failed to parse room account data JSON: ${e.message}")
+                            null
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                println("ERROR: Database transaction failed for room account data: ${e.message}")
+                null
             }
 
             if (accountData == null) {
@@ -464,7 +516,15 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@get
             }
 
-            call.respondText(accountData.toString(), ContentType.Application.Json)
+            try {
+                call.respondText(accountData.toString(), ContentType.Application.Json)
+            } catch (e: Exception) {
+                println("ERROR: Failed to send room account data response: ${e.message}")
+                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                    "errcode" to "M_UNKNOWN",
+                    "error" to "Failed to serialize response"
+                ))
+            }
 
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
@@ -525,25 +585,35 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             // Store room account data in database
-            transaction {
-                val existing = AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq type) and
-                    (AccountData.roomId eq roomId)
-                }.singleOrNull()
+            try {
+                transaction {
+                    val existing = AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq type) and
+                        (AccountData.roomId eq roomId)
+                    }.singleOrNull()
 
-                if (existing != null) {
-                    AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId eq roomId) }) {
-                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
-                    }
-                } else {
-                    AccountData.insert {
-                        it[AccountData.userId] = userId
-                        it[AccountData.type] = type
-                        it[AccountData.roomId] = roomId
-                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                    if (existing != null) {
+                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId eq roomId) }) {
+                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                        }
+                    } else {
+                        AccountData.insert {
+                            it[AccountData.userId] = userId
+                            it[AccountData.type] = type
+                            it[AccountData.roomId] = roomId
+                            it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                println("ERROR: Failed to store room account data: ${e.message}")
+                e.printStackTrace()
+                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                    "errcode" to "M_UNKNOWN",
+                    "error" to "Failed to store account data"
+                ))
+                return@put
             }
 
             call.respond(emptyMap<String, Any>())
@@ -727,7 +797,7 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             val filterJson = filter[Filters.filterJson]
-            call.respondText(filterJson, ContentType.Application.Json)
+            call.respond(filterJson)
 
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/filter/{filterId}: ${e.message}")
