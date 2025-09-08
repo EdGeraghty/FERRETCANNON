@@ -329,7 +329,7 @@ fun Route.userRoutes(config: ServerConfig) {
                         val content = row[AccountData.content]
                         println("DEBUG: Found content: '$content'")
                         if (content.isBlank()) {
-                            JsonObject(emptyMap())
+                            buildJsonObject { }
                         } else {
                             Json.parseToJsonElement(content)
                         }
@@ -356,7 +356,7 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             try {
-                call.respondText(accountData.toString(), ContentType.Application.Json)
+                call.respond(accountData)
             } catch (e: Exception) {
                 println("ERROR: Failed to send response: ${e.message}")
                 call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -417,7 +417,7 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@put
             }
             val jsonBody = if (requestBody.isBlank()) {
-                JsonObject(emptyMap())
+                buildJsonObject { }
             } else {
                 try {
                     Json.parseToJsonElement(requestBody)
@@ -516,8 +516,9 @@ fun Route.userRoutes(config: ServerConfig) {
                     }.singleOrNull()?.let { row ->
                         try {
                             val content = row[AccountData.content]
+                            println("DEBUG: Found room account data content: '$content'")
                             if (content.isBlank()) {
-                                JsonObject(emptyMap())
+                                buildJsonObject { }
                             } else {
                                 Json.parseToJsonElement(content)
                             }
@@ -541,7 +542,7 @@ fun Route.userRoutes(config: ServerConfig) {
             }
 
             try {
-                call.respondText(accountData.toString(), ContentType.Application.Json)
+                call.respond(accountData)
             } catch (e: Exception) {
                 println("ERROR: Failed to send room account data response: ${e.message}")
                 call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -595,7 +596,7 @@ fun Route.userRoutes(config: ServerConfig) {
             // Parse request body
             val requestBody = call.receiveText()
             val jsonBody = if (requestBody.isBlank()) {
-                JsonObject(emptyMap())
+                buildJsonObject { }
             } else {
                 try {
                     Json.parseToJsonElement(requestBody)

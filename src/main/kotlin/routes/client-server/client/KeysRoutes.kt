@@ -26,7 +26,7 @@ fun Route.keysRoutes(config: ServerConfig) {
             // Parse request body
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
-            val deviceKeys = jsonBody["device_keys"]?.jsonObject ?: JsonObject(emptyMap())
+            val deviceKeys = jsonBody["device_keys"]?.jsonObject ?: buildJsonObject { }
 
             // Process device keys query
             val result = mutableMapOf<String, JsonElement>()
@@ -92,13 +92,13 @@ fun Route.keysRoutes(config: ServerConfig) {
             // Parse request body
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
-            val oneTimeKeys = jsonBody["one_time_keys"]?.jsonObject ?: JsonObject(emptyMap())
+            val oneTimeKeys = jsonBody["one_time_keys"]?.jsonObject ?: buildJsonObject { }
 
             // Process one-time key claims
             val result = mutableMapOf<String, JsonElement>()
 
             for (claimUserId in oneTimeKeys.keys) {
-                val userRequestedKeys = oneTimeKeys[claimUserId]?.jsonObject ?: JsonObject(emptyMap())
+                val userRequestedKeys = oneTimeKeys[claimUserId]?.jsonObject ?: buildJsonObject { }
                 val userClaimedKeys = mutableMapOf<String, Map<String, Any>>()
 
                 for (keyId in userRequestedKeys.keys) {
@@ -112,7 +112,7 @@ fun Route.keysRoutes(config: ServerConfig) {
                         // In a full implementation, this would claim actual one-time keys
                         userClaimedKeys[keyId] = buildJsonObject {
                             put("key", "placeholder_key_data")
-                            put("signatures", JsonObject(emptyMap()))
+                            put("signatures", buildJsonObject { })
                         }
                     }
                 }
