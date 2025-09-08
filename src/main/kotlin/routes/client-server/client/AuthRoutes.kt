@@ -320,4 +320,57 @@ fun Route.authRoutes(config: ServerConfig) {
             }
         })
     }
+
+    // GET /org.matrix.msc2965/auth_metadata - MSC2965 Authentication Metadata
+    get("/auth_metadata") {
+        call.respond(buildJsonObject {
+            putJsonObject("auth_metadata") {
+                putJsonArray("flows") {
+                    // Password-based authentication flow
+                    addJsonObject {
+                        put("type", "m.login.password")
+                        putJsonObject("params") {
+                            put("user_field", "identifier")
+                            putJsonArray("identifier_types") {
+                                add("m.id.user")
+                                add("m.id.thirdparty")
+                            }
+                        }
+                    }
+                    // Dummy authentication flow (for testing)
+                    addJsonObject {
+                        put("type", "m.login.dummy")
+                        putJsonObject("params") {
+                            // No parameters required for dummy auth
+                        }
+                    }
+                    // Token-based authentication flow
+                    addJsonObject {
+                        put("type", "m.login.token")
+                        putJsonObject("params") {
+                            put("token_field", "token")
+                        }
+                    }
+                    // SSO authentication flows
+                    addJsonObject {
+                        put("type", "m.login.sso")
+                        putJsonObject("params") {
+                            putJsonArray("identity_providers") {
+                                // Add SSO providers if configured
+                            }
+                        }
+                    }
+                }
+                putJsonObject("params") {
+                    put("server_name", config.federation.serverName)
+                    put("server_version", "FERRETCANNON-1.0")
+                    put("supports_login", true)
+                    put("supports_registration", true)
+                    put("supports_guest", true)
+                    put("supports_3pid_login", false)
+                    put("supports_3pid_registration", false)
+                }
+            }
+        })
+    }
 }

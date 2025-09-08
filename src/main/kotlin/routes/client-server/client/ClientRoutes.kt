@@ -253,6 +253,13 @@ fun Application.clientRoutes(config: ServerConfig) {
                     syncRoutes(config)
                     keysRoutes(config)
                 }
+
+                route("/unstable") {
+                    // MSC2965 Authentication Metadata
+                    route("/org.matrix.msc2965") {
+                        authRoutes(config)
+                    }
+                }
             }
         }
     }
