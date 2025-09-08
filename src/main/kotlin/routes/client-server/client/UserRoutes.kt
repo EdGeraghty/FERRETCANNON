@@ -310,7 +310,7 @@ fun Route.userRoutes(config: ServerConfig) {
                     (AccountData.type eq type) and
                     (AccountData.roomId.isNull())
                 }.singleOrNull()?.let { row ->
-                    Json.parseToJsonElement(row[AccountData.content]).jsonObject
+                    Json.parseToJsonElement(row[AccountData.content])
                 }
             }
 
@@ -365,7 +365,11 @@ fun Route.userRoutes(config: ServerConfig) {
 
             // Parse request body
             val requestBody = call.receiveText()
-            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val jsonBody = if (requestBody.isBlank()) {
+                JsonObject(emptyMap())
+            } else {
+                Json.parseToJsonElement(requestBody)
+            }
 
             // Store account data in database
             transaction {
@@ -377,14 +381,14 @@ fun Route.userRoutes(config: ServerConfig) {
 
                 if (existing != null) {
                     AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId.isNull()) }) {
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), jsonBody)
+                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
                     }
                 } else {
                     AccountData.insert {
                         it[AccountData.userId] = userId
                         it[AccountData.type] = type
                         it[AccountData.roomId] = null
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), jsonBody)
+                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
                     }
                 }
             }
@@ -448,7 +452,7 @@ fun Route.userRoutes(config: ServerConfig) {
                     (AccountData.type eq type) and
                     (AccountData.roomId eq roomId)
                 }.singleOrNull()?.let { row ->
-                    Json.parseToJsonElement(row[AccountData.content]).jsonObject
+                    Json.parseToJsonElement(row[AccountData.content])
                 }
             }
 
@@ -504,7 +508,11 @@ fun Route.userRoutes(config: ServerConfig) {
 
             // Parse request body
             val requestBody = call.receiveText()
-            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val jsonBody = if (requestBody.isBlank()) {
+                JsonObject(emptyMap())
+            } else {
+                Json.parseToJsonElement(requestBody)
+            }
 
             // Store room account data in database
             transaction {
@@ -516,14 +524,14 @@ fun Route.userRoutes(config: ServerConfig) {
 
                 if (existing != null) {
                     AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId eq roomId) }) {
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), jsonBody)
+                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
                     }
                 } else {
                     AccountData.insert {
                         it[AccountData.userId] = userId
                         it[AccountData.type] = type
                         it[AccountData.roomId] = roomId
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), jsonBody)
+                        it[AccountData.content] = Json.encodeToString(JsonElement.serializer(), jsonBody)
                     }
                 }
             }
