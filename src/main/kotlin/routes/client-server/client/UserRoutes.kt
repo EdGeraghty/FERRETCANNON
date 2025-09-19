@@ -435,23 +435,20 @@ fun Route.userRoutes(config: ServerConfig) {
             // Store account data in database
             try {
                 transaction {
-                    val existing = AccountData.select {
+                    // Delete existing entry first, then insert (manual upsert)
+                    AccountData.deleteWhere {
                         (AccountData.userId eq userId) and
                         (AccountData.type eq type) and
                         (AccountData.roomId.isNull())
-                    }.singleOrNull()
+                    }
 
-                    if (existing != null) {
-                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId.isNull()) }) {
-                            it[AccountData.content] = jsonBody.toString()
-                        }
-                    } else {
-                        AccountData.insert {
-                            it[AccountData.userId] = userId
-                            it[AccountData.type] = type
-                            it[AccountData.roomId] = null
-                            it[AccountData.content] = jsonBody.toString()
-                        }
+                    // Insert new entry
+                    AccountData.insert {
+                        it[AccountData.userId] = userId
+                        it[AccountData.type] = type
+                        it[AccountData.roomId] = null
+                        it[AccountData.content] = jsonBody.toString()
+                        it[AccountData.lastModified] = System.currentTimeMillis()
                     }
                 }
             } catch (e: Exception) {
@@ -464,7 +461,7 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@put
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(HttpStatusCode.OK, buildJsonObject { })
 
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /user/{userId}/account_data/{type}: ${e.message}")
@@ -614,23 +611,20 @@ fun Route.userRoutes(config: ServerConfig) {
             // Store room account data in database
             try {
                 transaction {
-                    val existing = AccountData.select {
+                    // Delete existing entry first, then insert (manual upsert)
+                    AccountData.deleteWhere {
                         (AccountData.userId eq userId) and
                         (AccountData.type eq type) and
                         (AccountData.roomId eq roomId)
-                    }.singleOrNull()
+                    }
 
-                    if (existing != null) {
-                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq type) and (AccountData.roomId eq roomId) }) {
-                            it[AccountData.content] = jsonBody.toString()
-                        }
-                    } else {
-                        AccountData.insert {
-                            it[AccountData.userId] = userId
-                            it[AccountData.type] = type
-                            it[AccountData.roomId] = roomId
-                            it[AccountData.content] = jsonBody.toString()
-                        }
+                    // Insert new entry
+                    AccountData.insert {
+                        it[AccountData.userId] = userId
+                        it[AccountData.type] = type
+                        it[AccountData.roomId] = roomId
+                        it[AccountData.content] = jsonBody.toString()
+                        it[AccountData.lastModified] = System.currentTimeMillis()
                     }
                 }
             } catch (e: Exception) {
@@ -643,7 +637,7 @@ fun Route.userRoutes(config: ServerConfig) {
                 return@put
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(HttpStatusCode.OK, buildJsonObject { })
 
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
