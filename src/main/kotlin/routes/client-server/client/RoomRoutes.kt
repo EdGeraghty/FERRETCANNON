@@ -12,9 +12,12 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import models.Rooms
 import models.Events
 import utils.AuthUtils
+import utils.StateResolver
 import routes.server_server.federation.v1.broadcastEDU
 
 fun Route.roomRoutes(config: ServerConfig) {
+    val stateResolver = StateResolver()
+
     // PUT /rooms/{roomId}/send/{eventType}/{txnId} - Send event to room
     put("/rooms/{roomId}/send/{eventType}/{txnId}") {
         try {
@@ -160,6 +163,44 @@ fun Route.roomRoutes(config: ServerConfig) {
             // TODO: Send leave event
 
             call.respond(emptyMap<String, Any>())
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // GET /rooms/{roomId}/state - Get room state
+    get("/rooms/{roomId}/state") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val roomId = call.parameters["roomId"]
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@get
+            }
+
+            if (roomId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing roomId parameter"
+                ))
+                return@get
+            }
+
+            // Get the resolved state for the room
+            val resolvedState = stateResolver.getResolvedState(roomId)
+
+            // Convert the state map to an array of state events
+            val stateEvents = resolvedState.values.toList()
+
+            call.respond(stateEvents)
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(
