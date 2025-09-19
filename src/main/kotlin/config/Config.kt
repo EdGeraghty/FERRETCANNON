@@ -46,7 +46,8 @@ data class SecuritySettings(
     val bcryptRounds: Int = 12,
     val rateLimitRequests: Int = 300,
     val rateLimitPeriodMinutes: Int = 1,
-    val enableRateLimiting: Boolean = false
+    val enableRateLimiting: Boolean = false,
+    val disableRegistration: Boolean = false
 )
 
 @Serializable

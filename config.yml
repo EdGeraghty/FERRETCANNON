@@ -33,6 +33,7 @@ security:
   rateLimitRequests: 300              # Rate limit: requests per period
   rateLimitPeriodMinutes: 1           # Rate limit: period in minutes
   enableRateLimiting: false           # Enable/disable rate limiting
+  disableRegistration: false          # Enable/disable user registration
 
 media:
   # Media upload and storage settings

@@ -105,6 +105,15 @@ fun Route.authRoutes(config: ServerConfig) {
     // POST /register - User registration
     post("/register") {
         try {
+            // Check if registration is disabled
+            if (config.security.disableRegistration) {
+                call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                    put("errcode", "M_FORBIDDEN")
+                    put("error", "Registration is disabled on this server")
+                })
+                return@post
+            }
+
             // Parse request body
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
@@ -168,6 +177,15 @@ fun Route.authRoutes(config: ServerConfig) {
 
             // For m.login.dummy, we don't need credentials
             if (authType == "m.login.dummy") {
+                // Check if registration is disabled (including guest)
+                if (config.security.disableRegistration) {
+                    call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                        put("errcode", "M_FORBIDDEN")
+                        put("error", "Registration is disabled on this server")
+                    })
+                    return@post
+                }
+
                 // Generate a random username if not provided
                 val finalUsername = username ?: "user_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}"
                 val finalPassword = "dummy_password_${System.currentTimeMillis()}"
@@ -310,63 +328,78 @@ fun Route.authRoutes(config: ServerConfig) {
 
     // GET /register - Query supported registration methods
     get("/register") {
-        call.respond(buildJsonObject {
-            putJsonArray("flows") {
-                addJsonObject {
-                    putJsonArray("stages") {
-                        add("m.login.password")
+        if (config.security.disableRegistration) {
+            call.respond(buildJsonObject {
+                putJsonArray("flows") {
+                    // Empty flows array when registration is disabled
+                }
+            })
+        } else {
+            call.respond(buildJsonObject {
+                putJsonArray("flows") {
+                    addJsonObject {
+                        putJsonArray("stages") {
+                            add("m.login.password")
+                        }
                     }
                 }
-            }
-        })
+            })
+        }
     }
 
     // GET /org.matrix.msc2965/auth_metadata - MSC2965 Authentication Metadata
     get("/auth_metadata") {
-        call.respond(buildJsonObject {
-            putJsonObject("auth_metadata") {
-                putJsonArray("flows") {
-                    // Password-based authentication flow
-                    addJsonObject {
-                        put("type", "m.login.password")
-                        putJsonObject("params") {
-                            put("user_field", "identifier")
-                            putJsonArray("identifier_types") {
-                                add("m.id.user")
-                                add("m.id.thirdparty")
-                            }
-                        }
-                    }
-                    // Dummy authentication flow (for testing)
-                    addJsonObject {
-                        put("type", "m.login.dummy")
-                        putJsonObject("params") {
-                            // No parameters required for dummy auth
-                        }
-                    }
-                    // Token-based authentication flow
-                    addJsonObject {
-                        put("type", "m.login.token")
-                        putJsonObject("params") {
-                            put("token_field", "token")
-                        }
-                    }
-                    // SSO authentication flows
-                    addJsonObject {
-                        put("type", "m.login.sso")
-                        putJsonObject("params") {
-                            putJsonArray("identity_providers") {
-                                // Add SSO providers if configured
-                            }
-                        }
+        val flows = buildJsonArray {
+            // Password-based authentication flow
+            addJsonObject {
+                put("type", "m.login.password")
+                putJsonObject("params") {
+                    put("user_field", "identifier")
+                    putJsonArray("identifier_types") {
+                        add("m.id.user")
+                        add("m.id.thirdparty")
                     }
                 }
+            }
+
+            if (!config.security.disableRegistration) {
+                // Dummy authentication flow (for testing/guest)
+                addJsonObject {
+                    put("type", "m.login.dummy")
+                    putJsonObject("params") {
+                        // No parameters required for dummy auth
+                    }
+                }
+            }
+
+            // Token-based authentication flow
+            addJsonObject {
+                put("type", "m.login.token")
+                putJsonObject("params") {
+                    put("token_field", "token")
+                }
+            }
+
+            // SSO authentication flows
+            addJsonObject {
+                put("type", "m.login.sso")
+                putJsonObject("params") {
+                    putJsonArray("identity_providers") {
+                        // Add SSO providers if configured
+                    }
+                }
+            }
+        }
+
+        call.respond(buildJsonObject {
+            putJsonObject("auth_metadata") {
+                put("flows", flows)
                 putJsonObject("params") {
                     put("server_name", config.federation.serverName)
                     put("server_version", "FERRETCANNON-1.0")
                     put("supports_login", true)
-                    put("supports_registration", true)
-                    put("supports_guest", true)
+                    put("supports_registration", !config.security.disableRegistration)
+                    put("supports_guest", !config.security.disableRegistration)
                     put("supports_3pid_login", false)
                     put("supports_3pid_registration", false)
                 }
