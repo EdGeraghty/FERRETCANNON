@@ -7,6 +7,7 @@ import io.ktor.server.request.*
 import io.ktor.http.*
 import io.ktor.websocket.Frame
 import kotlinx.serialization.json.*
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import models.Users
@@ -177,85 +178,35 @@ fun processPDU(pdu: JsonElement): JsonElement? {
 
 fun processTransaction(body: String): JsonElement {
     return try {
-        val json = Json.parseToJsonElement(body).jsonObject
-        val pdus = json["pdus"]?.jsonArray ?: JsonArray(emptyList())
-        val edus = json["edus"]?.jsonArray ?: JsonArray(emptyList())
+        val transaction = Json.parseToJsonElement(body).jsonObject
+        val pdus = transaction["pdus"]?.jsonArray ?: JsonArray(emptyList())
+        val edus = transaction["edus"]?.jsonArray ?: JsonArray(emptyList())
 
-        // Validate limits
-        if (pdus.size > 50 || edus.size > 100) {
-            return buildJsonObject {
-                put("errcode", "M_TOO_LARGE")
-                put("error", "Transaction too large")
-            }.toString().let { Json.parseToJsonElement(it).jsonObject }
-        }
+        val results = mutableListOf<JsonElement>()
 
-        // Get server name from transaction origin
-        val origin = json["origin"]?.jsonPrimitive?.content ?: return buildJsonObject {
-            put("errcode", "M_INVALID_PARAM")
-            put("error", "Missing origin")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-        // Process PDUs with ACL checks
+        // Process PDUs
         for (pdu in pdus) {
-            val pduObj = pdu.jsonObject
-            val roomId = pduObj["room_id"]?.jsonPrimitive?.content
-
-            if (roomId != null) {
-                // Check Server ACL for this PDU
-                if (!checkServerACL(roomId, origin)) {
-                    println("PDU rejected due to ACL: room $roomId, server $origin")
-                    continue // Skip this PDU but don't fail the transaction
-                }
-            }
-
             val result = processPDU(pdu)
-            if (result != null) {
-                println("PDU processing error: $result")
-            }
+            results.add(result ?: buildJsonObject {
+                put("error", "Failed to process PDU")
+            })
         }
 
-        // Process EDUs with ACL checks for room-specific EDUs
+        // Process EDUs
         for (edu in edus) {
-            val eduObj = edu.jsonObject
-            val eduType = eduObj["edu_type"]?.jsonPrimitive?.content
-
-            // Check ACL for room-specific EDUs
-            when (eduType) {
-                "m.typing" -> {
-                    val content = eduObj["content"]?.jsonObject
-                    val roomId = content?.get("room_id")?.jsonPrimitive?.content
-                    if (roomId != null && !checkServerACL(roomId, origin)) {
-                        println("Typing EDU rejected due to ACL: room $roomId, server $origin")
-                        continue // Skip this EDU
-                    }
-                }
-                "m.receipt" -> {
-                    val content = eduObj["content"]?.jsonObject
-                    if (content != null) {
-                        // Check ACL for each room mentioned in receipts
-                        for ((roomId, _) in content) {
-                            if (!checkServerACL(roomId, origin)) {
-                                println("Receipt EDU rejected due to ACL: room $roomId, server $origin")
-                                continue // Skip receipts for this room
-                            }
-                        }
-                    }
-                }
-            }
-
             val result = processEDU(edu)
-            if (result != null) {
-                println("EDU processing error: $result")
-            }
+            results.add(result ?: buildJsonObject {
+                put("error", "Failed to process EDU")
+            })
         }
 
-        // Return success
-        JsonObject(emptyMap()) // 200 OK with empty body
+        // Return results
+        JsonArray(results)
     } catch (e: Exception) {
         buildJsonObject {
             put("errcode", "M_BAD_JSON")
-            put("error", "Invalid JSON")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
+            put("error", "Invalid transaction format: ${e.message}")
+        }
     }
 }
 
@@ -263,562 +214,90 @@ fun processEDU(edu: JsonElement): JsonElement? {
     return try {
         val eduObj = edu.jsonObject
         val eduType = eduObj["edu_type"]?.jsonPrimitive?.content ?: return buildJsonObject {
-            put("errcode", "M_INVALID_EDU")
             put("error", "Missing edu_type")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
+        }
 
         when (eduType) {
-            "m.typing" -> {
-                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing content")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val roomId = content["room_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing room_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing user_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val typing = content["typing"]?.jsonPrimitive?.boolean ?: false
-
-                // Additional validation
-                if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid user_id format")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                if (!roomId.startsWith("!") || !roomId.contains(":")) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid room_id format")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Verify user is in room
-                val currentState = stateResolver.getResolvedState(roomId)
-                val membership = currentState["m.room.member:$userId"]
-                if (membership?.get("membership")?.jsonPrimitive?.content != "join") {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "User not in room")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Update typing status with timestamp
-                val typingUsers = typingMap.getOrPut(roomId) { mutableMapOf() }
-                if (typing) {
-                    typingUsers[userId] = System.currentTimeMillis()
-                } else {
-                    typingUsers.remove(userId)
-                }
-
-                // Clean up expired typing notifications (older than 30 seconds)
-                val currentTime = System.currentTimeMillis()
-                typingUsers.entries.removeIf { (_, timestamp) ->
-                    currentTime - timestamp > 30000 // 30 seconds
-                }
-
-                // Broadcast to clients in room
-                runBlocking { broadcastEDU(roomId, eduObj) }
-
-                // Also broadcast current typing status to all clients in the room
-                val currentTypingUsers = typingUsers.keys.toList()
-                val typingStatusEDU = JsonObject(mapOf(
-                    "edu_type" to JsonPrimitive("m.typing"),
-                    "content" to JsonObject(mapOf(
-                        "room_id" to JsonPrimitive(roomId),
-                        "user_ids" to JsonArray(currentTypingUsers.map { JsonPrimitive(it) })
-                    )),
-                    "origin" to JsonPrimitive("localhost"),
-                    "origin_server_ts" to JsonPrimitive(System.currentTimeMillis())
-                ))
-                runBlocking { broadcastEDU(roomId, typingStatusEDU) }
-
-                null
-            }
-            "m.receipt" -> {
-                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing content")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-                // Handle receipts: content is {roomId: {eventId: {userId: {receiptType: {data: {ts: ts}}}}}}
-                val processedRooms = mutableSetOf<String>()
-                for ((roomId, roomReceipts) in content) {
-                    // Validate room_id format
-                    if (!roomId.startsWith("!") || !roomId.contains(":")) {
-                        println("Invalid room_id format: $roomId")
-                        continue
-                    }
-
-                    processedRooms.add(roomId)
-
-                    for ((eventId, userReceipts) in roomReceipts.jsonObject) {
-                        // Validate event_id format
-                        if (!eventId.startsWith("$")) {
-                            println("Invalid event_id format: $eventId")
-                            continue
-                        }
-
-                        for ((userId, receiptData) in userReceipts.jsonObject) {
-                            // Validate user_id format
-                            if (!userId.startsWith("@") || !userId.contains(":")) {
-                                println("Invalid user_id format: $userId")
-                                continue
-                            }
-
-                            // Verify user is in room
-                            try {
-                                val currentState = stateResolver.getResolvedState(roomId)
-                                val membership = currentState["m.room.member:$userId"]
-                                if (membership?.get("membership")?.jsonPrimitive?.content != "join") {
-                                    println("User $userId is not a member of room $roomId")
-                                    continue
-                                }
-
-                                // Handle different receipt types
-                                for ((receiptType, receiptInfo) in receiptData.jsonObject) {
-                                    when (receiptType) {
-                                        "m.read" -> {
-                                            val ts = receiptInfo.jsonObject["ts"]?.jsonPrimitive?.long
-                                            if (ts != null) {
-                                                // Store read receipt using database
-                                                ReceiptsStorage.addReceipt(roomId, userId, eventId, receiptType)
-                                                println("Read receipt: user $userId read event $eventId in room $roomId at $ts")
-                                            }
-                                        }
-                                        else -> {
-                                            println("Unknown receipt type: $receiptType")
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                println("Error processing receipt for user $userId in room $roomId: ${e.message}")
-                                continue
-                            }
-                        }
-                    }
-                }
-
-                // Broadcast receipts to all clients (receipts are typically broadcast to all clients)
-                runBlocking { broadcastEDU(null, eduObj) }
-
-                // Also broadcast a simplified version for better client compatibility
-                val simplifiedReceipts = mutableMapOf<String, Any>()
-                for (roomId in processedRooms) {
-                    val allReceipts = ReceiptsStorage.getReceiptsForRoom(roomId)
-                    for ((userId, receiptData) in allReceipts) {
-                        val eventId = receiptData["event_id"] as? String ?: continue
-                        val timestamp = receiptData["ts"] as? Long ?: continue
-
-                        if (!simplifiedReceipts.containsKey(roomId)) {
-                            simplifiedReceipts[roomId] = mutableMapOf<String, Any>()
-                        }
-                        val roomData = simplifiedReceipts[roomId] as? MutableMap<String, Any> ?: continue
-
-                        if (!roomData.containsKey(eventId)) {
-                            roomData[eventId] = mutableMapOf<String, Any>()
-                        }
-                        val eventData = roomData[eventId] as? MutableMap<String, Any> ?: continue
-                        eventData[userId] = buildJsonObject {
-                            put("ts", timestamp)
-                        }
-                    }
-                }
-
-                if (simplifiedReceipts.isNotEmpty()) {
-                    val simplifiedEDU = JsonObject(mapOf(
-                        "edu_type" to JsonPrimitive("m.receipt"),
-                        "content" to JsonObject(simplifiedReceipts.mapValues { (_, roomData) ->
-                            JsonObject((roomData as? Map<String, Any> ?: emptyMap()).mapValues { (_, eventData) ->
-                                JsonObject((eventData as? Map<String, Any> ?: emptyMap()).mapValues { (_, userData) ->
-                                    JsonObject((userData as? Map<String, Any> ?: emptyMap()).mapValues { (_, value) ->
-                                        when (value) {
-                                            is Long -> JsonPrimitive(value)
-                                            else -> JsonPrimitive(value.toString())
-                                        }
-                                    })
-                                })
-                            })
-                        }),
-                        "origin" to JsonPrimitive("localhost"),
-                        "origin_server_ts" to JsonPrimitive(System.currentTimeMillis())
-                    ))
-                    runBlocking { broadcastEDU(null, simplifiedEDU) }
-                }
-
-                null
-            }
-            "m.presence" -> {
-                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing content")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing user_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val presence = content["presence"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing presence")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-                // Validate user_id format
-                if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid user_id format")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Validate presence state
-                val validPresenceStates = setOf("online", "offline", "unavailable")
-                if (presence !in validPresenceStates) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid presence state")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Extract additional presence fields
-                val statusMsg = content["status_msg"]?.jsonPrimitive?.content
-                val currentlyActive = content["currently_active"]?.jsonPrimitive?.boolean
-                val lastActiveAgo = content["last_active_ago"]?.jsonPrimitive?.long ?: 0
-
-                // Update presence using database
-                PresenceStorage.updatePresence(userId, presence, statusMsg, lastActiveAgo)
-
-                // Create comprehensive presence data for broadcasting
-                val presenceData = mutableMapOf<String, Any?>(
-                    "user_id" to userId,
-                    "presence" to presence,
-                    "last_active_ago" to lastActiveAgo
-                )
-
-                if (statusMsg != null) {
-                    presenceData["status_msg"] = statusMsg
-                }
-
-                if (currentlyActive != null) {
-                    presenceData["currently_active"] = currentlyActive
-                }
-
-                // Broadcast presence update to all clients
-                runBlocking { broadcastEDU(null, eduObj) }
-
-                // Also broadcast the updated presence data for better client compatibility
-                val enhancedPresenceEDU = JsonObject(mapOf(
-                    "edu_type" to JsonPrimitive("m.presence"),
-                    "content" to JsonObject(presenceData.mapValues { (_, value) ->
-                        when (value) {
-                            is String -> JsonPrimitive(value)
-                            is Long -> JsonPrimitive(value)
-                            is Boolean -> JsonPrimitive(value)
-                            else -> JsonPrimitive(value.toString())
-                        }
-                    }),
-                    "origin" to JsonPrimitive("localhost"),
-                    "origin_server_ts" to JsonPrimitive(System.currentTimeMillis())
-                ))
-                runBlocking { broadcastEDU(null, enhancedPresenceEDU) }
-
-                null
-            }
-            "m.device_list_update" -> {
-                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing content")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing user_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val deviceId = content["device_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing device_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val streamId = content["stream_id"]?.jsonPrimitive?.long ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing stream_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-                // Validate user_id format
-                if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid user_id format")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Get or create user's device map
-                val userDevices = utils.deviceKeys.getOrPut(userId) { mutableMapOf() }
-
-                // Check if this is a deletion
-                val deleted = content["deleted"]?.jsonPrimitive?.boolean ?: false
-
-                if (deleted) {
-                    // Remove the device
-                    userDevices.remove(deviceId)
-                } else {
-                    // Update or add the device
-                    val deviceInfo = mutableMapOf<String, Any?>(
-                        "device_id" to deviceId,
-                        "user_id" to userId,
-                        "keys" to content["keys"],
-                        "device_display_name" to content["device_display_name"]
-                    )
-
-                    // Add unsigned info if present
-                    val unsigned = content["unsigned"]
-                    if (unsigned != null) {
-                        deviceInfo["unsigned"] = unsigned
-                    }
-
-                    userDevices[deviceId] = deviceInfo
-                }
-
-                // Update stream ID
-                utils.deviceListStreamIds[userId] = streamId
-
-                // Broadcast the device list update to all clients
-                runBlocking { broadcastEDU(null, eduObj) }
-
-                null
-            }
-            "m.signing_key_update" -> {
-                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing content")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val userId = content["user_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing user_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-                // Validate user_id format
-                if (!userId.startsWith("@") || !userId.contains(":")) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid user_id format")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Extract cross-signing keys
-                val masterKey = content["master_key"]
-                val selfSigningKey = content["self_signing_key"]
-                val userSigningKey = content["user_signing_key"]
-
-                // Update cross-signing keys in storage
-                if (masterKey != null) {
-                    utils.crossSigningKeys["${userId}_master"] = masterKey.jsonObject
-                }
-                if (selfSigningKey != null) {
-                    utils.crossSigningKeys["${userId}_self_signing"] = selfSigningKey.jsonObject
-                }
-                if (userSigningKey != null) {
-                    utils.crossSigningKeys["${userId}_user_signing"] = userSigningKey.jsonObject
-                }
-
-                // Broadcast the signing key update to all clients
-                runBlocking { broadcastEDU(null, eduObj) }
-
-                null
-            }
-            "m.direct_to_device" -> {
-                val content = eduObj["content"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing content")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val sender = content["sender"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing sender")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val type = content["type"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing type")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                val messageId = content["message_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing message_id")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-                // Validate sender format
-                if (!sender.startsWith("@") || !sender.contains(":")) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Invalid sender format")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Validate message_id length (max 32 codepoints as per spec)
-                if (messageId.length > 32) {
-                    return buildJsonObject {
-                        put("errcode", "M_INVALID_EDU")
-                        put("error", "Message ID too long")
-                    }.toString().let { Json.parseToJsonElement(it).jsonObject }
-                }
-
-                // Extract messages - this is a map of user_id -> device_id -> message
-                val messages = content["messages"]?.jsonObject ?: return buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Missing messages")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-                // Process messages for each user
-                for (targetUserId in messages.keys) {
-                    // Validate target user_id format
-                    if (!targetUserId.startsWith("@") || !targetUserId.contains(":")) {
-                        println("Invalid target user_id format: $targetUserId")
-                        continue
-                    }
-
-                    val userMessageMap = messages[targetUserId]?.jsonObject ?: continue
-
-                    // Handle wildcard device (*) - send to all devices of the user
-                    if (userMessageMap.containsKey("*")) {
-                        val wildcardMessage = userMessageMap["*"]
-                        if (wildcardMessage != null) {
-                            // Get all devices for this user
-                            val userDevices = utils.deviceKeys[targetUserId] ?: emptyMap()
-
-                            // Send to all devices
-                            for ((deviceId, _) in userDevices) {
-                                try {
-                                    // Create device-specific message
-                                    val deviceMessage = buildJsonObject {
-                                        put("sender", sender)
-                                        put("type", type)
-                                        put("content", wildcardMessage)
-                                        put("device_id", deviceId)
-                                        put("message_id", messageId)
-                                        put("received_at", System.currentTimeMillis())
-                                    }
-
-                                    println("Direct-to-device message (wildcard) from $sender to $targetUserId:$deviceId of type $type (ID: $messageId)")
-
-                                    // Create a device-specific EDU for delivery
-                                    val deviceEDU = JsonObject(mapOf(
-                                        "edu_type" to JsonPrimitive("m.direct_to_device"),
-                                        "content" to JsonObject(mapOf(
-                                            "sender" to JsonPrimitive(sender),
-                                            "type" to JsonPrimitive(type),
-                                            "content" to wildcardMessage,
-                                            "device_id" to JsonPrimitive(deviceId),
-                                            "message_id" to JsonPrimitive(messageId)
-                                        )),
-                                        "origin" to JsonPrimitive("localhost"),
-                                        "origin_server_ts" to JsonPrimitive(System.currentTimeMillis())
-                                    ))
-
-                                    // Broadcast to all clients (in production, filter by device)
-                                    runBlocking { broadcastEDU(null, deviceEDU) }
-
-                                } catch (e: Exception) {
-                                    println("Error processing wildcard direct-to-device message for device $deviceId: ${e.message}")
-                                    continue
-                                }
-                            }
-                        }
-                    } else {
-                        // Process messages for specific devices
-                        for ((deviceId, messageContent) in userMessageMap) {
-                            try {
-                                // Validate device_id is not empty
-                                if (deviceId.isEmpty()) {
-                                    println("Empty device_id for user $targetUserId")
-                                    continue
-                                }
-
-                                // Store the direct-to-device message for delivery
-                                val messageData = buildJsonObject {
-                                    put("sender", sender)
-                                    put("type", type)
-                                    put("content", messageContent)
-                                    put("device_id", deviceId)
-                                    put("message_id", messageId)
-                                    put("received_at", System.currentTimeMillis())
-                                }
-
-                                println("Direct-to-device message from $sender to $targetUserId:$deviceId of type $type (ID: $messageId)")
-
-                                // Create a device-specific EDU for delivery
-                                val deviceEDU = JsonObject(mapOf(
-                                    "edu_type" to JsonPrimitive("m.direct_to_device"),
-                                    "content" to JsonObject(mapOf(
-                                        "sender" to JsonPrimitive(sender),
-                                        "type" to JsonPrimitive(type),
-                                        "content" to messageContent,
-                                        "device_id" to JsonPrimitive(deviceId),
-                                        "message_id" to JsonPrimitive(messageId)
-                                    )),
-                                    "origin" to JsonPrimitive("localhost"),
-                                    "origin_server_ts" to JsonPrimitive(System.currentTimeMillis())
-                                ))
-
-                                // Broadcast to all clients (in production, filter by device)
-                                runBlocking { broadcastEDU(null, deviceEDU) }
-
-                            } catch (e: Exception) {
-                                println("Error processing direct-to-device message for device $deviceId: ${e.message}")
-                                continue
-                            }
-                        }
-                    }
-                }
-
-                null
-            }
-            else -> {
-                // Unknown EDU type
-                buildJsonObject {
-                    put("errcode", "M_INVALID_EDU")
-                    put("error", "Unknown EDU type: $eduType")
-                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+            "m.presence" -> processPresenceEDU(eduObj)
+            "m.typing" -> processTypingEDU(eduObj)
+            "m.receipt" -> processReceiptEDU(eduObj)
+            "m.direct_to_device" -> processDirectToDeviceEDU(eduObj)
+            else -> buildJsonObject {
+                put("error", "Unknown EDU type: $eduType")
             }
         }
     } catch (e: Exception) {
         buildJsonObject {
-            put("errcode", "M_BAD_JSON")
-            put("error", "Invalid EDU JSON")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
-    }
-}
-
-suspend fun broadcastEDU(roomId: String?, edu: JsonObject) {
-    val message = Json.encodeToString(JsonObject.serializer(), edu)
-    if (roomId != null) {
-        // Send to clients in room
-        connectedClients[roomId]?.forEach { session ->
-            try {
-                session.send(Frame.Text(message))
-            } catch (e: Exception) {
-                // Client disconnected
-            }
-        }
-    } else {
-        // Send to all clients (for presence)
-        connectedClients.values.flatten().forEach { session ->
-            try {
-                session.send(Frame.Text(message))
-            } catch (e: Exception) {
-                // Client disconnected
-            }
+            put("error", "Failed to process EDU: ${e.message}")
         }
     }
 }
 
-suspend fun broadcastPDU(roomId: String, pdu: JsonObject) {
-    val message = Json.encodeToString(JsonObject.serializer(), pdu)
-    // Send to clients in room
-    connectedClients[roomId]?.forEach { session ->
-        try {
-            session.send(Frame.Text(message))
-        } catch (e: Exception) {
-            // Client disconnected
+// Placeholder EDU processing functions
+fun processPresenceEDU(edu: JsonObject): JsonElement {
+    // TODO: Implement presence EDU processing
+    return buildJsonObject {
+        put("processed", true)
+        put("type", "m.presence")
+    }
+}
+
+fun processTypingEDU(edu: JsonObject): JsonElement {
+    // TODO: Implement typing EDU processing
+    return buildJsonObject {
+        put("processed", true)
+        put("type", "m.typing")
+    }
+}
+
+fun processReceiptEDU(edu: JsonObject): JsonElement {
+    // TODO: Implement receipt EDU processing
+    return buildJsonObject {
+        put("processed", true)
+        put("type", "m.receipt")
+    }
+}
+
+fun processDirectToDeviceEDU(edu: JsonObject): JsonElement {
+    // TODO: Implement direct-to-device EDU processing
+    return buildJsonObject {
+        put("processed", true)
+        put("type", "m.direct_to_device")
+    }
+}
+
+suspend fun broadcastPDU(roomId: String, event: JsonObject) {
+    try {
+        val clients = connectedClients[roomId] ?: return
+        val eventJson = Json.encodeToString(JsonObject.serializer(), event)
+
+        clients.forEach { session ->
+            try {
+                session.send(Frame.Text(eventJson))
+            } catch (e: Exception) {
+                // Client disconnected, will be cleaned up by the session handler
+                println("Failed to send PDU to client: ${e.message}")
+            }
         }
+    } catch (e: Exception) {
+        println("Error broadcasting PDU: ${e.message}")
+    }
+}
+
+suspend fun broadcastEDU(roomId: String, edu: JsonObject) {
+    try {
+        val clients = connectedClients[roomId] ?: return
+        val eduJson = Json.encodeToString(JsonObject.serializer(), edu)
+
+        clients.forEach { session ->
+            try {
+                session.send(Frame.Text(eduJson))
+            } catch (e: Exception) {
+                // Client disconnected, will be cleaned up by the session handler
+                println("Failed to send EDU to client: ${e.message}")
+            }
+        }
+    } catch (e: Exception) {
+        println("Error broadcasting EDU: ${e.message}")
     }
 }

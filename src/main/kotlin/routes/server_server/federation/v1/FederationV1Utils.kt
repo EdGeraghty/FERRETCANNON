@@ -102,8 +102,12 @@ fun matchesServerPattern(serverName: String, pattern: String): Boolean {
 
 // Extract server name from authorization header
 fun extractServerNameFromAuth(authHeader: String): String? {
-    val authParams = MatrixAuth.parseAuthorization(authHeader) ?: return null
-    return authParams["origin"]
+    return try {
+        val authParams = MatrixAuth.parseAuthorization(authHeader)
+        authParams?.get("origin")
+    } catch (e: Exception) {
+        null
+    }
 }
 
 fun getAuthState(event: JsonObject, roomId: String): Map<String, JsonObject> {

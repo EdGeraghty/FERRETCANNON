@@ -16,8 +16,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 get("/server") {
                     // Server discovery for federation
                     // This tells other servers how to reach this server for federation
-                    // Set appropriate headers for discovery
-                    call.response.headers.append("Content-Type", "application/json")
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
 
@@ -27,8 +25,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 get("/client") {
                     // Client discovery for homeserver configuration
                     // This tells clients how to connect to the homeserver
-                    // Set appropriate headers for discovery
-                    call.response.headers.append("Content-Type", "application/json")
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
@@ -51,7 +47,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 // Basic identity server endpoints
                 get("/identity/v2") {
                     // Identity server API discovery
-                    call.response.headers.append("Content-Type", "application/json")
                     call.response.headers.append("Cache-Control", "public, max-age=86400")
 
                     call.respond(emptyMap<String, Any>()) // Empty response for basic implementation
@@ -59,8 +54,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                 get("/identity/v2/terms") {
                     // Terms of service for identity server
-                    call.response.headers.append("Content-Type", "application/json")
-
                     val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
                         "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
                     } else {
@@ -89,7 +82,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                 get("/identity/v2/hash_details") {
                     // Hash details for 3PID lookups
-                    call.response.headers.append("Content-Type", "application/json")
                     call.response.headers.append("Cache-Control", "public, max-age=86400")
 
                     call.respond(mapOf(
@@ -100,8 +92,6 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                 post("/identity/v2/lookup") {
                     // 3PID lookup endpoint
-                    call.response.headers.append("Content-Type", "application/json")
-
                     try {
                         val requestBody = call.receiveText()
                         val requestJson = Json.parseToJsonElement(requestBody).jsonObject
