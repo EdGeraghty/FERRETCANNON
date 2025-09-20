@@ -23,15 +23,10 @@ object ServerKeys {
     private lateinit var publicKeyBase64: String
     private lateinit var keyId: String
     private var keysLoaded = false
-    private lateinit var serverName: String
+    private val serverName: String = ServerNameResolver.getServerName()
 
     // Use a deterministic seed based on server name for consistent key generation
     private val SERVER_KEY_SEED = "FERRETCANNON_MATRIX_SERVER_SEED_2024"
-
-    init {
-        logger.info("🔐 ServerKeys utility initialized - deterministic key generation enabled")
-        serverName = ServerNameResolver.getServerName()
-    }
 
     private fun loadOrGenerateKeyPair() {
         logger.debug("Loading or generating Ed25519 key pair for server: $serverName")
@@ -150,8 +145,6 @@ object ServerKeys {
 
         val testPrivateKeySpec = EdDSAPrivateKeySpec(testSeed, spec)
         val testPrivateKey = EdDSAPrivateKey(testPrivateKeySpec)
-        val _testPublicKeySpec = EdDSAPublicKeySpec(testPrivateKey.a, spec)
-        val _testPublicKey = EdDSAPublicKey(_testPublicKeySpec)
 
         val results = mutableMapOf<String, Boolean>()
 
@@ -260,15 +253,9 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.trace("Signing ${data.size} bytes of data")
         try {
-            // Capture values to avoid smart cast issues with mutable properties
-            val currentPrivateKey = privateKey
-            val currentPublicKey = publicKey
-            val currentPublicKeyBase64 = publicKeyBase64
-            val currentKeyId = keyId
-
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initSign(currentPrivateKey)
+            signatureEngine.initSign(privateKey)
             signatureEngine.update(data)
             val signatureBytes = signatureEngine.sign()
             // Use unpadded Base64 as per Matrix specification appendices
@@ -293,12 +280,9 @@ object ServerKeys {
                 Base64.getDecoder().decode(signature)
             }
 
-            // Capture values to avoid smart cast issues with mutable properties
-            val currentPublicKey = publicKey
-
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initVerify(currentPublicKey)
+            signatureEngine.initVerify(publicKey)
             signatureEngine.update(data)
             val result = signatureEngine.verify(signatureBytes)
             logger.trace("Signature verification result: $result")
