@@ -18,10 +18,11 @@ import kotlinx.serialization.json.JsonPrimitive
 object ServerKeys {
     private val logger = LoggerFactory.getLogger("utils.ServerKeys")
     private val spec = EdDSANamedCurveTable.getByName(EdDSANamedCurveTable.ED_25519)
-    private var privateKey: EdDSAPrivateKey? = null
-    private var publicKey: EdDSAPublicKey? = null
-    private var publicKeyBase64: String? = null
-    private var keyId: String? = null
+    private lateinit var privateKey: EdDSAPrivateKey
+    private lateinit var publicKey: EdDSAPublicKey
+    private lateinit var publicKeyBase64: String
+    private lateinit var keyId: String
+    private var keysLoaded = false
     private lateinit var serverName: String
 
     // Use a deterministic seed based on server name for consistent key generation
@@ -64,6 +65,7 @@ object ServerKeys {
                 storeKeyInDatabase()
             }
         }
+        keysLoaded = true
     }
 
     private fun generateDeterministicKeyPair() {
@@ -99,8 +101,8 @@ object ServerKeys {
 
     private fun updateStoredKey() {
         transaction {
-            val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
-            val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
+            val currentKeyId = keyId
+            val currentPublicKeyBase64 = publicKeyBase64
             
             ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq currentKeyId) }) {
                 it[ServerKeysTable.publicKey] = currentPublicKeyBase64
@@ -117,8 +119,8 @@ object ServerKeys {
             val validUntilTs = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
             val currentTime = System.currentTimeMillis()
             
-            val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
-            val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
+            val currentKeyId = keyId
+            val currentPublicKeyBase64 = publicKeyBase64
 
             try {
                 // Try to insert first
@@ -212,17 +214,17 @@ object ServerKeys {
 
     fun getPublicKey(): String {
         ensureKeysLoaded()
-        return publicKeyBase64 ?: throw IllegalStateException("Public key not initialized")
+        return publicKeyBase64
     }
 
     fun getKeyId(): String {
         ensureKeysLoaded()
-        return keyId ?: throw IllegalStateException("Key ID not initialized")
+        return keyId
     }
 
     fun generateEd25519KeyPair(): EdDSAPrivateKey {
         ensureKeysLoaded()
-        return privateKey ?: throw IllegalStateException("Private key not initialized")
+        return privateKey
     }
 
     fun encodeEd25519PublicKey(publicKey: EdDSAPublicKey): String {
@@ -231,13 +233,14 @@ object ServerKeys {
 
     fun generateKeyId(): String {
         ensureKeysLoaded()
-        return keyId ?: throw IllegalStateException("Key ID not initialized")
+        return keyId
     }
 
     private fun ensureKeysLoaded() {
-        if (privateKey == null) {
+        if (!keysLoaded) {
             logger.debug("Keys not initialized, loading/generating...")
             loadOrGenerateKeyPair()
+            keysLoaded = true
             debugStoredKeys()
         }
     }
@@ -258,10 +261,10 @@ object ServerKeys {
         logger.trace("Signing ${data.size} bytes of data")
         try {
             // Capture values to avoid smart cast issues with mutable properties
-            val currentPrivateKey = privateKey ?: throw IllegalStateException("Private key not initialized")
-            val currentPublicKey = publicKey ?: throw IllegalStateException("Public key not initialized")
-            val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
-            val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
+            val currentPrivateKey = privateKey
+            val currentPublicKey = publicKey
+            val currentPublicKeyBase64 = publicKeyBase64
+            val currentKeyId = keyId
 
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
@@ -291,7 +294,7 @@ object ServerKeys {
             }
 
             // Capture values to avoid smart cast issues with mutable properties
-            val currentPublicKey = publicKey ?: throw IllegalStateException("Public key not initialized")
+            val currentPublicKey = publicKey
 
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
@@ -312,8 +315,8 @@ object ServerKeys {
         val currentTime = System.currentTimeMillis()
 
         // Capture values to avoid smart cast issues with mutable properties
-        val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
-        val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
+        val currentKeyId = keyId
+        val currentPublicKeyBase64 = publicKeyBase64
 
         // Get all valid keys from database
         val verifyKeys = mutableMapOf<String, Map<String, Any>>()
