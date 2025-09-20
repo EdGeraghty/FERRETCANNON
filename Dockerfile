@@ -34,8 +34,10 @@ COPY --from=builder /app/build/install/FERRETCANNON /app/
 # Copy configuration file (production version)
 COPY config.prod.yml config.yml
 
-# Create directory for persistent data
-RUN mkdir -p /data
+# Create a script to conditionally delete the database based on isDebug config
+RUN echo '#!/bin/sh' > /app/check_debug.sh && \
+    echo 'if grep -q "isDebug: true" /app/config.yml; then rm -f /data/ferretcannon.db; fi' >> /app/check_debug.sh && \
+    chmod +x /app/check_debug.sh
 
 # Expose the port the app runs on
 EXPOSE 8080
@@ -45,4 +47,4 @@ ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
 # Force clean build - version 4
 # Run the application directly
-CMD ["sh", "-c", "rm -f /data/ferretcannon.db && ./bin/FERRETCANNON"]
+CMD ["sh", "-c", "./check_debug.sh && ./bin/FERRETCANNON"]
