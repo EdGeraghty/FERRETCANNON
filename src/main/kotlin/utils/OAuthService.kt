@@ -181,7 +181,7 @@ object OAuthService {
         scope: String,
         expiresIn: Long?
     ) {
-        val expiresAt = expiresIn?.let { System.currentTimeMillis() + (it * 1000) }
+        val expiresAt = expiresIn?.let { System.currentTimeMillis() + (it * 1000L) }
         val refreshTokenExpiresAt = expiresIn?.let { System.currentTimeMillis() + (30 * 24 * 60 * 60 * 1000) } // 30 days
 
         transaction {

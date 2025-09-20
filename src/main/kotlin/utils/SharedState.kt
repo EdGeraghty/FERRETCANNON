@@ -49,7 +49,7 @@ object ReceiptsStorage {
             Receipts.select { Receipts.roomId eq roomId }
                 .associate { row ->
                     val userId = row[Receipts.userId]
-                    val receiptType = row[Receipts.receiptType]
+                    val _receiptType = row[Receipts.receiptType]
                     val eventId = row[Receipts.eventId]
                     val timestamp = row[Receipts.timestamp]
 

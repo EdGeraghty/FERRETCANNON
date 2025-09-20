@@ -234,7 +234,7 @@ fun processEDU(edu: JsonElement): JsonElement? {
 }
 
 // Placeholder EDU processing functions
-fun processPresenceEDU(edu: JsonObject): JsonElement {
+fun processPresenceEDU(_edu: JsonObject): JsonElement {
     // TODO: Implement presence EDU processing
     return buildJsonObject {
         put("processed", true)
@@ -242,7 +242,7 @@ fun processPresenceEDU(edu: JsonObject): JsonElement {
     }
 }
 
-fun processTypingEDU(edu: JsonObject): JsonElement {
+fun processTypingEDU(_edu: JsonObject): JsonElement {
     // TODO: Implement typing EDU processing
     return buildJsonObject {
         put("processed", true)
@@ -250,7 +250,7 @@ fun processTypingEDU(edu: JsonObject): JsonElement {
     }
 }
 
-fun processReceiptEDU(edu: JsonObject): JsonElement {
+fun processReceiptEDU(_edu: JsonObject): JsonElement {
     // TODO: Implement receipt EDU processing
     return buildJsonObject {
         put("processed", true)
@@ -258,7 +258,7 @@ fun processReceiptEDU(edu: JsonObject): JsonElement {
     }
 }
 
-fun processDirectToDeviceEDU(edu: JsonObject): JsonElement {
+fun processDirectToDeviceEDU(_edu: JsonObject): JsonElement {
     // TODO: Implement direct-to-device EDU processing
     return buildJsonObject {
         put("processed", true)

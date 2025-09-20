@@ -11,7 +11,7 @@ import utils.MatrixPagination
 import config.ServerConfig
 import routes.client_server.client.MATRIX_USER_ID_KEY
 
-fun Route.syncRoutes(config: ServerConfig) {
+fun Route.syncRoutes(_config: ServerConfig) {
     // GET /sync - Sync endpoint
     get("/sync") {
         try {
@@ -34,9 +34,9 @@ fun Route.syncRoutes(config: ServerConfig) {
             val syncResponse = SyncManager.performSync(
                 userId = userId,
                 since = since?.let { MatrixPagination.parseSyncToken(it) },
-                timeout = timeout,
-                setPresence = setPresence,
-                filter = filter
+                _timeout = timeout?.toLongOrNull() ?: 30000,
+                _setPresence = setPresence,
+                _filter = filter
             )
 
             call.respond(syncResponse)

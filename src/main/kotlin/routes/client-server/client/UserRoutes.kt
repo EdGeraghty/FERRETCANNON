@@ -43,7 +43,7 @@ import utils.MatrixPagination
 
 import routes.client_server.client.MATRIX_USER_ID_KEY
 
-fun Route.userRoutes(config: ServerConfig) {
+fun Route.userRoutes(_config: ServerConfig) {
     // GET /profile/{userId} - Get user profile
     get("/profile/{userId}") {
         try {
@@ -688,16 +688,16 @@ fun Route.userRoutes(config: ServerConfig) {
             val results = transaction {
                 Users.selectAll()
                     .filter { row ->
-                        val userId = row[Users.userId]
-                        userId.contains(searchTerm, ignoreCase = true)
+                        val dbUserId = row[Users.userId]
+                        dbUserId.contains(searchTerm, ignoreCase = true)
                     }
                     .take(limit)
                     .map { row ->
-                        val userId = row[Users.userId]
+                        val dbUserId = row[Users.userId]
 
                         // Get display name from account data
                         val displayName = AccountData.select {
-                            (AccountData.userId eq userId) and
+                            (AccountData.userId eq dbUserId) and
                             (AccountData.type eq "m.direct") and
                             (AccountData.roomId.isNull())
                         }.singleOrNull()?.let { accountRow ->
@@ -705,7 +705,7 @@ fun Route.userRoutes(config: ServerConfig) {
                         }
 
                         mapOf(
-                            "user_id" to userId,
+                            "user_id" to dbUserId,
                             "display_name" to displayName,
                             "avatar_url" to null // Simplified
                         )

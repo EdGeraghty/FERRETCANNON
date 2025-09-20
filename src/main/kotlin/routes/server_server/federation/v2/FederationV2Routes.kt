@@ -18,7 +18,7 @@ import routes.server_server.federation.v1.extractServerNameFromAuth
 import routes.server_server.federation.v1.processPDU
 
 fun Application.federationV2Routes() {
-    val stateResolver = StateResolver()
+    val _stateResolver = StateResolver()
 
     routing {
         route("/_matrix") {

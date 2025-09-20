@@ -9,7 +9,7 @@ import kotlinx.serialization.json.*
 import utils.AuthUtils
 import config.ServerConfig
 
-fun Route.keysRoutes(config: ServerConfig) {
+fun Route.keysRoutes(_config: ServerConfig) {
     // POST /keys/query - Query device keys for users
     post("/keys/query") {
         try {
@@ -105,8 +105,8 @@ fun Route.keysRoutes(config: ServerConfig) {
                     // Parse the key ID (format: algorithm:key_id)
                     val parts = keyId.split(":", limit = 2)
                     if (parts.size == 2) {
-                        val algorithm = parts[0]
-                        val keyIdValue = parts[1]
+                        val _algorithm = parts[0]
+                        val _keyIdValue = parts[1]
 
                         // For now, return a placeholder response
                         // In a full implementation, this would claim actual one-time keys

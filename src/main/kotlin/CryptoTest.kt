@@ -21,7 +21,8 @@ fun main() {
     val privateKeySpec = EdDSAPrivateKeySpec(signingKeySeed, spec)
     val privateKey = EdDSAPrivateKey(privateKeySpec)
     val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
-    val publicKey = EdDSAPublicKey(publicKeySpec)
+    // publicKey is created but not used in tests
+    EdDSAPublicKey(publicKeySpec)
 
     // Test 1: Empty JSON object
     println("\nTest 1: Empty JSON Object {}")

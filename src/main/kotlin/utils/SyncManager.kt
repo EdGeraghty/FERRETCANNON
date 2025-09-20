@@ -42,9 +42,9 @@ object SyncManager {
         userId: String,
         since: MatrixPagination.SyncToken? = null,
         fullState: Boolean = false,
-        timeout: Long = 30000,
-        filter: String? = null,
-        setPresence: String? = null
+        _timeout: Long = 30000,
+        _filter: String? = null,
+        _setPresence: String? = null
     ): JsonObject {
         val currentTime = System.currentTimeMillis()
 
@@ -346,9 +346,9 @@ object SyncManager {
     /**
      * Update user's last sync timestamp
      */
-    fun updateUserSyncTimestamp(userId: String, timestamp: Long = System.currentTimeMillis()) {
+    fun updateUserSyncTimestamp(_userId: String, timestamp: Long = System.currentTimeMillis()) {
         transaction {
-            Presence.update({ Presence.userId eq userId }) {
+            Presence.update({ Presence.userId eq _userId }) {
                 it[lastSyncTs] = timestamp
             }
         }

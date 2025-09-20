@@ -18,10 +18,10 @@ import kotlinx.serialization.json.JsonPrimitive
 object ServerKeys {
     private val logger = LoggerFactory.getLogger("utils.ServerKeys")
     private val spec = EdDSANamedCurveTable.getByName(EdDSANamedCurveTable.ED_25519)
-    private lateinit var privateKey: EdDSAPrivateKey
-    private lateinit var publicKey: EdDSAPublicKey
-    private lateinit var publicKeyBase64: String
-    private lateinit var keyId: String
+    private var privateKey: EdDSAPrivateKey? = null
+    private var publicKey: EdDSAPublicKey? = null
+    private var publicKeyBase64: String? = null
+    private var keyId: String? = null
     private lateinit var serverName: String
 
     // Use a deterministic seed based on server name for consistent key generation
@@ -99,8 +99,8 @@ object ServerKeys {
 
     private fun updateStoredKey() {
         transaction {
-            ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq keyId) }) {
-                it[ServerKeysTable.publicKey] = publicKeyBase64
+            ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq keyId!!) }) {
+                it[ServerKeysTable.publicKey] = publicKeyBase64!!
                 it[ServerKeysTable.keyValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
                 it[ServerKeysTable.tsValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)
             }
@@ -118,8 +118,8 @@ object ServerKeys {
                 // Try to insert first
                 ServerKeysTable.insert {
                     it[ServerKeysTable.serverName] = serverName
-                    it[ServerKeysTable.keyId] = keyId
-                    it[ServerKeysTable.publicKey] = publicKeyBase64
+                    it[ServerKeysTable.keyId] = keyId!!
+                    it[ServerKeysTable.publicKey] = publicKeyBase64!!
                     it[ServerKeysTable.keyValidUntilTs] = validUntilTs
                     it[ServerKeysTable.tsValidUntilTs] = validUntilTs
                     it[ServerKeysTable.tsAddedTs] = currentTime
@@ -142,8 +142,8 @@ object ServerKeys {
 
         val testPrivateKeySpec = EdDSAPrivateKeySpec(testSeed, spec)
         val testPrivateKey = EdDSAPrivateKey(testPrivateKeySpec)
-        val testPublicKeySpec = EdDSAPublicKeySpec(testPrivateKey.a, spec)
-        val testPublicKey = EdDSAPublicKey(testPublicKeySpec)
+        val _testPublicKeySpec = EdDSAPublicKeySpec(testPrivateKey.a, spec)
+        val _testPublicKey = EdDSAPublicKey(_testPublicKeySpec)
 
         val results = mutableMapOf<String, Boolean>()
 
@@ -206,17 +206,17 @@ object ServerKeys {
 
     fun getPublicKey(): String {
         ensureKeysLoaded()
-        return publicKeyBase64
+        return publicKeyBase64 ?: throw IllegalStateException("Public key not initialized")
     }
 
     fun getKeyId(): String {
         ensureKeysLoaded()
-        return keyId
+        return keyId ?: throw IllegalStateException("Key ID not initialized")
     }
 
     fun generateEd25519KeyPair(): EdDSAPrivateKey {
         ensureKeysLoaded()
-        return privateKey
+        return privateKey ?: throw IllegalStateException("Private key not initialized")
     }
 
     fun encodeEd25519PublicKey(publicKey: EdDSAPublicKey): String {
@@ -225,11 +225,11 @@ object ServerKeys {
 
     fun generateKeyId(): String {
         ensureKeysLoaded()
-        return keyId
+        return keyId!!
     }
 
     private fun ensureKeysLoaded() {
-        if (!::privateKey.isInitialized) {
+        if (privateKey == null) {
             logger.debug("Keys not initialized, loading/generating...")
             loadOrGenerateKeyPair()
             debugStoredKeys()
@@ -253,7 +253,7 @@ object ServerKeys {
         try {
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initSign(privateKey)
+            signatureEngine.initSign(privateKey!!)
             signatureEngine.update(data)
             val signatureBytes = signatureEngine.sign()
             // Use unpadded Base64 as per Matrix specification appendices
@@ -280,7 +280,7 @@ object ServerKeys {
             
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initVerify(publicKey)
+            signatureEngine.initVerify(publicKey!!)
             signatureEngine.update(data)
             val result = signatureEngine.verify(signatureBytes)
             logger.trace("Signature verification result: $result")
@@ -312,11 +312,11 @@ object ServerKeys {
 
                 if (keyId == this@ServerKeys.keyId) {
                     // Current key goes in verify_keys - use its stored validity time
-                    verifyKeys[keyId] = mapOf("key" to publicKey)
+                    verifyKeys[keyId!!] = mapOf("key" to publicKey)
                     validUntilTs = keyValidUntilTs // Use the stored validity time for consistency
                 } else {
                     // Old keys go in old_verify_keys
-                    oldVerifyKeys[keyId] = mapOf(
+                    oldVerifyKeys[keyId!!] = mapOf(
                         "key" to publicKey,
                         "expired_ts" to keyValidUntilTs
                     )
@@ -326,7 +326,7 @@ object ServerKeys {
 
         // If no keys found in database, use current key with default validity
         if (verifyKeys.isEmpty()) {
-            verifyKeys[keyId] = mapOf("key" to publicKeyBase64)
+            verifyKeys[keyId!!] = mapOf("key" to publicKeyBase64!!)
         }
 
         val serverKeys = mapOf(
@@ -336,7 +336,7 @@ object ServerKeys {
             "old_verify_keys" to oldVerifyKeys,
             "signatures" to mapOf(
                 serverName to mapOf(
-                    keyId to sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8))
+                    keyId!! to sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8))
                 )
             )
         )

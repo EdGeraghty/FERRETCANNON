@@ -9,7 +9,7 @@ import kotlinx.serialization.json.*
 import config.ServerConfig
 import utils.AuthUtils
 
-fun Route.deviceRoutes(config: ServerConfig) {
+fun Route.deviceRoutes(_config: ServerConfig) {
     // GET /devices - List user's devices
     get("/devices") {
         try {

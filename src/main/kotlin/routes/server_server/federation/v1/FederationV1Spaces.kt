@@ -18,8 +18,8 @@ fun Route.federationV1Spaces() {
 
         try {
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50
-            val maxDepth = call.request.queryParameters["max_depth"]?.toIntOrNull() ?: 3
-            val from = call.request.queryParameters["from"]
+            val _maxDepth = call.request.queryParameters["max_depth"]?.toIntOrNull() ?: 3
+            val _from = call.request.queryParameters["from"]
             val suggestedOnly = call.request.queryParameters["suggested_only"]?.toBoolean() ?: false
 
             // Check if room exists and is a space

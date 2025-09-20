@@ -48,7 +48,7 @@ fun Application.federationV1Routes() {
                     }
                     put("/send/{txnId}") {
                         try {
-                            val txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                            val _txnId = call.parameters["txnId"] ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                                 put("errcode", "M_INVALID_PARAM")
                                 put("error", "Missing transaction ID")
                             })

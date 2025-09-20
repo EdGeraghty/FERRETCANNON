@@ -28,15 +28,15 @@ fun Route.contentRoutes(config: ServerConfig) {
 
             // Handle multipart upload
             val multipart = call.receiveMultipart()
-            var fileName: String? = null
-            var contentType: String? = null
+            var _fileName: String? = null
+            var _contentType: String? = null
             var fileBytes: ByteArray? = null
 
             multipart.forEachPart { part ->
                 when (part) {
                     is PartData.FileItem -> {
-                        fileName = part.originalFileName
-                        contentType = part.contentType?.toString()
+                        _fileName = part.originalFileName
+                        _contentType = part.contentType?.toString()
                         fileBytes = part.streamProvider().readBytes()
                     }
                     is PartData.FormItem -> {
@@ -111,9 +111,9 @@ fun Route.contentRoutes(config: ServerConfig) {
         try {
             val serverName = call.parameters["serverName"]
             val mediaId = call.parameters["mediaId"]
-            val width = call.request.queryParameters["width"]?.toIntOrNull()
-            val height = call.request.queryParameters["height"]?.toIntOrNull()
-            val method = call.request.queryParameters["method"] ?: "scale"
+            val _width = call.request.queryParameters["width"]?.toIntOrNull()
+            val _height = call.request.queryParameters["height"]?.toIntOrNull()
+            val _method = call.request.queryParameters["method"] ?: "scale"
 
             if (serverName == null || mediaId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(

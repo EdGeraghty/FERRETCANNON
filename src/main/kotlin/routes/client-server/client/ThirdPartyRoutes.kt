@@ -40,7 +40,7 @@ import utils.OAuthConfig
 import config.ServerConfig
 import utils.MatrixPagination
 
-fun Route.thirdPartyRoutes(config: ServerConfig) {
+fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/protocols - Get third-party protocols
     get("/thirdparty/protocols") {
         try {
@@ -173,7 +173,7 @@ fun Route.thirdPartyRoutes(config: ServerConfig) {
     get("/thirdparty/location") {
         try {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-            val search = call.request.queryParameters["search"]
+            val _search = call.request.queryParameters["search"]
 
             if (userId == null) {
                 call.respond(HttpStatusCode.Unauthorized, mapOf(
@@ -198,7 +198,7 @@ fun Route.thirdPartyRoutes(config: ServerConfig) {
     get("/thirdparty/user") {
         try {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-            val search = call.request.queryParameters["search"]
+            val _search = call.request.queryParameters["search"]
 
             if (userId == null) {
                 call.respond(HttpStatusCode.Unauthorized, mapOf(

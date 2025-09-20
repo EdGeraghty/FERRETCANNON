@@ -17,7 +17,7 @@ class StateResolver {
     /**
      * Resolve the current state of a room from a set of events
      */
-    fun resolveState(roomId: String, events: List<JsonObject>): Map<String, JsonObject> {
+    fun resolveState(_roomId: String, events: List<JsonObject>): Map<String, JsonObject> {
         if (events.isEmpty()) return emptyMap()
 
         // Group events by state key
@@ -93,7 +93,7 @@ class StateResolver {
     fun checkAuthRules(event: JsonObject, currentState: Map<String, JsonObject>): Boolean {
         val type = event["type"]?.jsonPrimitive?.content ?: return false
         val sender = event["sender"]?.jsonPrimitive?.content ?: return false
-        val content = event["content"]?.jsonObject ?: return false
+        val _content = event["content"]?.jsonObject ?: return false
 
         when (type) {
             "m.room.create" -> {
@@ -245,9 +245,9 @@ class StateResolver {
     /**
      * Get the resolved state for a room
      */
-    fun getResolvedState(roomId: String): Map<String, JsonObject> {
+    fun getResolvedState(_roomId: String): Map<String, JsonObject> {
         return transaction {
-            val row = Rooms.select { Rooms.roomId eq roomId }.singleOrNull()
+            val row = Rooms.select { Rooms.roomId eq _roomId }.singleOrNull()
             if (row != null) {
                 Json.decodeFromString(row[Rooms.currentState])
             } else {

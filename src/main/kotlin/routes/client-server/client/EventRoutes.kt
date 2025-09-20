@@ -40,7 +40,7 @@ import utils.OAuthConfig
 import config.ServerConfig
 import utils.MatrixPagination
 
-fun Route.eventRoutes(config: ServerConfig) {
+fun Route.eventRoutes(_config: ServerConfig) {
     // GET /rooms/{roomId}/context/{eventId} - Get event context
     get("/rooms/{roomId}/context/{eventId}") {
         try {
@@ -638,8 +638,8 @@ fun Route.eventRoutes(config: ServerConfig) {
             val relType = call.request.queryParameters["rel_type"]
             val eventType = call.request.queryParameters["event_type"]
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 5
-            val from = call.request.queryParameters["from"]
-            val to = call.request.queryParameters["to"]
+            val _from = call.request.queryParameters["from"]
+            val _to = call.request.queryParameters["to"]
             val dir = call.request.queryParameters["dir"] ?: "b"
 
             // Get related events
@@ -726,8 +726,8 @@ fun Route.eventRoutes(config: ServerConfig) {
 
             val eventType = call.request.queryParameters["event_type"]
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 5
-            val from = call.request.queryParameters["from"]
-            val to = call.request.queryParameters["to"]
+            val _from = call.request.queryParameters["from"]
+            val _to = call.request.queryParameters["to"]
             val dir = call.request.queryParameters["dir"] ?: "b"
 
             // Get related events of specific type

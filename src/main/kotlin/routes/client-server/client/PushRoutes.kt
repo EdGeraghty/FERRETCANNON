@@ -11,7 +11,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import models.AccountData
 
-fun Route.pushRoutes(config: ServerConfig) {
+fun Route.pushRoutes(_config: ServerConfig) {
     // GET /pushrules - Get push rules
     get("/pushrules") {
         try {
@@ -94,7 +94,7 @@ fun Route.pushRoutes(config: ServerConfig) {
 
             // Parse request body
             val requestBody = call.receiveText()
-            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val _jsonBody = Json.parseToJsonElement(requestBody).jsonObject
 
             // TODO: Store push rule in account data
             // For now, just acknowledge

@@ -214,7 +214,7 @@ object MatrixAuth {
     fun canonicalizeJson(data: Any): String {
         return when (data) {
             is Map<*, *> -> {
-                val sortedMap = (data as Map<String, Any>).toSortedMap(compareBy { it })
+                val sortedMap = (data as? Map<String, Any>)?.toSortedMap(compareBy { it }) ?: throw IllegalArgumentException("Invalid map type")
                 val jsonString = buildString {
                     append("{")
                     sortedMap.entries.forEachIndexed { index, (key, value) ->

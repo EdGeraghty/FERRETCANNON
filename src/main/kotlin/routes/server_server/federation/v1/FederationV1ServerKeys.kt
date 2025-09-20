@@ -38,7 +38,7 @@ fun Route.federationV1ServerKeys() {
             }
 
             // Return the server keys
-            call.respond(serverKeys)
+            call.respond(serverKeys!!)
         } catch (e: Exception) {
             println("Server keys error: ${e.message}")
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {

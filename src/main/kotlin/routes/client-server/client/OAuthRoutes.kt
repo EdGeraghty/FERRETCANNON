@@ -9,14 +9,14 @@ import kotlinx.serialization.json.*
 import config.ServerConfig
 import utils.OAuthService
 
-fun Route.oauthRoutes(config: ServerConfig) {
+fun Route.oauthRoutes(_config: ServerConfig) {
     // GET /oauth2/authorize - OAuth authorization endpoint
     get("/authorize") {
         try {
             val responseType = call.request.queryParameters["response_type"]
-            val clientId = call.request.queryParameters["client_id"]
+            val _clientId = call.request.queryParameters["client_id"]
             val redirectUri = call.request.queryParameters["redirect_uri"]
-            val scope = call.request.queryParameters["scope"]
+            val _scope = call.request.queryParameters["scope"]
             val state = call.request.queryParameters["state"]
 
             if (responseType != "code") {
@@ -51,9 +51,9 @@ fun Route.oauthRoutes(config: ServerConfig) {
             val params = parseQueryString(requestBody)
             val grantType = params["grant_type"]
             val code = params["code"]
-            val redirectUri = params["redirect_uri"]
-            val clientId = params["client_id"]
-            val clientSecret = params["client_secret"]
+            val _redirectUri = params["redirect_uri"]
+            val _clientId = params["client_id"]
+            val _clientSecret = params["client_secret"]
 
             if (grantType != "authorization_code") {
                 call.respond(HttpStatusCode.BadRequest, mapOf(

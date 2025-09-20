@@ -273,7 +273,7 @@ fun main() {
                     logger.info("WebSocket connection established for room: $roomId")
                     val session = this
                     val clients = connectedClients.getOrPut(roomId) { mutableListOf() }
-                    clients.add(session as io.ktor.server.websocket.DefaultWebSocketServerSession)
+                    clients.add(session)
                     
                     try {
                         for (frame in incoming) {
