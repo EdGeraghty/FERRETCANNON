@@ -34,9 +34,10 @@ fun Route.syncRoutes(_config: ServerConfig) {
             val syncResponse = SyncManager.performSync(
                 userId = userId,
                 since = since?.let { MatrixPagination.parseSyncToken(it) },
-                _timeout = timeout?.toLongOrNull() ?: 30000,
-                _setPresence = setPresence,
-                _filter = filter
+                fullState = false,
+                _timeout = timeout,
+                _filter = filter,
+                _setPresence = setPresence
             )
 
             call.respond(syncResponse)

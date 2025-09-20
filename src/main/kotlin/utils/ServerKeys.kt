@@ -251,9 +251,15 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.trace("Signing ${data.size} bytes of data")
         try {
+            // Capture values to avoid smart cast issues with mutable properties
+            val currentPrivateKey = privateKey!!
+            val currentPublicKey = publicKey!!
+            val currentPublicKeyBase64 = publicKeyBase64!!
+            val currentKeyId = keyId!!
+
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initSign(privateKey!!)
+            signatureEngine.initSign(currentPrivateKey)
             signatureEngine.update(data)
             val signatureBytes = signatureEngine.sign()
             // Use unpadded Base64 as per Matrix specification appendices
@@ -277,10 +283,13 @@ object ServerKeys {
                 // Try with padding if unpadded decoding fails
                 Base64.getDecoder().decode(signature)
             }
-            
+
+            // Capture values to avoid smart cast issues with mutable properties
+            val currentPublicKey = publicKey!!
+
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initVerify(publicKey!!)
+            signatureEngine.initVerify(currentPublicKey)
             signatureEngine.update(data)
             val result = signatureEngine.verify(signatureBytes)
             logger.trace("Signature verification result: $result")
@@ -296,6 +305,10 @@ object ServerKeys {
         logger.debug("Generating server keys response for server: $serverName")
         val currentTime = System.currentTimeMillis()
 
+        // Capture values to avoid smart cast issues with mutable properties
+        val currentKeyId = keyId!!
+        val currentPublicKeyBase64 = publicKeyBase64!!
+
         // Get all valid keys from database
         val verifyKeys = mutableMapOf<String, Map<String, Any>>()
         val oldVerifyKeys = mutableMapOf<String, Map<String, Any>>()
@@ -310,7 +323,7 @@ object ServerKeys {
                 val publicKey = row[ServerKeysTable.publicKey]
                 val keyValidUntilTs = row[ServerKeysTable.keyValidUntilTs]
 
-                if (keyId == this@ServerKeys.keyId) {
+                if (keyId == currentKeyId) {
                     // Current key goes in verify_keys - use its stored validity time
                     verifyKeys[keyId!!] = mapOf("key" to publicKey)
                     validUntilTs = keyValidUntilTs // Use the stored validity time for consistency
@@ -326,7 +339,7 @@ object ServerKeys {
 
         // If no keys found in database, use current key with default validity
         if (verifyKeys.isEmpty()) {
-            verifyKeys[keyId!!] = mapOf("key" to publicKeyBase64!!)
+            verifyKeys[currentKeyId] = mapOf("key" to currentPublicKeyBase64)
         }
 
         val serverKeys = mapOf(
@@ -336,7 +349,7 @@ object ServerKeys {
             "old_verify_keys" to oldVerifyKeys,
             "signatures" to mapOf(
                 serverName to mapOf(
-                    keyId!! to sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8))
+                    currentKeyId to sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8))
                 )
             )
         )
