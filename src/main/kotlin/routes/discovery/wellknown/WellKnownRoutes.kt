@@ -7,7 +7,6 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import kotlinx.serialization.json.*
 import config.ServerConfig
-import utils.ServerNameResolver
 
 fun Application.wellKnownRoutes(config: ServerConfig) {
     routing {
@@ -19,7 +18,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
 
-                    call.respond(mapOf("m.server" to ServerNameResolver.getServerAddress()))
+                    call.respond(mapOf("m.server" to "${config.federation.serverName}:${config.federation.federationPort}"))
                 }
 
                 get("/client") {
@@ -30,10 +29,10 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                     // For production, use HTTPS without port (fly.io handles this)
                     // For development, use the configured base URL
-                    val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
-                        "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
+                    val baseUrl = if (config.federation.serverName.contains("localhost")) {
+                        "http://${config.federation.serverName}:${config.server.port}"
                     } else {
-                        "https://${ServerNameResolver.getServerName()}"
+                        "https://${config.federation.serverName}"
                     }
 
                     call.respond(mapOf(
@@ -54,10 +53,10 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                 get("/identity/v2/terms") {
                     // Terms of service for identity server
-                    val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
-                        "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
+                    val baseUrl = if (config.federation.serverName.contains("localhost")) {
+                        "http://${config.federation.serverName}:${config.server.port}"
                     } else {
-                        "https://${ServerNameResolver.getServerName()}"
+                        "https://${config.federation.serverName}"
                     }
 
                     call.respond(mapOf(
@@ -103,11 +102,39 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                             emptyList<String>()
                         }
 
+                        // Validate that addresses array is not empty (basic validation)
+                        if (addresses.isEmpty()) {
+                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                                "errcode" to "M_INVALID_PARAM",
+                                "error" to "addresses array cannot be empty"
+                            ))
+                            return@post
+                        }
+
                         val algorithm = requestJson["algorithm"]?.jsonPrimitive?.content ?: "sha256"
                         val pepper = requestJson["pepper"]?.jsonPrimitive?.content ?: "FERRETCANNON_IDENTITY_PEPPER"
 
+                        // Validate algorithm (only sha256 is supported)
+                        if (algorithm != "sha256") {
+                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                                "errcode" to "M_INVALID_PARAM",
+                                "error" to "Unsupported algorithm: $algorithm"
+                            ))
+                            return@post
+                        }
+
+                        // Validate pepper matches what we advertise
+                        if (pepper != "FERRETCANNON_IDENTITY_PEPPER") {
+                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                                "errcode" to "M_INVALID_PARAM",
+                                "error" to "Invalid pepper"
+                            ))
+                            return@post
+                        }
+
                         // In a real implementation, this would look up the addresses in a database
                         // For now, return empty mappings
+                        val _addresses = addresses // Avoid unused variable warning
                         val mappings = emptyMap<String, String>()
 
                         call.respond(mapOf(
@@ -129,9 +156,9 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 // Add caching headers for discovery
                 call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                val serverName = ServerNameResolver.getServerName()
+                val serverName = config.federation.serverName
                 val baseUrl = if (serverName.contains("localhost")) {
-                    "http://${serverName}:${ServerNameResolver.getServerPort()}"
+                    "http://${serverName}:${config.server.port}"
                 } else {
                     "https://${serverName}"
                 }
