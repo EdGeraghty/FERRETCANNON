@@ -99,8 +99,11 @@ object ServerKeys {
 
     private fun updateStoredKey() {
         transaction {
-            ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq keyId!!) }) {
-                it[ServerKeysTable.publicKey] = publicKeyBase64!!
+            val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
+            val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
+            
+            ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq currentKeyId) }) {
+                it[ServerKeysTable.publicKey] = currentPublicKeyBase64
                 it[ServerKeysTable.keyValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
                 it[ServerKeysTable.tsValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)
             }
@@ -113,13 +116,16 @@ object ServerKeys {
             // Store public key in database (we don't store private key for security)
             val validUntilTs = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
             val currentTime = System.currentTimeMillis()
+            
+            val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
+            val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
 
             try {
                 // Try to insert first
                 ServerKeysTable.insert {
                     it[ServerKeysTable.serverName] = serverName
-                    it[ServerKeysTable.keyId] = keyId!!
-                    it[ServerKeysTable.publicKey] = publicKeyBase64!!
+                    it[ServerKeysTable.keyId] = currentKeyId
+                    it[ServerKeysTable.publicKey] = currentPublicKeyBase64
                     it[ServerKeysTable.keyValidUntilTs] = validUntilTs
                     it[ServerKeysTable.tsValidUntilTs] = validUntilTs
                     it[ServerKeysTable.tsAddedTs] = currentTime
@@ -225,7 +231,7 @@ object ServerKeys {
 
     fun generateKeyId(): String {
         ensureKeysLoaded()
-        return keyId!!
+        return keyId ?: throw IllegalStateException("Key ID not initialized")
     }
 
     private fun ensureKeysLoaded() {
@@ -252,10 +258,10 @@ object ServerKeys {
         logger.trace("Signing ${data.size} bytes of data")
         try {
             // Capture values to avoid smart cast issues with mutable properties
-            val currentPrivateKey = privateKey!!
-            val currentPublicKey = publicKey!!
-            val currentPublicKeyBase64 = publicKeyBase64!!
-            val currentKeyId = keyId!!
+            val currentPrivateKey = privateKey ?: throw IllegalStateException("Private key not initialized")
+            val currentPublicKey = publicKey ?: throw IllegalStateException("Public key not initialized")
+            val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
+            val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
 
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
@@ -285,7 +291,7 @@ object ServerKeys {
             }
 
             // Capture values to avoid smart cast issues with mutable properties
-            val currentPublicKey = publicKey!!
+            val currentPublicKey = publicKey ?: throw IllegalStateException("Public key not initialized")
 
             // Use EdDSAEngine with SHA-512 (required for Ed25519)
             val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
@@ -306,8 +312,8 @@ object ServerKeys {
         val currentTime = System.currentTimeMillis()
 
         // Capture values to avoid smart cast issues with mutable properties
-        val currentKeyId = keyId!!
-        val currentPublicKeyBase64 = publicKeyBase64!!
+        val currentKeyId = keyId ?: throw IllegalStateException("Key ID not initialized")
+        val currentPublicKeyBase64 = publicKeyBase64 ?: throw IllegalStateException("Public key base64 not initialized")
 
         // Get all valid keys from database
         val verifyKeys = mutableMapOf<String, Map<String, Any>>()
@@ -325,11 +331,11 @@ object ServerKeys {
 
                 if (keyId == currentKeyId) {
                     // Current key goes in verify_keys - use its stored validity time
-                    verifyKeys[keyId!!] = mapOf("key" to publicKey)
+                    verifyKeys[keyId] = mapOf("key" to publicKey)
                     validUntilTs = keyValidUntilTs // Use the stored validity time for consistency
                 } else {
                     // Old keys go in old_verify_keys
-                    oldVerifyKeys[keyId!!] = mapOf(
+                    oldVerifyKeys[keyId] = mapOf(
                         "key" to publicKey,
                         "expired_ts" to keyValidUntilTs
                     )
