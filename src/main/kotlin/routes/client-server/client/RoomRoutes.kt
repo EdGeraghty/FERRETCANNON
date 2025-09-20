@@ -16,6 +16,7 @@ import models.RoomAliases
 import utils.AuthUtils
 import utils.StateResolver
 import routes.server_server.federation.v1.broadcastEDU
+import routes.client_server.client.MATRIX_USER_ID_KEY
 
 fun Route.roomRoutes(config: ServerConfig) {
     val stateResolver = StateResolver()
@@ -675,6 +676,99 @@ fun Route.roomRoutes(config: ServerConfig) {
             val stateEvents = resolvedState.values.toList()
 
             call.respond(stateEvents)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // GET /rooms/{roomId}/members - Get room members
+    get("/rooms/{roomId}/members") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val roomId = call.parameters["roomId"]
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@get
+            }
+
+            if (roomId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing roomId parameter"
+                ))
+                return@get
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@get
+            }
+
+            // Parse query parameters
+            val at = call.request.queryParameters["at"]
+            val membership = call.request.queryParameters["membership"] ?: "join"
+            val notMembership = call.request.queryParameters["not_membership"]
+
+            // Get room members based on membership status
+            val members = transaction {
+                val query = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey.isNotNull())
+                }
+
+                // Apply membership filter
+                if (membership != "join") {
+                    query.andWhere {
+                        Events.content like "%\"membership\":\"$membership\"%"
+                    }
+                }
+
+                // Apply not_membership filter
+                if (notMembership != null) {
+                    query.andWhere {
+                        Events.content notLike "%\"membership\":\"$notMembership\"%"
+                    }
+                }
+
+                query.map { row ->
+                    mapOf(
+                        "event_id" to row[Events.eventId],
+                        "type" to row[Events.type],
+                        "sender" to row[Events.sender],
+                        "origin_server_ts" to row[Events.originServerTs],
+                        "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                        "state_key" to row[Events.stateKey],
+                        "room_id" to row[Events.roomId]
+                    )
+                }
+            }
+
+            call.respond(mapOf(
+                "chunk" to members
+            ))
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(

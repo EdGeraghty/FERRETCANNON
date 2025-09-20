@@ -845,4 +845,33 @@ fun Route.userRoutes(_config: ServerConfig) {
             ))
         }
     }
+
+    // GET /user/dehydrated_device - Get dehydrated device information (unstable)
+    get("/user/dehydrated_device") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@get
+            }
+
+            // Return dehydrated device information
+            // In a real implementation, this would return information about dehydrated devices
+            // For now, return a 404 indicating no dehydrated device
+            call.respond(HttpStatusCode.NotFound, mapOf(
+                "errcode" to "M_NOT_FOUND",
+                "error" to "No dehydrated device found"
+            ))
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
 }

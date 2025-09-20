@@ -11,6 +11,7 @@ import kotlinx.serialization.json.*
 import config.ServerConfig
 import utils.MediaStorage
 import java.io.File
+import routes.client_server.client.MATRIX_USER_ID_KEY
 
 fun Route.contentRoutes(config: ServerConfig) {
     // POST /upload - Upload content
@@ -130,6 +131,37 @@ fun Route.contentRoutes(config: ServerConfig) {
             call.respond(HttpStatusCode.NotFound, mapOf(
                 "errcode" to "M_NOT_FOUND",
                 "error" to "Thumbnail not found"
+            ))
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // GET /voip/turnServer - Get TURN server credentials
+    get("/voip/turnServer") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@get
+            }
+
+            // Return TURN server configuration
+            // In a real implementation, this would return actual TURN server credentials
+            // For now, return an empty response indicating no TURN servers configured
+            call.respond(mapOf(
+                "username" to "",
+                "password" to "",
+                "uris" to emptyList<String>(),
+                "ttl" to 86400
             ))
 
         } catch (e: Exception) {

@@ -39,6 +39,7 @@ import utils.OAuthService
 import utils.OAuthConfig
 import config.ServerConfig
 import utils.MatrixPagination
+import routes.client_server.client.MATRIX_USER_ID_KEY
 
 fun Route.eventRoutes(_config: ServerConfig) {
     // GET /rooms/{roomId}/context/{eventId} - Get event context

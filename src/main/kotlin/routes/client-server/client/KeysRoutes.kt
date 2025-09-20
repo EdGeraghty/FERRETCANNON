@@ -8,6 +8,8 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import utils.AuthUtils
 import config.ServerConfig
+import routes.client_server.client.MATRIX_USER_ID_KEY
+import routes.client_server.client.MATRIX_DEVICE_ID_KEY
 
 fun Route.keysRoutes(_config: ServerConfig) {
     // POST /keys/query - Query device keys for users
@@ -177,6 +179,35 @@ fun Route.keysRoutes(_config: ServerConfig) {
                 }
             }
             call.respond(response)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
+    // GET /room_keys/version - Get room keys version
+    get("/room_keys/version") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_TOKEN")
+                    put("error", "Missing access token")
+                })
+                return@get
+            }
+
+            // Return room keys backup version information
+            // In a real implementation, this would return the current backup version
+            // For now, return a placeholder response
+            call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                put("errcode", "M_NOT_FOUND")
+                put("error", "Room keys backup not found")
+            })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
