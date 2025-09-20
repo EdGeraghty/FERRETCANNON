@@ -522,15 +522,126 @@ fun Route.roomRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // TODO: Remove user from room membership
-            // TODO: Send leave event
+            // Check if room exists
+            val roomExists = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.count() > 0
+            }
+
+            if (!roomExists) {
+                call.respond(HttpStatusCode.NotFound, mapOf(
+                    "errcode" to "M_NOT_FOUND",
+                    "error" to "Room not found"
+                ))
+                return@post
+            }
+
+            // Check current membership
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_NOT_MEMBER",
+                    "error" to "User is not joined to this room"
+                ))
+                return@post
+            }
+
+            val currentTime = System.currentTimeMillis()
+
+            // Get latest event for prev_events
+            val latestEvent = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+            }
+
+            val prevEvents = if (latestEvent != null) {
+                "[[\"${latestEvent[Events.eventId]}\",{}]]"
+            } else {
+                "[]"
+            }
+
+            val depth = if (latestEvent != null) {
+                latestEvent[Events.depth] + 1
+            } else {
+                1
+            }
+
+            // Get auth events (create and power levels)
+            val authEvents = transaction {
+                val createEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()
+
+                val powerLevelsEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.power_levels")
+                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+
+                val authList = mutableListOf<String>()
+                createEvent?.let { authList.add("\"${it[Events.eventId]}\"") }
+                powerLevelsEvent?.let { authList.add("\"${it[Events.eventId]}\"") }
+                "[${authList.joinToString(",")}]"
+            }
+
+            // Generate leave event ID
+            val leaveEventId = "\$${currentTime}_leave_${userId.hashCode()}"
+
+            // Create leave event content
+            val leaveContent = JsonObject(mapOf(
+                "membership" to JsonPrimitive("leave")
+            ))
+
+            // Store leave event
+            transaction {
+                Events.insert {
+                    it[Events.eventId] = leaveEventId
+                    it[Events.roomId] = roomId
+                    it[Events.type] = "m.room.member"
+                    it[Events.sender] = userId
+                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), leaveContent)
+                    it[Events.originServerTs] = currentTime
+                    it[Events.stateKey] = userId
+                    it[Events.prevEvents] = prevEvents
+                    it[Events.authEvents] = authEvents
+                    it[Events.depth] = depth
+                    it[Events.hashes] = "{}"
+                    it[Events.signatures] = "{}"
+                }
+            }
+
+            // Broadcast leave event
+            runBlocking {
+                val leaveEvent = JsonObject(mapOf(
+                    "event_id" to JsonPrimitive(leaveEventId),
+                    "type" to JsonPrimitive("m.room.member"),
+                    "sender" to JsonPrimitive(userId),
+                    "room_id" to JsonPrimitive(roomId),
+                    "origin_server_ts" to JsonPrimitive(currentTime),
+                    "content" to leaveContent,
+                    "state_key" to JsonPrimitive(userId)
+                ))
+                broadcastEDU(roomId, leaveEvent)
+            }
 
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
+                "error" to "Internal server error: ${e.message}"
             ))
         }
     }

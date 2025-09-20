@@ -1,7 +1,7 @@
-# Test script for room creation and joining
-# This script tests creating a room and joining it
+# Test script for room creation, joining, and leaving
+# This script tests creating a room, joining it, and leaving it
 
-Write-Host "=== FERRETCANNON Matrix Server - Room Creation and Joining Test ===" -ForegroundColor Green
+Write-Host "=== FERRETCANNON Matrix Server - Room Creation, Joining, and Leaving Test ===" -ForegroundColor Green
 Write-Host ""
 
 # Server URL
@@ -115,7 +115,33 @@ try {
     Write-Host ""
 }
 
-Write-Host "=== Room Creation and Joining Test completed successfully! ===" -ForegroundColor Green
+Write-Host "6. User 2 leaving the room..." -ForegroundColor Yellow
+$LEAVE_ROOM_BODY = @{} | ConvertTo-Json
+
+try {
+    $LEAVE_ROOM_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/rooms/$ROOM_ID/leave" -Method POST -Body $LEAVE_ROOM_BODY -ContentType "application/json" -Headers @{Authorization = "Bearer $ACCESS_TOKEN2"}
+    Write-Host "Room leave response:" -ForegroundColor Cyan
+    $LEAVE_ROOM_RESPONSE | ConvertTo-Json
+    Write-Host ""
+} catch {
+    Write-Host "Room leave failed:" -ForegroundColor Red
+    $_.Exception.Message
+    exit 1
+}
+
+Write-Host "7. Verifying room membership after leave..." -ForegroundColor Yellow
+try {
+    $ROOM_STATE_RESPONSE2 = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/rooms/$ROOM_ID/state" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN1"}
+    Write-Host "Room state response after leave:" -ForegroundColor Cyan
+    $ROOM_STATE_RESPONSE2 | ConvertTo-Json -Depth 5
+    Write-Host ""
+} catch {
+    Write-Host "Failed to get room state after leave:" -ForegroundColor Red
+    $_.Exception.Message
+    Write-Host ""
+}
+
+Write-Host "=== Room Creation, Joining, and Leaving Test completed successfully! ===" -ForegroundColor Green
 Write-Host "Room ID: $ROOM_ID" -ForegroundColor Cyan
 Write-Host "User 1: $USER_ID1" -ForegroundColor Cyan
 Write-Host "User 2: $USER_ID2" -ForegroundColor Cyan
