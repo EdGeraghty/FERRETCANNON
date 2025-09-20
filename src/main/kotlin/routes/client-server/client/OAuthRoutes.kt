@@ -10,8 +10,8 @@ import config.ServerConfig
 import utils.OAuthService
 
 fun Route.oauthRoutes(config: ServerConfig) {
-    // GET /oauth/authorize - OAuth authorization endpoint
-    get("/oauth/authorize") {
+    // GET /oauth2/authorize - OAuth authorization endpoint
+    get("/authorize") {
         try {
             val responseType = call.request.queryParameters["response_type"]
             val clientId = call.request.queryParameters["client_id"]
@@ -43,8 +43,8 @@ fun Route.oauthRoutes(config: ServerConfig) {
         }
     }
 
-    // POST /oauth/token - OAuth token endpoint
-    post("/oauth/token") {
+    // POST /oauth2/token - OAuth token endpoint
+    post("/token") {
         try {
             // Parse request body
             val requestBody = call.receiveText()
@@ -91,8 +91,8 @@ fun Route.oauthRoutes(config: ServerConfig) {
         }
     }
 
-    // GET /oauth/userinfo - OAuth userinfo endpoint
-    get("/oauth/userinfo") {
+    // GET /oauth2/userinfo - OAuth userinfo endpoint
+    get("/userinfo") {
         try {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
 
@@ -109,6 +109,80 @@ fun Route.oauthRoutes(config: ServerConfig) {
                 "sub" to userId,
                 "name" to userId,
                 "preferred_username" to userId
+            ))
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "error" to "server_error",
+                "error_description" to "Internal server error"
+            ))
+        }
+    }
+
+    // POST /oauth2/revoke - OAuth token revocation endpoint
+    post("/revoke") {
+        try {
+            val requestBody = call.receiveText()
+            val params = parseQueryString(requestBody)
+            val token = params["token"]
+
+            if (token == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "error" to "invalid_request",
+                    "error_description" to "Missing token"
+                ))
+                return@post
+            }
+
+            // TODO: Revoke the token
+            call.respond(HttpStatusCode.OK, emptyMap<String, Any>())
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "error" to "server_error",
+                "error_description" to "Internal server error"
+            ))
+        }
+    }
+
+    // POST /oauth2/introspect - OAuth token introspection endpoint
+    post("/introspect") {
+        try {
+            val requestBody = call.receiveText()
+            val params = parseQueryString(requestBody)
+            val token = params["token"]
+
+            if (token == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf(
+                    "error" to "invalid_request",
+                    "error_description" to "Missing token"
+                ))
+                return@post
+            }
+
+            // TODO: Check if token is valid and return introspection response
+            val isActive = token.startsWith("mock_access_token_")
+
+            call.respond(mapOf(
+                "active" to isActive,
+                "token_type" to if (isActive) "Bearer" else null,
+                "exp" to if (isActive) (System.currentTimeMillis() / 1000 + 3600) else null
+            ))
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mapOf(
+                "error" to "server_error",
+                "error_description" to "Internal server error"
+            ))
+        }
+    }
+
+    // GET /oauth2/jwks - JWKS endpoint for public keys
+    get("/jwks") {
+        try {
+            // TODO: Return actual JWKS
+            call.respond(mapOf(
+                "keys" to emptyList<Map<String, Any>>()
             ))
 
         } catch (e: Exception) {

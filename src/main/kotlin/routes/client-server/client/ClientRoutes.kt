@@ -170,6 +170,11 @@ fun Application.clientRoutes(config: ServerConfig) {
             }
         }
 
+        // OAuth 2.0 endpoints at root level (not under /_matrix/client)
+        route("/oauth2") {
+            oauthRoutes(config)
+        }
+
         route("/_matrix") {
             route("/client") {
                 // Server versions endpoint (for backward compatibility)
@@ -249,7 +254,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     pushRoutes(config)
                     adminRoutes(config)
                     thirdPartyRoutes(config)
-                    oauthRoutes(config)
+                    // oauthRoutes(config) - moved to root level
                     syncRoutes(config)
                     keysRoutes(config)
                 }

@@ -121,6 +121,38 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     }
                 }
             }
+
+            // OAuth 2.0 Authorization Server Metadata
+            get("/oauth-authorization-server") {
+                // OAuth 2.0 discovery endpoint
+                // This provides metadata about the OAuth 2.0 authorization server
+                // Add caching headers for discovery
+                call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+
+                val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
+                    "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
+                } else {
+                    "https://${ServerNameResolver.getServerName()}"
+                }
+
+                call.respondText("""
+                    {
+                        "issuer": "$baseUrl",
+                        "authorization_endpoint": "$baseUrl/oauth2/authorize",
+                        "token_endpoint": "$baseUrl/oauth2/token",
+                        "revocation_endpoint": "$baseUrl/oauth2/revoke",
+                        "introspection_endpoint": "$baseUrl/oauth2/introspect",
+                        "userinfo_endpoint": "$baseUrl/oauth2/userinfo",
+                        "jwks_uri": "$baseUrl/oauth2/jwks",
+                        "response_types_supported": ["code"],
+                        "grant_types_supported": ["authorization_code", "refresh_token"],
+                        "code_challenge_methods_supported": ["S256"],
+                        "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
+                        "revocation_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
+                        "introspection_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"]
+                    }
+                """.trimIndent(), ContentType.Application.Json)
+            }
         }
     }
 }
