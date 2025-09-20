@@ -32,6 +32,8 @@ import models.RegistrationTokens
 import models.ServerKeys
 import models.Filters
 import models.ThirdPartyIdentifiers
+import models.ApplicationServices
+import models.LoginTokens
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -93,7 +95,7 @@ fun main() {
 
     transaction {
         logger.debug("Creating database schema...")
-        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, ServerKeys, Filters, ThirdPartyIdentifiers)
+        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, RoomAliases, RegistrationTokens, ServerKeys, Filters, ThirdPartyIdentifiers, ApplicationServices, LoginTokens)
         logger.info("✅ Database schema created/verified")
 
         // Create test user for development (if enabled in config)
@@ -106,7 +108,8 @@ fun main() {
                     config.development.testUsername,
                     config.development.testPassword,
                     config.development.testDisplayName,
-                    serverName = config.federation.serverName
+                    serverName = config.federation.serverName,
+                    isAdmin = true // Make test user an admin for development
                 )
                 logger.info("✅ Created test user: ${config.development.testUsername}")
                 logger.warn("⚠️  TEST USER PASSWORD: ${config.development.testPassword} - Change in production!")

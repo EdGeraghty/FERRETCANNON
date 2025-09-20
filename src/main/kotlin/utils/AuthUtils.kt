@@ -3,6 +3,8 @@ package utils
 import models.AccessTokens
 import models.Devices
 import models.Users
+import models.ApplicationServices
+import models.LoginTokens
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -183,6 +185,7 @@ object AuthUtils {
         password: String,
         displayName: String? = null,
         isGuest: Boolean = false,
+        isAdmin: Boolean = false,
         serverName: String = "localhost"
     ): String {
         val userId = "@$username:$serverName"
@@ -202,6 +205,7 @@ object AuthUtils {
                 it[Users.passwordHash] = passwordHash
                 it[Users.displayName] = displayName ?: username
                 it[Users.isGuest] = isGuest
+                it[Users.isAdmin] = isAdmin
                 it[Users.createdAt] = System.currentTimeMillis()
                 it[Users.lastSeen] = System.currentTimeMillis()
             }
@@ -454,21 +458,42 @@ object AuthUtils {
     }
 
     /**
-     * Validate application service token (placeholder)
+     * Validate application service token (real implementation)
      */
     fun validateApplicationServiceToken(token: String, serverName: String = "localhost"): String? {
-        // TODO: Implement real application service token validation
-        // For now, return a mock user ID for demo purposes
-        return if (token.startsWith("as_")) "@appservice_user:$serverName" else null
+        return transaction {
+            // Find the application service by AS token
+            val asService = ApplicationServices.select { ApplicationServices.asToken eq token }
+                .singleOrNull()
+
+            if (asService != null && asService[ApplicationServices.isActive]) {
+                // Return the user ID that this AS can act as
+                asService[ApplicationServices.userId]
+            } else {
+                null
+            }
+        }
     }
 
     /**
-     * Validate login token (placeholder)
+     * Validate login token (real implementation)
      */
     fun validateLoginToken(token: String, serverName: String = "localhost"): String? {
-        // TODO: Implement real login token validation
-        // For now, return a mock user ID for demo purposes
-        return if (token.startsWith("login_")) "@login_user:$serverName" else null
+        val currentTime = System.currentTimeMillis()
+
+        return transaction {
+            // Find the login token and check if it's not expired
+            val loginToken = LoginTokens.select {
+                (LoginTokens.token eq token) and (LoginTokens.expiresAt greater currentTime)
+            }.singleOrNull()
+
+            if (loginToken != null) {
+                // Return the user ID associated with this login token
+                loginToken[LoginTokens.userId]
+            } else {
+                null
+            }
+        }
     }
 
     /**
@@ -643,46 +668,23 @@ object AuthUtils {
     }
 
     /**
-     * Get device keys for users (for end-to-end encryption)
+     * Check if a user is an admin
      */
-    fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, JsonElement>> {
+    fun isUserAdmin(userId: String): Boolean {
         return transaction {
-            val result = hashMapOf<String, Map<String, JsonElement>>()
+            val user = Users.select { Users.userId eq userId }.singleOrNull()
+            user?.get(Users.isAdmin) ?: false
+        }
+    }
 
-            userIds.forEach { userId ->
-                val allDevices = Devices.select { Devices.userId eq userId }
-                val userDevices = hashMapOf<String, JsonElement>()
-                allDevices.forEach { deviceRow ->
-                    val hasEd25519 = deviceRow[Devices.ed25519Key] != null
-                    val hasCurve25519 = deviceRow[Devices.curve25519Key] != null
-
-                    if (hasEd25519 && hasCurve25519) {
-                        val deviceId = deviceRow[Devices.deviceId]
-                        val keysMap = hashMapOf(
-                            "curve25519:$deviceId" to JsonPrimitive(deviceRow[Devices.curve25519Key]!!),
-                            "ed25519:$deviceId" to JsonPrimitive(deviceRow[Devices.ed25519Key]!!)
-                        )
-
-                        val deviceKeys = hashMapOf(
-                            "algorithms" to JsonArray(listOf(
-                                JsonPrimitive("m.olm.v1.curve25519-aes-sha2"),
-                                JsonPrimitive("m.megolm.v1.aes-sha2")
-                            )),
-                            "device_id" to JsonPrimitive(deviceId),
-                            "keys" to JsonObject(keysMap),
-                            "signatures" to JsonObject(emptyMap()),
-                            "user_id" to JsonPrimitive(userId)
-                        )
-                        userDevices[deviceId] = JsonObject(deviceKeys)
-                    }
-                }
-
-                if (userDevices.isNotEmpty()) {
-                    result[userId] = userDevices
-                }
+    /**
+     * Set admin status for a user
+     */
+    fun setUserAdminStatus(userId: String, isAdmin: Boolean) {
+        transaction {
+            Users.update({ Users.userId eq userId }) {
+                it[Users.isAdmin] = isAdmin
             }
-
-            result
         }
     }
 }

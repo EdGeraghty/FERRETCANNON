@@ -9,7 +9,8 @@ import kotlinx.serialization.json.*
 import config.ServerConfig
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
-import models.AccountData
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import models.PushRules
 
 fun Route.pushRoutes(_config: ServerConfig) {
     // GET /pushrules - Get push rules
@@ -862,10 +863,81 @@ fun Route.pushRoutes(_config: ServerConfig) {
 
             // Parse request body
             val requestBody = call.receiveText()
-            val _jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
 
-            // TODO: Store push rule in account data
-            // For now, just acknowledge
+            // Extract rule properties from request body
+            val actions = jsonBody["actions"]?.toString()
+            val conditions = jsonBody["conditions"]?.toString()
+            val before = jsonBody["before"]?.jsonPrimitive?.content
+            val after = jsonBody["after"]?.jsonPrimitive?.content
+
+            // Store push rule in database
+            transaction {
+                // If before or after is specified, we need to adjust priority
+                var priorityClass = 0
+                var priorityIndex = 0
+
+                if (before != null || after != null) {
+                    // Get existing rules to determine priority
+                    val existingRules = PushRules.select {
+                        (PushRules.userId eq userId) and
+                        (PushRules.scope eq scope) and
+                        (PushRules.kind eq kind)
+                    }.orderBy(PushRules.priorityClass to SortOrder.DESC, PushRules.priorityIndex to SortOrder.DESC)
+
+                    if (before != null) {
+                        // Find the rule with ruleId == before and insert before it
+                        val beforeRule = existingRules.find { it[PushRules.ruleId] == before }
+                        if (beforeRule != null) {
+                            priorityClass = beforeRule[PushRules.priorityClass]
+                            priorityIndex = beforeRule[PushRules.priorityIndex] - 1
+                        }
+                    } else if (after != null) {
+                        // Find the rule with ruleId == after and insert after it
+                        val afterRule = existingRules.find { it[PushRules.ruleId] == after }
+                        if (afterRule != null) {
+                            priorityClass = afterRule[PushRules.priorityClass]
+                            priorityIndex = afterRule[PushRules.priorityIndex] + 1
+                        }
+                    }
+                }
+
+                // Insert or update the push rule
+                val existingRule = PushRules.select {
+                    (PushRules.userId eq userId) and
+                    (PushRules.scope eq scope) and
+                    (PushRules.kind eq kind) and
+                    (PushRules.ruleId eq ruleId)
+                }.singleOrNull()
+
+                if (existingRule != null) {
+                    // Update existing rule
+                    PushRules.update({
+                        (PushRules.userId eq userId) and
+                        (PushRules.scope eq scope) and
+                        (PushRules.kind eq kind) and
+                        (PushRules.ruleId eq ruleId)
+                    }) {
+                        it[PushRules.conditions] = conditions
+                        it[PushRules.actions] = actions
+                        it[PushRules.priorityClass] = priorityClass
+                        it[PushRules.priorityIndex] = priorityIndex
+                    }
+                } else {
+                    // Insert new rule
+                    PushRules.insert {
+                        it[PushRules.userId] = userId
+                        it[PushRules.scope] = scope
+                        it[PushRules.kind] = kind
+                        it[PushRules.ruleId] = ruleId
+                        it[PushRules.conditions] = conditions
+                        it[PushRules.actions] = actions
+                        it[PushRules.priorityClass] = priorityClass
+                        it[PushRules.priorityIndex] = priorityIndex
+                    }
+                }
+            }
+
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {
@@ -892,8 +964,24 @@ fun Route.pushRoutes(_config: ServerConfig) {
                 return@delete
             }
 
-            // TODO: Delete push rule from account data
-            // For now, just acknowledge
+            // Delete push rule from database
+            val deletedRows = transaction {
+                PushRules.deleteWhere {
+                    (PushRules.userId eq userId) and
+                    (PushRules.scope eq scope) and
+                    (PushRules.kind eq kind) and
+                    (PushRules.ruleId eq ruleId)
+                }
+            }
+
+            if (deletedRows == 0) {
+                call.respond(HttpStatusCode.NotFound, mapOf(
+                    "errcode" to "M_NOT_FOUND",
+                    "error" to "Push rule not found"
+                ))
+                return@delete
+            }
+
             call.respond(emptyMap<String, Any>())
 
         } catch (e: Exception) {

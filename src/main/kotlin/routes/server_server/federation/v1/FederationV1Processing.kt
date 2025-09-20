@@ -22,7 +22,7 @@ import utils.deviceKeys
 import utils.oneTimeKeys
 import utils.crossSigningKeys
 import utils.deviceListStreamIds
-import utils.accessTokens
+import utils.directToDeviceMessages
 import models.AccessTokens
 import utils.StateResolver
 import utils.MatrixAuth
@@ -234,35 +234,223 @@ fun processEDU(edu: JsonElement): JsonElement? {
 }
 
 // Placeholder EDU processing functions
-fun processPresenceEDU(_edu: JsonObject): JsonElement {
-    // TODO: Implement presence EDU processing
-    return buildJsonObject {
-        put("processed", true)
-        put("type", "m.presence")
+fun processPresenceEDU(edu: JsonObject): JsonElement {
+    try {
+        val userId = edu["user_id"]?.jsonPrimitive?.content
+        val presence = edu["presence"]?.jsonPrimitive?.content ?: "offline"
+        val statusMsg = edu["status_msg"]?.jsonPrimitive?.content
+        val lastActiveAgo = edu["last_active_ago"]?.jsonPrimitive?.long ?: 0
+
+        if (userId == null) {
+            return buildJsonObject {
+                put("error", "Missing user_id in presence EDU")
+                put("processed", false)
+            }
+        }
+
+        // Validate presence state
+        val validPresenceStates = setOf("online", "offline", "unavailable", "busy")
+        if (presence !in validPresenceStates) {
+            return buildJsonObject {
+                put("error", "Invalid presence state: $presence")
+                put("processed", false)
+            }
+        }
+
+        // Update presence in database
+        PresenceStorage.updatePresence(userId, presence, statusMsg, lastActiveAgo)
+
+        // Broadcast presence update to connected clients
+        runBlocking {
+            broadcastPresenceUpdate(userId, presence, statusMsg, lastActiveAgo)
+        }
+
+        return buildJsonObject {
+            put("processed", true)
+            put("type", "m.presence")
+            put("user_id", userId)
+            put("presence", presence)
+        }
+
+    } catch (e: Exception) {
+        return buildJsonObject {
+            put("error", "Failed to process presence EDU: ${e.message}")
+            put("processed", false)
+        }
     }
 }
 
-fun processTypingEDU(_edu: JsonObject): JsonElement {
-    // TODO: Implement typing EDU processing
-    return buildJsonObject {
-        put("processed", true)
-        put("type", "m.typing")
+fun processTypingEDU(edu: JsonObject): JsonElement {
+    try {
+        val roomId = edu["room_id"]?.jsonPrimitive?.content
+        val userId = edu["user_id"]?.jsonPrimitive?.content
+        val typing = edu["typing"]?.jsonPrimitive?.boolean ?: false
+
+        if (roomId == null || userId == null) {
+            return buildJsonObject {
+                put("error", "Missing room_id or user_id in typing EDU")
+                put("processed", false)
+            }
+        }
+
+        val currentTime = System.currentTimeMillis()
+
+        // Update typing state in memory
+        val roomTyping = typingMap.getOrPut(roomId) { mutableMapOf() }
+
+        if (typing) {
+            // User started typing
+            roomTyping[userId] = currentTime
+        } else {
+            // User stopped typing
+            roomTyping.remove(userId)
+        }
+
+        // Clean up old typing entries (older than 30 seconds)
+        val thirtySecondsAgo = currentTime - 30000
+        roomTyping.entries.removeIf { it.value < thirtySecondsAgo }
+
+        // Broadcast typing update to room clients
+        runBlocking {
+            broadcastTypingUpdate(roomId, userId, typing)
+        }
+
+        return buildJsonObject {
+            put("processed", true)
+            put("type", "m.typing")
+            put("room_id", roomId)
+            put("user_id", userId)
+            put("typing", typing)
+        }
+
+    } catch (e: Exception) {
+        return buildJsonObject {
+            put("error", "Failed to process typing EDU: ${e.message}")
+            put("processed", false)
+        }
     }
 }
 
-fun processReceiptEDU(_edu: JsonObject): JsonElement {
-    // TODO: Implement receipt EDU processing
-    return buildJsonObject {
-        put("processed", true)
-        put("type", "m.receipt")
+fun processReceiptEDU(edu: JsonObject): JsonElement {
+    try {
+        val roomId = edu["room_id"]?.jsonPrimitive?.content
+        val receipts = edu["receipts"]?.jsonObject
+
+        if (roomId == null || receipts == null) {
+            return buildJsonObject {
+                put("error", "Missing room_id or receipts in receipt EDU")
+                put("processed", false)
+            }
+        }
+
+        // Process each receipt
+        receipts.forEach { (userId, userReceipts) ->
+            val userReceiptsObj = userReceipts.jsonObject
+
+            userReceiptsObj.forEach { (eventId, receiptData) ->
+                val receiptObj = receiptData.jsonObject
+                val ts = receiptObj["ts"]?.jsonPrimitive?.long ?: System.currentTimeMillis()
+                val threadId = receiptObj["thread_id"]?.jsonPrimitive?.content
+
+                // Store receipt in database
+                ReceiptsStorage.addReceipt(roomId, userId, eventId, "m.read", threadId)
+            }
+        }
+
+        // Broadcast receipt update to room clients
+        runBlocking {
+            broadcastReceiptUpdate(roomId, receipts)
+        }
+
+        return buildJsonObject {
+            put("processed", true)
+            put("type", "m.receipt")
+            put("room_id", roomId)
+        }
+
+    } catch (e: Exception) {
+        return buildJsonObject {
+            put("error", "Failed to process receipt EDU: ${e.message}")
+            put("processed", false)
+        }
     }
 }
 
-fun processDirectToDeviceEDU(_edu: JsonObject): JsonElement {
-    // TODO: Implement direct-to-device EDU processing
-    return buildJsonObject {
-        put("processed", true)
-        put("type", "m.direct_to_device")
+fun processDirectToDeviceEDU(edu: JsonObject): JsonElement {
+    try {
+        val sender = edu["sender"]?.jsonPrimitive?.content
+        val type = edu["type"]?.jsonPrimitive?.content
+        val messages = edu["messages"]?.jsonObject
+
+        if (sender == null || type == null || messages == null) {
+            return buildJsonObject {
+                put("error", "Missing sender, type, or messages in direct-to-device EDU")
+                put("processed", false)
+            }
+        }
+
+        // Process messages for each target user
+        messages.forEach { (targetUserId, userMessages) ->
+            val userMessagesObj = userMessages.jsonObject
+
+            userMessagesObj.forEach { (deviceId, messageContent) ->
+                val message = mapOf(
+                    "sender" to sender,
+                    "type" to type,
+                    "content" to messageContent,
+                    "device_id" to deviceId,
+                    "timestamp" to System.currentTimeMillis()
+                )
+
+                // Store message for delivery to target user
+                val userMessages = directToDeviceMessages.getOrPut(targetUserId) { mutableListOf() }
+                userMessages.add(message)
+
+                // Clean up old messages (keep only last 100 per user)
+                if (userMessages.size > 100) {
+                    userMessages.removeAt(0)
+                }
+            }
+        }
+
+        return buildJsonObject {
+            put("processed", true)
+            put("type", "m.direct_to_device")
+            put("sender", sender)
+        }
+
+    } catch (e: Exception) {
+        return buildJsonObject {
+            put("error", "Failed to process direct-to-device EDU: ${e.message}")
+            put("processed", false)
+        }
+    }
+}
+
+suspend fun broadcastReceiptUpdate(roomId: String, receipts: JsonObject) {
+    try {
+        // Create receipt EDU to broadcast
+        val receiptEdu = buildJsonObject {
+            put("edu_type", "m.receipt")
+            put("content", buildJsonObject {
+                put("room_id", roomId)
+                put("receipts", receipts)
+            })
+        }
+
+        // Broadcast to all clients in the room
+        val clients = connectedClients[roomId] ?: return
+        clients.forEach { session ->
+            try {
+                val eduJson = Json.encodeToString(JsonObject.serializer(), receiptEdu)
+                session.send(Frame.Text(eduJson))
+            } catch (e: Exception) {
+                // Client disconnected, will be cleaned up by the session handler
+                println("Failed to send receipt EDU to client: ${e.message}")
+            }
+        }
+    } catch (e: Exception) {
+        println("Error broadcasting receipt update: ${e.message}")
     }
 }
 
@@ -281,6 +469,70 @@ suspend fun broadcastPDU(roomId: String, event: JsonObject) {
         }
     } catch (e: Exception) {
         println("Error broadcasting PDU: ${e.message}")
+    }
+}
+
+suspend fun broadcastPresenceUpdate(userId: String, presence: String, statusMsg: String?, lastActiveAgo: Long) {
+    try {
+        // Create presence EDU to broadcast
+        val presenceEdu = buildJsonObject {
+            put("edu_type", "m.presence")
+            put("content", buildJsonObject {
+                put("user_id", userId)
+                put("presence", presence)
+                if (statusMsg != null) {
+                    put("status_msg", statusMsg)
+                }
+                put("last_active_ago", lastActiveAgo)
+                put("currently_active", presence == "online")
+            })
+        }
+
+        // Broadcast to all connected clients (presence updates go to all clients)
+        connectedClients.values.forEach { clients ->
+            clients.forEach { session ->
+                try {
+                    val eduJson = Json.encodeToString(JsonObject.serializer(), presenceEdu)
+                    session.send(Frame.Text(eduJson))
+                } catch (e: Exception) {
+                    // Client disconnected, will be cleaned up by the session handler
+                    println("Failed to send presence EDU to client: ${e.message}")
+                }
+            }
+        }
+    } catch (e: Exception) {
+        println("Error broadcasting presence update: ${e.message}")
+    }
+}
+
+suspend fun broadcastTypingUpdate(roomId: String, userId: String, typing: Boolean) {
+    try {
+        // Get current typing users for the room
+        val currentTypingUsers = typingMap[roomId] ?: mutableMapOf()
+        val userIds = currentTypingUsers.keys.toList()
+
+        // Create typing EDU to broadcast
+        val typingEdu = buildJsonObject {
+            put("edu_type", "m.typing")
+            put("content", buildJsonObject {
+                put("room_id", roomId)
+                put("user_ids", JsonArray(userIds.map { JsonPrimitive(it) }))
+            })
+        }
+
+        // Broadcast to all clients in the room
+        val clients = connectedClients[roomId] ?: return
+        clients.forEach { session ->
+            try {
+                val eduJson = Json.encodeToString(JsonObject.serializer(), typingEdu)
+                session.send(Frame.Text(eduJson))
+            } catch (e: Exception) {
+                // Client disconnected, will be cleaned up by the session handler
+                println("Failed to send typing EDU to client: ${e.message}")
+            }
+        }
+    } catch (e: Exception) {
+        println("Error broadcasting typing update: ${e.message}")
     }
 }
 

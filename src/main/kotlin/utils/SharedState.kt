@@ -19,6 +19,9 @@ val connectedClients = mutableMapOf<String, MutableList<DefaultWebSocketServerSe
 // In-memory storage for EDUs (keeping typing as it's short-lived)
 val typingMap = mutableMapOf<String, MutableMap<String, Long>>() // roomId to (userId to timestamp)
 
+// Direct-to-device message storage (temporary storage for messages to be delivered)
+val directToDeviceMessages = mutableMapOf<String, MutableList<Map<String, Any?>>>() // userId -> list of messages
+
 // ===== DATABASE-BACKED STORAGE =====
 
 // Receipts operations

@@ -58,6 +58,7 @@ object Users : Table("users") {
     val avatarUrl = varchar("avatar_url", 500).nullable()
     val isGuest = bool("is_guest").default(false)
     val deactivated = bool("deactivated").default(false)
+    val isAdmin = bool("is_admin").default(false)
     val createdAt = long("created_at").default(System.currentTimeMillis())
     val lastSeen = long("last_seen").default(System.currentTimeMillis())
 }

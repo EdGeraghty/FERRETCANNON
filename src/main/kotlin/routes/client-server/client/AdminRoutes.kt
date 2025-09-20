@@ -11,6 +11,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import models.Users
 import models.Rooms
+import utils.AuthUtils
 
 fun Route.adminRoutes(config: ServerConfig) {
     // GET /server_version - Get server version information
@@ -18,8 +19,14 @@ fun Route.adminRoutes(config: ServerConfig) {
         try {
             val userId = call.validateAccessToken() ?: return@get
 
-            // TODO: Check if user is admin
-            // For now, allow all authenticated users
+            // Check if user is admin
+            if (!AuthUtils.isUserAdmin(userId)) {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "You are not authorized to access this endpoint"
+                ))
+                return@get
+            }
 
             call.respond(mapOf(
                 "server_version" to "FerretCannon 1.0",
@@ -39,8 +46,14 @@ fun Route.adminRoutes(config: ServerConfig) {
         try {
             val userId = call.validateAccessToken() ?: return@get
 
-            // TODO: Check if user is admin
-            // For now, allow all authenticated users
+            // Check if user is admin
+            if (!AuthUtils.isUserAdmin(userId)) {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "You are not authorized to access this endpoint"
+                ))
+                return@get
+            }
 
             val userCount = transaction { Users.selectAll().count() }
             val roomCount = transaction { Rooms.selectAll().count() }
@@ -73,8 +86,14 @@ fun Route.adminRoutes(config: ServerConfig) {
                 return@get
             }
 
-            // TODO: Check if requesting user is admin
-            // For now, allow all authenticated users
+            // Check if requesting user is admin
+            if (!AuthUtils.isUserAdmin(requestingUserId)) {
+                call.respond(HttpStatusCode.Forbidden, mapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "You are not authorized to access this endpoint"
+                ))
+                return@get
+            }
 
             val user = transaction {
                 Users.select { Users.userId eq targetUserId }
