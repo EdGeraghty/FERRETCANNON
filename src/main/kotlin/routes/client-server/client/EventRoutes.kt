@@ -240,10 +240,19 @@ fun Route.eventRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // Parse request body
-            val requestBody = call.receiveText()
-            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
-            val ts = jsonBody["ts"]?.jsonPrimitive?.long ?: System.currentTimeMillis()
+            // Parse request body - handle empty body gracefully
+            val requestBody = call.receiveText().trim()
+            val ts = if (requestBody.isNotEmpty()) {
+                try {
+                    val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+                    jsonBody["ts"]?.jsonPrimitive?.long ?: System.currentTimeMillis()
+                } catch (e: Exception) {
+                    // If JSON parsing fails, use current timestamp
+                    System.currentTimeMillis()
+                }
+            } else {
+                System.currentTimeMillis()
+            }
 
             // Store receipt in account data
             val receiptKey = "m.receipt"
