@@ -139,11 +139,26 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                         // Perform the actual lookup
                         val mappings = transaction {
-                            // For now, return empty mappings as this is a basic implementation
-                            // TODO: Implement full 3PID lookup with database queries
+                            // Query database for matches - we look up by address directly
+                            // (not by hash, as the Matrix spec requires privacy-preserving lookups)
                             val results = mutableMapOf<String, String>()
-                            // Use addresses variable to avoid compiler warning
-                            addresses.forEach { _ -> /* placeholder */ }
+                            addresses.forEach { address ->
+                                // Try to find this address in our database
+                                val match = ThirdPartyIdentifiers.select {
+                                    ThirdPartyIdentifiers.address eq address
+                                }.singleOrNull()
+
+                                if (match != null) {
+                                    // Create the hash for the response as per Matrix spec
+                                    val hashInput = "$address $pepper"
+                                    val digest = MessageDigest.getInstance("SHA-256")
+                                    val hashBytes = digest.digest(hashInput.toByteArray(Charsets.UTF_8))
+                                    val hash = Base64.getEncoder().encodeToString(hashBytes)
+
+                                    results[hash] = match[ThirdPartyIdentifiers.userId]
+                                }
+                            }
+
                             results
                         }
 
