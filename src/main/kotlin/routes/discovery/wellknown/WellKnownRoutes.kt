@@ -190,7 +190,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                 // OAuth 2.0 Authorization Server Metadata according to RFC 8414
                 val metadata = buildJsonObject {
-                    put("issuer", serverName)  // Server identifier, not full URL
+                    put("issuer", baseUrl)  // Full base URL as issuer
                     put("authorization_endpoint", "$baseUrl/oauth2/authorize")
                     put("token_endpoint", "$baseUrl/oauth2/token")
                     put("revocation_endpoint", "$baseUrl/oauth2/revoke")

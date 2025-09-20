@@ -45,17 +45,9 @@ fun Route.eventRoutes(_config: ServerConfig) {
     // GET /rooms/{roomId}/context/{eventId} - Get event context
     get("/rooms/{roomId}/context/{eventId}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
             val eventId = call.parameters["eventId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (roomId == null || eventId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -201,18 +193,10 @@ fun Route.eventRoutes(_config: ServerConfig) {
     // POST /rooms/{roomId}/receipt/{receiptType}/{eventId} - Send receipt
     post("/rooms/{roomId}/receipt/{receiptType}/{eventId}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@post
             val roomId = call.parameters["roomId"]
             val receiptType = call.parameters["receiptType"]
             val eventId = call.parameters["eventId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
 
             if (roomId == null || receiptType == null || eventId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -335,16 +319,8 @@ fun Route.eventRoutes(_config: ServerConfig) {
     // POST /rooms/{roomId}/read_markers - Set read markers
     post("/rooms/{roomId}/read_markers") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@post
             val roomId = call.parameters["roomId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
 
             if (roomId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -440,18 +416,10 @@ fun Route.eventRoutes(_config: ServerConfig) {
     // PUT /rooms/{roomId}/redact/{eventId}/{txnId} - Redact event
     put("/rooms/{roomId}/redact/{eventId}/{txnId}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@put
             val roomId = call.parameters["roomId"]
             val eventId = call.parameters["eventId"]
             val txnId = call.parameters["txnId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@put
-            }
 
             if (roomId == null || eventId == null || txnId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -597,17 +565,9 @@ fun Route.eventRoutes(_config: ServerConfig) {
     // GET /rooms/{roomId}/relations/{eventId} - Get event relations
     get("/rooms/{roomId}/relations/{eventId}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
             val eventId = call.parameters["eventId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (roomId == null || eventId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -685,18 +645,10 @@ fun Route.eventRoutes(_config: ServerConfig) {
     // GET /rooms/{roomId}/relations/{eventId}/{relType} - Get specific relation type
     get("/rooms/{roomId}/relations/{eventId}/{relType}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
             val eventId = call.parameters["eventId"]
             val relType = call.parameters["relType"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (roomId == null || eventId == null || relType == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(

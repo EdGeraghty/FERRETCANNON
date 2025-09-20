@@ -17,15 +17,7 @@ fun Route.contentRoutes(config: ServerConfig) {
     // POST /upload - Upload content
     post("/upload") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
+            val userId = call.validateAccessToken() ?: return@post
 
             // Handle multipart upload
             val multipart = call.receiveMultipart()
@@ -144,9 +136,12 @@ fun Route.contentRoutes(config: ServerConfig) {
     // GET /voip/turnServer - Get TURN server credentials
     get("/voip/turnServer") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            println("DEBUG: VoIP turnServer - /voip/turnServer called")
+            val accessToken = call.validateAccessToken()
+            println("DEBUG: VoIP turnServer - accessToken: $accessToken")
 
-            if (userId == null) {
+            if (accessToken == null) {
+                println("DEBUG: VoIP turnServer - accessToken is null, returning unauthorized")
                 call.respond(HttpStatusCode.Unauthorized, mapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
@@ -157,14 +152,12 @@ fun Route.contentRoutes(config: ServerConfig) {
             // Return TURN server configuration
             // In a real implementation, this would return actual TURN server credentials
             // For now, return an empty response indicating no TURN servers configured
-            call.respond(mapOf(
-                "username" to "",
-                "password" to "",
-                "uris" to emptyList<String>(),
-                "ttl" to 86400
-            ))
+            println("DEBUG: VoIP turnServer - returning TURN server response")
+            call.respondText("""{"username":"","password":"","uris":[],"ttl":86400}""", ContentType.Application.Json)
 
         } catch (e: Exception) {
+            println("ERROR: VoIP turnServer - Exception in /voip/turnServer: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"

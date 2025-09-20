@@ -15,15 +15,7 @@ fun Route.keysRoutes(_config: ServerConfig) {
     // POST /keys/query - Query device keys for users
     post("/keys/query") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                    put("errcode", "M_MISSING_TOKEN")
-                    put("error", "Missing access token")
-                })
-                return@post
-            }
+            val userId = call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = call.receiveText()
@@ -81,15 +73,7 @@ fun Route.keysRoutes(_config: ServerConfig) {
     // POST /keys/claim - Claim one-time keys
     post("/keys/claim") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                    put("errcode", "M_MISSING_TOKEN")
-                    put("error", "Missing access token")
-                })
-                return@post
-            }
+            val userId = call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = call.receiveText()
@@ -142,13 +126,13 @@ fun Route.keysRoutes(_config: ServerConfig) {
     // POST /keys/upload - Upload device and one-time keys
     post("/keys/upload") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@post
             val deviceId = call.attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
 
-            if (userId == null || deviceId == null) {
+            if (deviceId == null) {
                 call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                     put("errcode", "M_MISSING_TOKEN")
-                    put("error", "Missing access token")
+                    put("error", "Missing device ID")
                 })
                 return@post
             }
@@ -191,15 +175,7 @@ fun Route.keysRoutes(_config: ServerConfig) {
     // GET /room_keys/version - Get room keys version
     get("/room_keys/version") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                    put("errcode", "M_MISSING_TOKEN")
-                    put("error", "Missing access token")
-                })
-                return@get
-            }
+            val userId = call.validateAccessToken() ?: return@get
 
             // Return room keys backup version information
             // In a real implementation, this would return the current backup version

@@ -94,15 +94,7 @@ fun Route.oauthRoutes(_config: ServerConfig) {
     // GET /oauth2/userinfo - OAuth userinfo endpoint
     get("/userinfo") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "error" to "invalid_token",
-                    "error_description" to "Missing or invalid access token"
-                ))
-                return@get
-            }
+            val userId = call.validateAccessToken() ?: return@get
 
             // TODO: Get user information from database
             call.respond(mapOf(

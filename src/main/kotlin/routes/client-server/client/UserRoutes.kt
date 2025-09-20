@@ -279,27 +279,14 @@ fun Route.userRoutes(_config: ServerConfig) {
     // GET /user/{userId}/account_data/{type} - Get global account data
     get("/user/{userId}/account_data/{type}") {
         try {
-            val userId = try {
-                call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-            } catch (e: Exception) {
-                println("ERROR: Failed to get userId from attributes: ${e.message}")
-                null
-            }
+            val userId = call.validateAccessToken() ?: return@get
             val accountUserId = call.parameters["userId"]
             val type = call.parameters["type"]
 
             println("DEBUG: GET account_data - userId: '$userId', accountUserId: '$accountUserId', type: '$type'")
 
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
-
             if (accountUserId == null || userId != accountUserId) {
-                println("DEBUG: Access forbidden - userId != accountUserId")
+                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
@@ -380,19 +367,12 @@ fun Route.userRoutes(_config: ServerConfig) {
     // PUT /user/{userId}/account_data/{type} - Set global account data
     put("/user/{userId}/account_data/{type}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@put
             val accountUserId = call.parameters["userId"]
             val type = call.parameters["type"]
 
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@put
-            }
-
             if (accountUserId == null || userId != accountUserId) {
+                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own account data"
@@ -476,20 +456,13 @@ fun Route.userRoutes(_config: ServerConfig) {
     // GET /user/{userId}/rooms/{roomId}/account_data/{type} - Get room account data
     get("/user/{userId}/rooms/{roomId}/account_data/{type}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@get
             val accountUserId = call.parameters["userId"]
             val roomId = call.parameters["roomId"]
             val type = call.parameters["type"]
 
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
-
             if (accountUserId == null || userId != accountUserId) {
+                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
@@ -563,20 +536,13 @@ fun Route.userRoutes(_config: ServerConfig) {
     // PUT /user/{userId}/rooms/{roomId}/account_data/{type} - Set room account data
     put("/user/{userId}/rooms/{roomId}/account_data/{type}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@put
             val accountUserId = call.parameters["userId"]
             val roomId = call.parameters["roomId"]
             val type = call.parameters["type"]
 
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@put
-            }
-
             if (accountUserId == null || userId != accountUserId) {
+                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own account data"
@@ -652,15 +618,7 @@ fun Route.userRoutes(_config: ServerConfig) {
     // GET /user_directory/search - Search user directory
     post("/user_directory/search") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
+            val userId = call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = try {
@@ -731,7 +689,7 @@ fun Route.userRoutes(_config: ServerConfig) {
     post("/user/{userId}/filter") {
         try {
             val userId = call.parameters["userId"]
-            val accessToken = call.validateAccessToken() ?: return@post
+            val authenticatedUserId = call.validateAccessToken() ?: return@post
 
             if (userId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -741,13 +699,9 @@ fun Route.userRoutes(_config: ServerConfig) {
                 return@post
             }
 
-            // Verify the access token belongs to the user
-            val tokenUser = transaction {
-                AccessTokens.select { AccessTokens.token eq accessToken }
-                    .singleOrNull()?.get(AccessTokens.userId)
-            }
-
-            if (tokenUser != userId) {
+            // Verify the authenticated user matches the requested user
+            if (authenticatedUserId != userId) {
+                println("DEBUG: Filter creation forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Access token does not match user"
@@ -794,7 +748,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         try {
             val userId = call.parameters["userId"]
             val filterId = call.parameters["filterId"]
-            val accessToken = call.validateAccessToken() ?: return@get
+            val authenticatedUserId = call.validateAccessToken() ?: return@get
 
             if (userId == null || filterId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -804,13 +758,9 @@ fun Route.userRoutes(_config: ServerConfig) {
                 return@get
             }
 
-            // Verify the access token belongs to the user
-            val tokenUser = transaction {
-                AccessTokens.select { AccessTokens.token eq accessToken }
-                    .singleOrNull()?.get(AccessTokens.userId)
-            }
-
-            if (tokenUser != userId) {
+            // Verify the authenticated user matches the requested user
+            if (authenticatedUserId != userId) {
+                println("DEBUG: Filter retrieval forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
                 call.respond(HttpStatusCode.Forbidden, mapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Access token does not match user"
@@ -849,15 +799,7 @@ fun Route.userRoutes(_config: ServerConfig) {
     // GET /user/dehydrated_device - Get dehydrated device information (unstable)
     get("/user/dehydrated_device") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
+            val userId = call.validateAccessToken() ?: return@get
 
             // Return dehydrated device information
             // In a real implementation, this would return information about dehydrated devices

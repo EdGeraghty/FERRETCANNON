@@ -24,18 +24,10 @@ fun Route.roomRoutes(config: ServerConfig) {
     // PUT /rooms/{roomId}/send/{eventType}/{txnId} - Send event to room
     put("/rooms/{roomId}/send/{eventType}/{txnId}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@put
             val roomId = call.parameters["roomId"]
             val eventType = call.parameters["eventType"]
             val txnId = call.parameters["txnId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@put
-            }
 
             if (roomId == null || eventType == null || txnId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -139,15 +131,7 @@ fun Route.roomRoutes(config: ServerConfig) {
     // POST /createRoom - Create a new room
     post("/createRoom") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
+            val userId = call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = call.receiveText()
@@ -356,16 +340,8 @@ fun Route.roomRoutes(config: ServerConfig) {
     // POST /rooms/{roomId}/join - Join a room
     post("/rooms/{roomId}/join") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@post
             val roomId = call.parameters["roomId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
 
             if (roomId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -504,16 +480,8 @@ fun Route.roomRoutes(config: ServerConfig) {
     // POST /rooms/{roomId}/leave - Leave a room
     post("/rooms/{roomId}/leave") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@post
             val roomId = call.parameters["roomId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@post
-            }
 
             if (roomId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -650,16 +618,8 @@ fun Route.roomRoutes(config: ServerConfig) {
     // GET /rooms/{roomId}/state - Get room state
     get("/rooms/{roomId}/state") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (roomId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(
@@ -688,16 +648,8 @@ fun Route.roomRoutes(config: ServerConfig) {
     // GET /rooms/{roomId}/members - Get room members
     get("/rooms/{roomId}/members") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (roomId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(

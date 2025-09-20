@@ -8,6 +8,8 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import config.ServerConfig
 import utils.AuthUtils
+import routes.client_server.client.MATRIX_USER_ID_KEY
+import routes.client_server.client.MATRIX_TOKEN_KEY
 
 fun Route.authRoutes(config: ServerConfig) {
     // GET /login - Get available login flows

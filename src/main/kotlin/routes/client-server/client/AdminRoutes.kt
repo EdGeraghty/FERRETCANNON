@@ -16,15 +16,7 @@ fun Route.adminRoutes(config: ServerConfig) {
     // GET /server_version - Get server version information
     get("/server_version") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
+            val userId = call.validateAccessToken() ?: return@get
 
             // TODO: Check if user is admin
             // For now, allow all authenticated users
@@ -45,15 +37,7 @@ fun Route.adminRoutes(config: ServerConfig) {
     // GET /admin/serverinfo - Get server information
     get("/admin/serverinfo") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
+            val userId = call.validateAccessToken() ?: return@get
 
             // TODO: Check if user is admin
             // For now, allow all authenticated users
@@ -78,16 +62,8 @@ fun Route.adminRoutes(config: ServerConfig) {
     // GET /admin/users/{userId} - Get user information
     get("/admin/users/{userId}") {
         try {
-            val requestingUserId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val requestingUserId = call.validateAccessToken() ?: return@get
             val targetUserId = call.parameters["userId"]
-
-            if (requestingUserId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (targetUserId == null) {
                 call.respond(HttpStatusCode.BadRequest, mapOf(

@@ -36,6 +36,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import java.time.Duration
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
@@ -112,6 +113,29 @@ fun main() {
             } else {
                 logger.debug("Test user already exists")
             }
+
+            // Always create a fresh access token for the test user on startup
+            logger.debug("Creating fresh access token for test user...")
+            val testUserId = "@${config.development.testUsername}:${config.federation.serverName}"
+            val testDeviceId = "test_device_${System.currentTimeMillis()}"
+
+            // Delete any existing access tokens for this user to avoid conflicts
+            AccessTokens.deleteWhere { AccessTokens.userId eq testUserId }
+
+            // Create new access token
+            val accessToken = utils.AuthUtils.createAccessToken(
+                userId = testUserId,
+                deviceId = testDeviceId,
+                userAgent = "FERRETCANNON-TestClient/1.0",
+                ipAddress = "127.0.0.1"
+            )
+
+            logger.info("✅ Created fresh access token for test user")
+            logger.info("🔑 Access Token: $accessToken")
+            logger.info("👤 User ID: $testUserId")
+            logger.info("📱 Device ID: $testDeviceId")
+            logger.info("📋 Test endpoints with:")
+            logger.info("   curl -H \"Authorization: Bearer $accessToken\" http://localhost:${config.server.port}/_matrix/client/v3/capabilities")
         }
     }
 

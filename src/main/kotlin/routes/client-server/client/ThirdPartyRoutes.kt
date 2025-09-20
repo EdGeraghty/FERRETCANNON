@@ -39,28 +39,32 @@ import utils.OAuthService
 import utils.OAuthConfig
 import config.ServerConfig
 import utils.MatrixPagination
-import routes.client_server.client.MATRIX_USER_ID_KEY
+import io.ktor.util.AttributeKey
+
+// Define the attribute key locally
+val LOCAL_MATRIX_USER_ID_KEY = AttributeKey<String>("MatrixUserId")
 
 fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/protocols - Get third-party protocols
     get("/thirdparty/protocols") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            println("DEBUG: ThirdPartyRoutes - /thirdparty/protocols called")
+            val accessToken = call.validateAccessToken()
+            println("DEBUG: ThirdPartyRoutes - accessToken: $accessToken")
 
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
+            if (accessToken == null) {
+                println("DEBUG: ThirdPartyRoutes - accessToken is null, returning unauthorized")
+                // Response already sent by validateAccessToken
                 return@get
             }
 
             // Return supported third-party protocols (simplified)
-            call.respond(mapOf(
-                "protocols" to mapOf<String, Any>() // Empty for now
-            ))
+            println("DEBUG: ThirdPartyRoutes - returning protocols response")
+            call.respondText("""{"protocols":{}}""", ContentType.Application.Json)
 
         } catch (e: Exception) {
+            println("ERROR: ThirdPartyRoutes - Exception in /thirdparty/protocols: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -71,7 +75,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/protocol/{protocol} - Get protocol information
     get("/thirdparty/protocol/{protocol}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val protocol = call.parameters["protocol"]
 
             if (userId == null) {
@@ -107,7 +111,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/location/{protocol} - Get location information
     get("/thirdparty/location/{protocol}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val protocol = call.parameters["protocol"]
 
             if (userId == null) {
@@ -140,7 +144,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/user/{protocol} - Get user information
     get("/thirdparty/user/{protocol}") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val protocol = call.parameters["protocol"]
 
             if (userId == null) {
@@ -173,7 +177,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/location - Search locations
     get("/thirdparty/location") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val _search = call.request.queryParameters["search"]
 
             if (userId == null) {
@@ -198,7 +202,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/user - Search users
     get("/thirdparty/user") {
         try {
-            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val _search = call.request.queryParameters["search"]
 
             if (userId == null) {

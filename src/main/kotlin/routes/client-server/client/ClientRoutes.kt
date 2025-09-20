@@ -83,7 +83,10 @@ suspend fun ApplicationCall.validateAccessToken(): String? {
             ))
             null
         }
-        accessToken != null -> accessToken
+        accessToken != null -> {
+            // Return the user ID, not the access token
+            attributes.getOrNull(MATRIX_USER_ID_KEY)
+        }
         else -> {
             respond(HttpStatusCode.Unauthorized, mapOf(
                 "errcode" to "M_MISSING_TOKEN",
@@ -263,6 +266,30 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // MSC2965 Authentication Metadata
                     route("/org.matrix.msc2965") {
                         authRoutes(config)
+                    }
+
+                    // MSC3814 Device Dehydration
+                    route("/org.matrix.msc3814.v1") {
+                        // GET /dehydrated_device - Get dehydrated device information
+                        get("/dehydrated_device") {
+                            try {
+                                val userId = call.validateAccessToken() ?: return@get
+
+                                // Return dehydrated device information
+                                // In a real implementation, this would return information about dehydrated devices
+                                // For now, return a 404 indicating no dehydrated device
+                                call.respond(HttpStatusCode.NotFound, mapOf(
+                                    "errcode" to "M_NOT_FOUND",
+                                    "error" to "No dehydrated device found"
+                                ))
+
+                            } catch (e: Exception) {
+                                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                                    "errcode" to "M_UNKNOWN",
+                                    "error" to "Internal server error"
+                                ))
+                            }
+                        }
                     }
                 }
             }
