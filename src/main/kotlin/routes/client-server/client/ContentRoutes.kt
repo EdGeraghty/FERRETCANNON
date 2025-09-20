@@ -12,8 +12,14 @@ import config.ServerConfig
 import utils.MediaStorage
 import java.io.File
 import routes.client_server.client.MATRIX_USER_ID_KEY
+import kotlinx.coroutines.runBlocking
+import org.jetbrains.exposed.sql.transactions.transaction
+import models.Media
+import utils.AuthUtils
 
 fun Route.contentRoutes(config: ServerConfig) {
+    // Initialize MediaStorage with configuration
+    MediaStorage.initialize(config.media.maxUploadSize, 320)
     // POST /upload - Upload content
     post("/upload") {
         try {
@@ -21,50 +27,70 @@ fun Route.contentRoutes(config: ServerConfig) {
 
             // Handle multipart upload
             val multipart = call.receiveMultipart()
-            var _fileName: String? = null
-            var _contentType: String? = null
+            var fileName: String? = null
+            var contentType: String? = null
             var fileBytes: ByteArray? = null
 
             multipart.forEachPart { part ->
                 when (part) {
                     is PartData.FileItem -> {
-                        _fileName = part.originalFileName
-                        _contentType = part.contentType?.toString()
+                        fileName = part.originalFileName
+                        contentType = part.contentType?.toString() ?: "application/octet-stream"
                         fileBytes = part.streamProvider().readBytes()
                     }
                     is PartData.FormItem -> {
                         // Handle form fields if needed
                     }
                     else -> {
-                        // Handle other part types
+                        // Ignore other part types
                     }
                 }
                 part.dispose()
             }
 
             if (fileBytes == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_BAD_JSON",
-                    "error" to "No file uploaded"
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_BAD_JSON")
+                    put("error", "No file uploaded")
+                })
                 return@post
             }
 
-            // Generate content URI
-            val contentUri = "mxc://${config.federation.serverName}/${System.currentTimeMillis()}"
+            // Validate file size
+            if (fileBytes!!.size > config.media.maxUploadSize) {
+                call.respond(HttpStatusCode.PayloadTooLarge, buildJsonObject {
+                    put("errcode", "M_TOO_LARGE")
+                    put("error", "File too large")
+                })
+                return@post
+            }
 
-            // TODO: Store file using MediaStorage
-            // MediaStorage.saveFile(contentUri, fileBytes!!, contentType)
+            // Generate media ID
+            val mediaId = AuthUtils.generateMediaId()
+            val contentUri = "mxc://${config.federation.serverName}/$mediaId"
 
-            call.respond(mapOf(
-                "content_uri" to contentUri
-            ))
+            // Store file using MediaStorage
+            val success = runBlocking {
+                MediaStorage.storeMedia(mediaId, fileBytes!!, contentType!!, fileName, userId)
+            }
+
+            if (!success) {
+                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                    put("errcode", "M_UNKNOWN")
+                    put("error", "Failed to store media")
+                })
+                return@post
+            }
+
+            call.respond(buildJsonObject {
+                put("content_uri", contentUri)
+            })
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
@@ -75,27 +101,49 @@ fun Route.contentRoutes(config: ServerConfig) {
             val mediaId = call.parameters["mediaId"]
 
             if (serverName == null || mediaId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_INVALID_PARAM",
-                    "error" to "Missing serverName or mediaId parameter"
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing serverName or mediaId parameter")
+                })
                 return@get
             }
 
-            // TODO: Retrieve file from MediaStorage
-            // val fileData = MediaStorage.getFile("mxc://$serverName/$mediaId")
+            // Check if media exists
+            if (!MediaStorage.mediaExists(mediaId)) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Media not found")
+                })
+                return@get
+            }
 
-            // For now, return a mock response
-            call.respond(HttpStatusCode.NotFound, mapOf(
-                "errcode" to "M_NOT_FOUND",
-                "error" to "Media not found"
-            ))
+            // Retrieve file from MediaStorage
+            val (content, contentType) = runBlocking {
+                MediaStorage.getMedia(mediaId)
+            }
+
+            if (content == null) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Media not found")
+                })
+                return@get
+            }
+
+            // Set appropriate headers
+            call.response.headers.apply {
+                append(HttpHeaders.ContentType, contentType ?: "application/octet-stream")
+                append(HttpHeaders.ContentLength, content.size.toString())
+                append(HttpHeaders.CacheControl, "public, max-age=31536000") // Cache for 1 year
+            }
+
+            call.respondBytes(content)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
@@ -104,64 +152,106 @@ fun Route.contentRoutes(config: ServerConfig) {
         try {
             val serverName = call.parameters["serverName"]
             val mediaId = call.parameters["mediaId"]
-            val _width = call.request.queryParameters["width"]?.toIntOrNull()
-            val _height = call.request.queryParameters["height"]?.toIntOrNull()
-            val _method = call.request.queryParameters["method"] ?: "scale"
+            val width = call.request.queryParameters["width"]?.toIntOrNull() ?: 320
+            val height = call.request.queryParameters["height"]?.toIntOrNull() ?: 240
+            val method = call.request.queryParameters["method"] ?: "scale"
 
             if (serverName == null || mediaId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
-                    "errcode" to "M_INVALID_PARAM",
-                    "error" to "Missing serverName or mediaId parameter"
-                ))
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing serverName or mediaId parameter")
+                })
                 return@get
             }
 
-            // TODO: Generate or retrieve thumbnail from MediaStorage
-            // val thumbnailData = MediaStorage.getThumbnail("mxc://$serverName/$mediaId", width, height, method)
+            // Check if media exists
+            if (!MediaStorage.mediaExists(mediaId)) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Media not found")
+                })
+                return@get
+            }
 
-            // For now, return a mock response
-            call.respond(HttpStatusCode.NotFound, mapOf(
-                "errcode" to "M_NOT_FOUND",
-                "error" to "Thumbnail not found"
-            ))
+            // Generate or retrieve thumbnail from MediaStorage
+            val thumbnailData = runBlocking {
+                MediaStorage.generateThumbnail(mediaId, width, height, method)
+            }
+
+            if (thumbnailData == null) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Thumbnail not found or cannot be generated")
+                })
+                return@get
+            }
+
+            // Set appropriate headers
+            call.response.headers.apply {
+                append(HttpHeaders.ContentType, "image/jpeg")
+                append(HttpHeaders.ContentLength, thumbnailData.size.toString())
+                append(HttpHeaders.CacheControl, "public, max-age=31536000") // Cache for 1 year
+            }
+
+            call.respondBytes(thumbnailData)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
-    // GET /voip/turnServer - Get TURN server credentials
+    // GET /config - Get upload configuration
+    get("/config") {
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+
+            call.respond(buildJsonObject {
+                put("m.upload.size", buildJsonObject {
+                    put("max", JsonPrimitive(config.media.maxUploadSize.toString()))
+                })
+                put("m.thumbnail.sizes", buildJsonArray {
+                    config.media.thumbnailSizes.forEach { size ->
+                        add(buildJsonObject {
+                            put("width", size.width)
+                            put("height", size.height)
+                            put("method", size.method)
+                        })
+                    }
+                })
+            })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
     get("/voip/turnServer") {
         try {
-            println("DEBUG: VoIP turnServer - /voip/turnServer called")
             val accessToken = call.validateAccessToken()
-            println("DEBUG: VoIP turnServer - accessToken: $accessToken")
 
             if (accessToken == null) {
-                println("DEBUG: VoIP turnServer - accessToken is null, returning unauthorized")
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
+                call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                    put("errcode", "M_MISSING_TOKEN")
+                    put("error", "Missing access token")
+                })
                 return@get
             }
 
             // Return TURN server configuration
             // In a real implementation, this would return actual TURN server credentials
             // For now, return an empty response indicating no TURN servers configured
-            println("DEBUG: VoIP turnServer - returning TURN server response")
             call.respondText("""{"username":"","password":"","uris":[],"ttl":86400}""", ContentType.Application.Json)
 
         } catch (e: Exception) {
-            println("ERROR: VoIP turnServer - Exception in /voip/turnServer: ${e.message}")
-            e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 }

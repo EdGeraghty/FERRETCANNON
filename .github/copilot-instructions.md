@@ -4,7 +4,7 @@
 	<!-- Fixed Kotlin serialization issue in AuthRoutes.kt by replacing all mapOf responses with buildJsonObject to resolve LinkedHashMap polymorphic serialization error. All authentication endpoints (GET/POST /login, GET/POST /register, GET /capabilities, GET /register/available) now return proper JSON responses. Project compiles successfully and registration works correctly. -->
 - [x] Deploy to Fly.io and Verify Functionality
 	<!-- Successfully deployed FERRETCANNON Matrix server to Fly.io at https://ferretcannon.fly.dev. All key endpoints tested and working: GET/POST /register, GET /login, GET /capabilities. User registration functional with proper Matrix error codes and JSON responses. Server health checks passing. -->
-	<!-- GET /_matrix/federation/v1/media/download/{mediaId} and GET /_matrix/federation/v1/media/thumbnail/{mediaId} endpoints implemented according to Matrix Server-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->opilot-instructions.md file in the .github directory is created.
+	<!-- GET /_matrix/federation/v1/media/download/{mediaId} and GET /_matrix/federation/v1/media/thumbnail/{mediaId} endpoints implemented according to Matrix Server-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
 - [x] Clarify Project Requirements
 - [x] Scaffold the Project
 - [x] Customize the Project
@@ -61,6 +61,55 @@
 	<!-- Complete Matrix user data implementation according to Matrix Client-Server API v1.15 specification. Includes user profile management (GET/PUT /profile/{userId}, displayname, avatar_url), account data management (global and room-specific), user directory search, push notification management, third-party user lookups, OpenID token requests, user reporting, and device management endpoints. All endpoints include proper authentication, validation, and Matrix-compliant error handling. Project compiles successfully. -->
 - [x] Implement Sync API
 	<!-- Complete sync implementation according to Matrix Client-Server API v1.15 specification. Includes GET /sync endpoint with full state, incremental sync, room filtering, lazy-loading members, presence, account data, and proper since token handling. Project compiles successfully. -->
+## Remaining Modules to Implement
+- [ ] Implement Receipts
+	<!-- POST /rooms/{roomId}/receipt/{receiptType}/{eventId} endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
+- [ ] Implement Send-to-Device Messaging
+	<!-- PUT /sendToDevice/{eventType}/{txnId} endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
+- [ ] Implement Room History Visibility
+	<!-- GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey} and PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey} endpoints implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling for m.room.history_visibility events. Project compiles successfully. -->
+- [ ] Implement Room Previews
+	<!-- GET /events endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, history visibility checks, and error handling. Project compiles successfully. -->
+- [ ] Implement Client Config/Account Data
+	<!-- GET/PUT /user/{userId}/account_data/{type} and /user/{userId}/rooms/{roomId}/account_data/{type} endpoints implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
+- [ ] Implement Event Context
+	<!-- GET /rooms/{roomId}/context/{eventId} endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, pagination, and error handling. Project compiles successfully. -->
+- [ ] Implement Direct Messaging
+	<!-- Client-side support for direct messaging rooms (m.direct rooms) implemented with proper validation for m.direct state events. Project compiles successfully. -->
+- [ ] Implement Rich Replies
+	<!-- Enhanced rich reply support implemented according to Matrix Client-Server API v1.15 specification. Added proper validation for m.in_reply_to structure without rel_type, event ID format validation, and Matrix-compliant error handling. Project compiles successfully. -->
+- [ ] Implement Instant Messaging
+	<!-- Complete instant messaging implementation according to Matrix Client-Server API v1.15 specification. Added PUT /rooms/{roomId}/send/{eventType}/{txnId} endpoint for sending messages with full validation for all message types (m.text, m.image, m.file, m.audio, m.video, m.location, etc.), PUT /rooms/{roomId}/state/{eventType}/{stateKey} endpoint for state events (m.room.name, m.room.topic, m.room.avatar, m.room.pinned_events), comprehensive content validation, HTML formatting support, and Matrix-compliant error handling. Project compiles successfully. -->
+- [ ] Implement VoIP/TURN Server
+	<!-- GET /voip/turnServer endpoint for WebRTC TURN server credentials. Enhanced with comprehensive VoIP event validation for m.call.invite, m.call.candidates, m.call.answer, m.call.select_answer, m.call.negotiate, m.call.sdp_stream_metadata_changed, and m.call.hangup events in the send message endpoint according to Matrix Client-Server API v1.15 specification. Project compiles successfully. -->
+- [ ] Implement User Mentions
+	<!-- Support for m.mentions in room messages for user and room mentions implemented with proper validation. Project compiles successfully. -->
+- [ ] Implement Room Upgrades
+	<!-- POST /rooms/{roomId}/upgrade endpoint for upgrading rooms to new room versions. -->
+- [ ] Implement Moderation Policy Lists
+	<!-- Support for m.policy.rule.* events and related endpoints for moderation policies implemented via enhanced send endpoint validation. Project compiles successfully. -->
+- [ ] Implement Event Annotations/Reactions
+	<!-- Support for m.annotation relation type for reactions to messages implemented via enhanced send endpoint with m.reaction event type support. Project compiles successfully. -->
+- [ ] Implement Event Replacements
+	<!-- Support for m.replace relation type for editing messages implemented via enhanced send endpoint validation. Project compiles successfully. -->
+- [ ] Implement Threading
+	<!-- Support for m.thread relation type for threaded conversations implemented via enhanced send endpoint validation. Project compiles successfully. -->
+- [ ] Implement Sticker Messages
+	<!-- Support for m.sticker message type for sending stickers implemented via enhanced send endpoint. Project compiles successfully. -->
+- [ ] Implement Third-party Networks
+	<!-- GET /thirdparty/protocols, GET /thirdparty/protocol/{protocol}, GET /thirdparty/user/{protocol}, GET /thirdparty/location/{protocol}, GET /thirdparty/location endpoints implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
+- [ ] Implement Server Notices
+	<!-- Server notices functionality implemented according to Matrix Client-Server API v1.15 specification. Added M_CANNOT_LEAVE_SERVER_NOTICE_ROOM error handling for room leave operations, support for m.server_notice message type, and server notice room tagging. Project compiles successfully. -->
+- [ ] Implement Secrets
+	<!-- Secrets functionality implemented according to Matrix Client-Server API v1.15 specification. Added PUT /sendToDevice/{eventType}/{txnId} endpoint for secret sharing between devices, support for encrypted secret storage in account data, and m.secret.request/m.secret.send event handling. Project compiles successfully. -->
+- [ ] Implement Read Markers
+	<!-- POST /rooms/{roomId}/read_markers endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
+- [ ] Implement Event Relations
+	<!-- GET /rooms/{roomId}/relations/{eventId} and GET /rooms/{roomId}/relations/{eventId}/{relType} endpoints implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, pagination, and error handling. Project compiles successfully. -->
+- [ ] Implement Event Redaction
+	<!-- PUT /rooms/{roomId}/redact/{eventId}/{txnId} endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
+- [ ] Implement Search
+	<!-- POST /search endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->
 ## Remaining Modules to Implement
 - [x] Implement Receipts
 	<!-- POST /rooms/{roomId}/receipt/{receiptType}/{eventId} endpoint implemented according to Matrix Client-Server API v1.15 specification with proper authentication, validation, and error handling. Project compiles successfully. -->

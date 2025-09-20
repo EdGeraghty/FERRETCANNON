@@ -58,6 +58,15 @@ object AuthUtils {
     }
 
     /**
+     * Generate a media ID for content repository
+     */
+    fun generateMediaId(): String {
+        val bytes = ByteArray(24)
+        random.nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    /**
      * Extract device information from user agent string
      */
     fun parseUserAgent(userAgent: String?): DeviceInfo {

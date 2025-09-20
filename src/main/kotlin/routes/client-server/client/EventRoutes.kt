@@ -10,7 +10,6 @@ import io.ktor.server.auth.jwt.*
 import io.ktor.util.*
 import io.ktor.server.plugins.*
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.request.*
 import io.ktor.http.content.*
 import io.ktor.http.content.PartData
 import models.Events
@@ -20,6 +19,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import kotlinx.serialization.json.*
+import kotlinx.serialization.Serializable
 import utils.users
 import utils.accessTokens
 import routes.server_server.federation.v1.broadcastEDU
@@ -41,7 +41,103 @@ import config.ServerConfig
 import utils.MatrixPagination
 import routes.client_server.client.MATRIX_USER_ID_KEY
 
+// Data classes for messages endpoint response
+@Serializable
+data class EventResponse(
+    val event_id: String,
+    val type: String,
+    val sender: String,
+    val origin_server_ts: Long,
+    val content: String,
+    val room_id: String
+)
+
+@Serializable
+data class MessagesResponse(
+    val chunk: List<EventResponse>,
+    val start: String,
+    val end: String
+)
+
 fun Route.eventRoutes(_config: ServerConfig) {
+    // GET /rooms/{roomId}/messages - Get room messages/events
+    get("/rooms/{roomId}/messages") {
+        try {
+            val userId = call.validateAccessToken() ?: run {
+                call.respondText("""{"errcode": "M_MISSING_TOKEN", "error": "Missing access token"}""", ContentType.Application.Json, HttpStatusCode.Unauthorized)
+                return@get
+            }
+            val roomId = call.parameters["roomId"] ?: run {
+                call.respondText("""{"errcode": "M_INVALID_PARAM", "error": "Missing roomId parameter"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
+                return@get
+            }
+
+            // Check if user is joined to the room - simplified to avoid JSON parsing
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    // Simple string check instead of JSON parsing
+                    val content = row[Events.content]
+                    if (content.contains("\"membership\":\"join\"")) "join" else null
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respondText("""{"errcode": "M_FORBIDDEN", "error": "User is not joined to this room"}""", ContentType.Application.Json, HttpStatusCode.Forbidden)
+                return@get
+            }
+
+            // Get events - simplified for debugging
+            val events = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(10)
+                    .map { row ->
+                        EventResponse(
+                            event_id = row[Events.eventId],
+                            type = row[Events.type],
+                            sender = row[Events.sender],
+                            origin_server_ts = row[Events.originServerTs],
+                            content = row[Events.content],
+                            room_id = row[Events.roomId]
+                        )
+                    }
+            }
+
+            // Build JSON response manually to avoid serialization issues
+            val chunkJson = events.joinToString(",") { event ->
+                """
+                {
+                    "event_id": "${event.event_id.replace("\"", "\\\"")}",
+                    "type": "${event.type.replace("\"", "\\\"")}",
+                    "sender": "${event.sender.replace("\"", "\\\"")}",
+                    "origin_server_ts": ${event.origin_server_ts},
+                    "content": ${event.content},
+                    "room_id": "${event.room_id.replace("\"", "\\\"")}"
+                }
+                """.trimIndent()
+            }
+
+            val jsonResponse = """
+            {
+                "chunk": [$chunkJson],
+                "start": "",
+                "end": ""
+            }
+            """.trimIndent()
+
+            // Use respondBytes to bypass content negotiation entirely
+            call.respondBytes(jsonResponse.toByteArray(), ContentType.Application.Json, HttpStatusCode.OK)
+
+        } catch (e: Exception) {
+            // Simplified error response
+            call.respondText("""{"errcode": "M_UNKNOWN", "error": "Internal server error"}""", ContentType.Application.Json, HttpStatusCode.InternalServerError)
+        }
+    }
+
     // GET /rooms/{roomId}/context/{eventId} - Get event context
     get("/rooms/{roomId}/context/{eventId}") {
         try {

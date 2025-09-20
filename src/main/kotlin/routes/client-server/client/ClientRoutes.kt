@@ -70,17 +70,17 @@ suspend fun ApplicationCall.validateAccessToken(): String? {
 
     return when {
         noToken == true -> {
-            respond(HttpStatusCode.Unauthorized, mapOf(
-                "errcode" to "M_MISSING_TOKEN",
-                "error" to "Missing access token"
-            ))
+            respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_MISSING_TOKEN")
+                put("error", "Missing access token")
+            })
             null
         }
         invalidToken != null -> {
-            respond(HttpStatusCode.Unauthorized, mapOf(
-                "errcode" to "M_UNKNOWN_TOKEN",
-                "error" to "Unrecognised access token"
-            ))
+            respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNKNOWN_TOKEN")
+                put("error", "Unrecognised access token")
+            })
             null
         }
         accessToken != null -> {
@@ -88,10 +88,10 @@ suspend fun ApplicationCall.validateAccessToken(): String? {
             attributes.getOrNull(MATRIX_USER_ID_KEY)
         }
         else -> {
-            respond(HttpStatusCode.Unauthorized, mapOf(
-                "errcode" to "M_MISSING_TOKEN",
-                "error" to "Missing access token"
-            ))
+            respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_MISSING_TOKEN")
+                put("error", "Missing access token")
+            })
             null
         }
     }
@@ -113,10 +113,10 @@ fun Application.clientRoutes(config: ServerConfig) {
     intercept(ApplicationCallPipeline.Call) {
         val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
         if (contentLength != null && contentLength > config.server.maxRequestSize) {
-            call.respond(HttpStatusCode.BadRequest, mapOf(
-                "errcode" to "M_TOO_LARGE",
-                "error" to "Request too large"
-            ))
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_TOO_LARGE")
+                put("error", "Request too large")
+            })
             finish()
         }
     }
@@ -253,7 +253,6 @@ fun Application.clientRoutes(config: ServerConfig) {
                     deviceRoutes(config)
                     roomRoutes(config)
                     eventRoutes(config)
-                    contentRoutes(config)
                     pushRoutes(config)
                     adminRoutes(config)
                     thirdPartyRoutes(config)
@@ -278,19 +277,26 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 // Return dehydrated device information
                                 // In a real implementation, this would return information about dehydrated devices
                                 // For now, return a 404 indicating no dehydrated device
-                                call.respond(HttpStatusCode.NotFound, mapOf(
-                                    "errcode" to "M_NOT_FOUND",
-                                    "error" to "No dehydrated device found"
-                                ))
+                                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                                    put("errcode", "M_NOT_FOUND")
+                                    put("error", "No dehydrated device found")
+                                })
 
                             } catch (e: Exception) {
-                                call.respond(HttpStatusCode.InternalServerError, mapOf(
-                                    "errcode" to "M_UNKNOWN",
-                                    "error" to "Internal server error"
-                                ))
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Internal server error")
+                                })
                             }
                         }
                     }
+                }
+            }
+
+            // Content Repository endpoints under /_matrix/media/v3/
+            route("/media") {
+                route("/v3") {
+                    contentRoutes(config)
                 }
             }
         }

@@ -2,119 +2,80 @@
 
 An LLM-only Kotlin/KTor implementation of a Matrix Server supporting the Matrix specification v1.15 (#YOLO!)
 
-## Features
+## Current Implementation Status
 
-### Implemented Matrix Server-Server API Endpoints (v1.15)
+**⚠️ IMPORTANT**: This document reflects the **actual tested status** of the server. Many endpoints listed as "implemented" in the codebase are either missing, incomplete, or return errors. Only endpoints that have been verified to work correctly are marked as ✅.
 
-#### Core Federation
+### ✅ **WORKING ENDPOINTS** (Verified via Testing)
 
-- ✅ GET /_matrix/federation/v1/version - Server version information
-- ✅ PUT /_matrix/federation/v1/send/{txnId} - Transaction processing for PDUs and EDUs
-- ✅ GET /_matrix/federation/v1/event/{eventId} - Event retrieval
-- ✅ GET /_matrix/federation/v1/state/{roomId} - Room state retrieval
-- ✅ GET /_matrix/federation/v1/state_ids/{roomId} - Room state IDs retrieval
-- ✅ GET /_matrix/federation/v1/backfill/{roomId} - Historical event backfilling
-- ✅ POST /_matrix/federation/v1/get_missing_events/{roomId} - Missing event retrieval
+#### **Authentication & Registration**
+- ✅ `GET /_matrix/client/v3/login` - Returns supported login flows ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3login))
+- ✅ `POST /_matrix/client/v3/login` - User authentication ([spec](https://spec.matrix.org/v1.15/client-server-api/#post_matrixclientv3login))
+- ✅ `GET /_matrix/client/v3/register` - Returns supported registration flows ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3register))
+- ✅ `POST /_matrix/client/v3/register` - User registration ([spec](https://spec.matrix.org/v1.15/client-server-api/#post_matrixclientv3register))
+- ✅ `GET /_matrix/client/v3/register/available` - Username availability checking ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3registeravailable))
 
-#### Room Operations
+#### **User Management**
+- ✅ `GET /_matrix/client/v3/devices` - List user devices ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3devices))
+- ✅ `GET /_matrix/client/v3/profile/{userId}` - Get user profile ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3profileuserid))
+- ❌ `PUT /_matrix/client/v3/profile/{userId}/displayname` - Set display name (500 Internal Server Error)
 
-- ✅ GET /_matrix/federation/v1/make_join/{roomId}/{userId} - Join room preparation
-- ✅ PUT /_matrix/federation/v1/send_join/{roomId}/{eventId} - Join room completion
-- ✅ GET /_matrix/federation/v1/make_knock/{roomId}/{userId} - Knock on room preparation
-- ✅ PUT /_matrix/federation/v1/send_knock/{roomId}/{eventId} - Knock on room completion
-- ✅ PUT /_matrix/federation/v1/invite/{roomId}/{eventId} - Room invitations
-- ✅ GET /_matrix/federation/v1/make_leave/{roomId}/{userId} - Leave room preparation
-- ✅ PUT /_matrix/federation/v1/send_leave/{roomId}/{eventId} - Leave room completion
+#### **Room Operations**
+- ✅ `POST /_matrix/client/v3/createRoom` - Create new room ([spec](https://spec.matrix.org/v1.15/client-server-api/#post_matrixclientv3createroom))
+- ✅ `PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}` - Send messages/events ([spec](https://spec.matrix.org/v1.15/client-server-api/#put_matrixclientv3roomsroomidsendeventtypetxnid))
+- ✅ `GET /_matrix/client/v3/sync` - Client synchronization ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3sync))
 
-#### Third-Party Invites
+#### **Push Notifications**
+- ✅ `GET /_matrix/client/v3/pushrules/` - Get push rules ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3pushrules))
 
-- ✅ PUT /_matrix/federation/v1/3pid/onbind - Third-party identifier binding
-- ✅ PUT /_matrix/federation/v1/exchange_third_party_invite/{roomId} - Third-party invite exchange
+#### **Server Administration**
+- ✅ `GET /_matrix/client/v3/server_version` - Server version information ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3adminserver_version))
 
-#### Published Room Directory
+#### **Capabilities**
+- ✅ `GET /_matrix/client/v3/capabilities` - Server capabilities ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3capabilities))
 
-- ✅ GET /_matrix/federation/v1/publicRooms - List published rooms
-- ✅ POST /_matrix/federation/v1/publicRooms - Publish/unpublish rooms
+#### **Federation**
+- ✅ `GET /_matrix/federation/v1/version` - Federation version info ([spec](https://spec.matrix.org/v1.15/server-server-api/#get_matrixfederationv1version))
 
-#### Spaces
+#### **Well-Known**
+- ✅ `GET /.well-known/matrix/client` - Client discovery ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_well-knownmatrixclient))
+- ✅ `GET /.well-known/matrix/server` - Server discovery ([spec](https://spec.matrix.org/v1.15/server-server-api/#get_well-knownmatrixserver))
 
-- ✅ GET /_matrix/federation/v1/hierarchy/{roomId} - Space hierarchy information
+### ❌ **MISSING/NON-WORKING ENDPOINTS** (Critical Gaps)
 
-#### Device Management
+#### **High Priority Missing Endpoints**
+- ❌ `GET /_matrix/client/v3/rooms/{roomId}/messages` - **CRITICAL**: Room message history ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidmessages)) - Returns 404
+- ❌ `GET /_matrix/client/v3/joined_rooms` - List joined rooms ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3joined_rooms)) - Returns 404
+- ❌ `GET /_matrix/client/v3/rooms/{roomId}/members` - Room membership ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixclientv3roomsroomidmembers)) - Returns 404
+- ❌ `POST /_matrix/client/v3/rooms/{roomId}/join` - Join room ([spec](https://spec.matrix.org/v1.15/client-server-api/#post_matrixclientv3roomsroomidjoin)) - Returns 404
+- ❌ `POST /_matrix/client/v3/rooms/{roomId}/leave` - Leave room ([spec](https://spec.matrix.org/v1.15/client-server-api/#post_matrixclientv3roomsroomidleave)) - Returns 404
 
-- ✅ GET /_matrix/federation/v1/user/devices/{userId} - User device information
-- ✅ POST /_matrix/federation/v1/user/keys/claim - Claim one-time keys
-- ✅ POST /_matrix/federation/v1/user/keys/query - Query device keys
+#### **Content Repository**
+- ❌ `POST /_matrix/media/v3/upload` - File upload ([spec](https://spec.matrix.org/v1.15/client-server-api/#post_matrixmediav3upload)) - Not tested (complex multipart)
+- ❌ `GET /_matrix/media/v3/download/{serverName}/{mediaId}` - File download ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixmediav3downloadservernamemediaid)) - Not tested
+- ❌ `GET /_matrix/media/v3/thumbnail/{serverName}/{mediaId}` - Thumbnail serving ([spec](https://spec.matrix.org/v1.15/client-server-api/#get_matrixmediav3thumbnailservernamemediaid)) - Not tested
 
-#### End-to-End Encryption
+#### **OAuth 2.0**
+- ❌ OAuth 2.0 endpoints - Not tested but likely missing
 
-- ✅ m.signing_key_update EDU - Cross-signing key updates
-- ✅ m.direct_to_device EDU - Send-to-device messaging
-- ✅ m.device_list_update EDU - Device list updates
+### 📊 **COMPLIANCE ASSESSMENT**
 
-#### Ephemeral Data Units (EDUs)
+**Current Compliance: ~40%**
 
-- ✅ m.typing - Typing notifications
-- ✅ m.presence - User presence updates
-- ✅ m.receipt - Read receipts
+- ✅ **Core Authentication**: 100% working
+- ✅ **Basic Room Operations**: 60% working (missing message history)
+- ✅ **Federation Basics**: 100% working
+- ✅ **Discovery**: 100% working
+- ❌ **Content Management**: 0% tested
+- ❌ **Advanced Features**: Mostly missing
 
-#### Content Repository
+### 🎯 **CRITICAL ISSUES TO ADDRESS**
 
-- ✅ GET /_matrix/federation/v1/media/download/{mediaId} - Media content download
-- ✅ GET /_matrix/federation/v1/media/thumbnail/{mediaId} - Media thumbnail generation
-
-#### Query Endpoints
-
-- ✅ GET /_matrix/federation/v1/query/directory - Room alias resolution
-- ✅ GET /_matrix/federation/v1/query/profile - User profile information
-
-### Implemented Matrix Client-Server API Endpoints (v1.15)
-
-#### Authentication
-
-- ✅ GET /_matrix/client/v3/login - Get available login flows
-- ✅ POST /_matrix/client/v3/login - User authentication
-- ✅ GET /_matrix/client/v3/login/fallback - Login fallback page
-
-#### Server Capabilities
-
-- ✅ GET /_matrix/client/v3/capabilities - Server capabilities and feature support
-
-#### Account Data
-
-- ✅ GET /_matrix/client/v3/user/{userId}/account_data/{type} - Get global account data
-- ✅ PUT /_matrix/client/v3/user/{userId}/account_data/{type} - Set global account data
-- ✅ GET /_matrix/client/v3/user/{userId}/rooms/{roomId}/account_data/{type} - Get room-specific account data
-- ✅ PUT /_matrix/client/v3/user/{userId}/rooms/{roomId}/account_data/{type} - Set room-specific account data
-
-#### Synchronization
-
-- ✅ GET /_matrix/client/v3/sync - Client synchronization with account data support
-
-#### Real-time Communication
-
-- ✅ PUT /_matrix/client/v3/rooms/{roomId}/typing/{userId} - Send typing notifications
-- ✅ WebSocket /ws/room/{roomId} - Real-time room communication
-
-#### Server Administration
-
-- ✅ GET /_matrix/client/v3/admin/server_version - Get server version information
-- ✅ POST /_matrix/client/v3/admin/whois/{userId} - Get information about a user
-- ✅ POST /_matrix/client/v3/admin/server_notice/{userId} - Send server notice to user
-- ✅ GET /_matrix/client/v3/admin/registration_tokens - List registration tokens
-- ✅ POST /_matrix/client/v3/admin/registration_tokens/new - Create registration token
-- ✅ DELETE /_matrix/client/v3/admin/registration_tokens/{token} - Delete registration token
-- ✅ POST /_matrix/client/v3/admin/deactivate/{userId} - Deactivate user account
-- ✅ GET /_matrix/client/v3/admin/rooms/{roomId} - Get room information
-- ✅ DELETE /_matrix/client/v3/admin/rooms/{roomId} - Delete room
-
-#### Content Repository (Client-Server)
-
-- ✅ POST /_matrix/media/v3/upload - Upload media content
-- ✅ GET /_matrix/media/v3/download/{serverName}/{mediaId} - Download media content
-- ✅ GET /_matrix/media/v3/thumbnail/{serverName}/{mediaId} - Get media thumbnail
-- ✅ GET /_matrix/media/v3/config - Get media repository configuration
-- ✅ GET /_matrix/media/v3/preview_url - Preview URL metadata
+1. **Priority 1**: Implement `GET /rooms/{roomId}/messages` - Essential for any Matrix client
+2. **Priority 2**: Fix profile update endpoints (500 errors)
+3. **Priority 3**: Implement room membership endpoints (join/leave/members)
+4. **Priority 4**: Add room listing endpoints (joined_rooms)
+5. **Priority 5**: Complete content repository implementation
 
 ## Getting Started
 
