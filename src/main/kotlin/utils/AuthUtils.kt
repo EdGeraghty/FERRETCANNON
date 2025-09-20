@@ -687,4 +687,46 @@ object AuthUtils {
             }
         }
     }
+
+    /**
+     * Get device keys for multiple users
+     * Returns Map<userId, Map<deviceId, deviceKeyData>>
+     */
+    fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, JsonElement>> {
+        return transaction {
+            val result = mutableMapOf<String, MutableMap<String, JsonElement>>()
+
+            Devices.select {
+                Devices.userId inList userIds
+            }.forEach { row ->
+                val userId = row[Devices.userId]
+                val deviceId = row[Devices.deviceId]
+                val ed25519Key = row[Devices.ed25519Key]
+                val curve25519Key = row[Devices.curve25519Key]
+                val ed25519KeyId = row[Devices.ed25519KeyId]
+                val curve25519KeyId = row[Devices.curve25519KeyId]
+
+                if (ed25519Key != null && curve25519Key != null && ed25519KeyId != null && curve25519KeyId != null) {
+                    val deviceKeyData = buildJsonObject {
+                        put("user_id", userId)
+                        put("device_id", deviceId)
+                        put("algorithms", JsonArray(listOf(JsonPrimitive("m.olm.v1.curve25519-aes-sha2"), JsonPrimitive("m.megolm.v1.aes-sha2"))))
+                        put("keys", buildJsonObject {
+                            put("curve25519:$curve25519KeyId", curve25519Key)
+                            put("ed25519:$ed25519KeyId", ed25519Key)
+                        })
+                        put("signatures", buildJsonObject {
+                            put(userId, buildJsonObject {
+                                put("ed25519:$ed25519KeyId", "signature_placeholder") // In real implementation, this would be signed
+                            })
+                        })
+                    }
+
+                    result.computeIfAbsent(userId) { mutableMapOf() }[deviceId] = deviceKeyData
+                }
+            }
+
+            result
+        }
+    }
 }
