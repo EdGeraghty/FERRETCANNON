@@ -129,29 +129,59 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 // Add caching headers for discovery
                 call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                val baseUrl = if (ServerNameResolver.getServerName().contains("localhost")) {
-                    "http://${ServerNameResolver.getServerName()}:${ServerNameResolver.getServerPort()}"
+                val serverName = ServerNameResolver.getServerName()
+                val baseUrl = if (serverName.contains("localhost")) {
+                    "http://${serverName}:${ServerNameResolver.getServerPort()}"
                 } else {
-                    "https://${ServerNameResolver.getServerName()}"
+                    "https://${serverName}"
                 }
 
-                call.respondText("""
-                    {
-                        "issuer": "$baseUrl",
-                        "authorization_endpoint": "$baseUrl/oauth2/authorize",
-                        "token_endpoint": "$baseUrl/oauth2/token",
-                        "revocation_endpoint": "$baseUrl/oauth2/revoke",
-                        "introspection_endpoint": "$baseUrl/oauth2/introspect",
-                        "userinfo_endpoint": "$baseUrl/oauth2/userinfo",
-                        "jwks_uri": "$baseUrl/oauth2/jwks",
-                        "response_types_supported": ["code"],
-                        "grant_types_supported": ["authorization_code", "refresh_token"],
-                        "code_challenge_methods_supported": ["S256"],
-                        "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
-                        "revocation_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
-                        "introspection_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"]
+                // OAuth 2.0 Authorization Server Metadata according to RFC 8414
+                val metadata = buildJsonObject {
+                    put("issuer", serverName)  // Server identifier, not full URL
+                    put("authorization_endpoint", "$baseUrl/oauth2/authorize")
+                    put("token_endpoint", "$baseUrl/oauth2/token")
+                    put("revocation_endpoint", "$baseUrl/oauth2/revoke")
+                    put("introspection_endpoint", "$baseUrl/oauth2/introspect")
+                    put("userinfo_endpoint", "$baseUrl/oauth2/userinfo")
+                    put("jwks_uri", "$baseUrl/oauth2/jwks")
+                    putJsonArray("response_types_supported") {
+                        add("code")
                     }
-                """.trimIndent(), ContentType.Application.Json)
+                    putJsonArray("grant_types_supported") {
+                        add("authorization_code")
+                        add("refresh_token")
+                    }
+                    putJsonArray("code_challenge_methods_supported") {
+                        add("S256")
+                    }
+                    putJsonArray("token_endpoint_auth_methods_supported") {
+                        add("client_secret_basic")
+                        add("client_secret_post")
+                    }
+                    putJsonArray("revocation_endpoint_auth_methods_supported") {
+                        add("client_secret_basic")
+                        add("client_secret_post")
+                    }
+                    putJsonArray("introspection_endpoint_auth_methods_supported") {
+                        add("client_secret_basic")
+                        add("client_secret_post")
+                    }
+                    putJsonArray("scopes_supported") {
+                        add("openid")
+                        add("profile")
+                    }
+                    putJsonArray("response_modes_supported") {
+                        add("query")
+                        add("fragment")
+                    }
+                    put("service_documentation", "$baseUrl/docs/oauth2")
+                    putJsonArray("ui_locales_supported") {
+                        add("en")
+                    }
+                }
+
+                call.respond(metadata)
             }
         }
     }
