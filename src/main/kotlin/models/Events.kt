@@ -227,3 +227,13 @@ object Filters : Table("filters") {
 
     override val primaryKey = PrimaryKey(filterId)
 }
+
+object ThirdPartyIdentifiers : Table("third_party_identifiers") {
+    val userId = varchar("user_id", 255)
+    val medium = varchar("medium", 50) // "email", "msisdn" (phone)
+    val address = varchar("address", 255) // email address or phone number
+    val validatedAt = long("validated_at").default(System.currentTimeMillis())
+    val addedAt = long("added_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId, medium, address)
+}
