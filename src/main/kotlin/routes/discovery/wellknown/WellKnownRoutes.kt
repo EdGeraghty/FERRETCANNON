@@ -53,7 +53,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Identity server API discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400")
 
-                    call.respond(emptyMap<String, Any>()) // Empty response for basic implementation
+                    call.respond(mapOf<String, Any>()) // Empty response for basic implementation
                 }
 
                 get("/identity/v2/terms") {

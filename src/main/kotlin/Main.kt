@@ -52,10 +52,13 @@ import config.ConfigLoader
 import config.ServerConfig
 import utils.ServerNameResolver
 import org.slf4j.LoggerFactory
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.*
 import kotlinx.serialization.modules.SerializersModule
-import kotlin.reflect.KClass
-import routes.client_server.client.UserIdPrincipal
+import kotlinx.serialization.modules.contextual
 import java.io.File
 
 // In-memory storage for EDUs
@@ -213,6 +216,7 @@ fun main() {
                     ignoreUnknownKeys = true
                     allowStructuredMapKeys = true
                     encodeDefaults = false
+                    coerceInputValues = true
                 })
             }
             logger.debug("✅ ContentNegotiation plugin installed")

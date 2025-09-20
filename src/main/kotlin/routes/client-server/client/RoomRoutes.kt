@@ -30,7 +30,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val txnId = call.parameters["txnId"]
 
             if (roomId == null || eventType == null || txnId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing required parameters"
                 ))
@@ -49,7 +49,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             if (currentMembership != "join") {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "User is not joined to this room"
                 ))
@@ -105,7 +105,7 @@ fun Route.roomRoutes(config: ServerConfig) {
 
             // Broadcast event
             runBlocking {
-                val eventJson = JsonObject(mapOf(
+                val eventJson = JsonObject(mutableMapOf(
                     "event_id" to JsonPrimitive(eventId),
                     "type" to JsonPrimitive(eventType),
                     "sender" to JsonPrimitive(userId),
@@ -116,12 +116,12 @@ fun Route.roomRoutes(config: ServerConfig) {
                 broadcastEDU(roomId, eventJson)
             }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "event_id" to eventId
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error: ${e.message}"
             ))
@@ -157,8 +157,8 @@ fun Route.roomRoutes(config: ServerConfig) {
                     it[Rooms.visibility] = visibility
                     it[Rooms.roomVersion] = "9"
                     it[Rooms.isDirect] = preset == "trusted_private_chat"
-                    it[Rooms.currentState] = "{}" // Initialize with empty JSON object
-                    it[Rooms.stateGroups] = "{}" // Initialize with empty JSON object
+                    it[Rooms.currentState] = Json.encodeToString(JsonObject.serializer(), JsonObject(mutableMapOf())) // Initialize with empty JSON object
+                    it[Rooms.stateGroups] = Json.encodeToString(JsonObject.serializer(), JsonObject(mutableMapOf())) // Initialize with empty JSON object
                 }
 
                 // Generate event IDs
@@ -169,7 +169,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                 val historyVisibilityEventId = "\$${currentTime}_history_visibility"
 
                 // Create m.room.create event
-                val createContent = JsonObject(mapOf(
+                val createContent = JsonObject(mutableMapOf(
                     "creator" to JsonPrimitive(userId),
                     "room_version" to JsonPrimitive("9"),
                     "predecessor" to JsonNull
@@ -191,7 +191,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
 
                 // Create m.room.member event for creator
-                val memberContent = JsonObject(mapOf(
+                val memberContent = JsonObject(mutableMapOf(
                     "membership" to JsonPrimitive("join"),
                     "displayname" to JsonPrimitive(userId.split(":")[0].substring(1)) // Extract localpart
                 ))
@@ -212,10 +212,10 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
 
                 // Create m.room.power_levels event
-                val powerLevelsContent = JsonObject(mapOf(
-                    "users" to JsonObject(mapOf(userId to JsonPrimitive(100))),
+                val powerLevelsContent = JsonObject(mutableMapOf(
+                    "users" to JsonObject(mutableMapOf(userId to JsonPrimitive(100))),
                     "users_default" to JsonPrimitive(0),
-                    "events" to JsonObject(emptyMap()),
+                    "events" to JsonObject(mutableMapOf<String, JsonElement>()),
                     "events_default" to JsonPrimitive(0),
                     "state_default" to JsonPrimitive(50),
                     "ban" to JsonPrimitive(50),
@@ -244,7 +244,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                     "public_chat" -> "public"
                     else -> "invite"
                 }
-                val joinRulesContent = JsonObject(mapOf(
+                val joinRulesContent = JsonObject(mutableMapOf(
                     "join_rule" to JsonPrimitive(joinRule)
                 ))
 
@@ -264,7 +264,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
 
                 // Create m.room.history_visibility event
-                val historyVisibilityContent = JsonObject(mapOf(
+                val historyVisibilityContent = JsonObject(mutableMapOf(
                     "history_visibility" to JsonPrimitive("shared")
                 ))
 
@@ -296,13 +296,13 @@ fun Route.roomRoutes(config: ServerConfig) {
 
             // Broadcast room creation events
             runBlocking {
-                val createEvent = JsonObject(mapOf(
+                val createEvent = JsonObject(mutableMapOf(
                     "event_id" to JsonPrimitive("\$${currentTime}_create"),
                     "type" to JsonPrimitive("m.room.create"),
                     "sender" to JsonPrimitive(userId),
                     "room_id" to JsonPrimitive(roomId),
                     "origin_server_ts" to JsonPrimitive(currentTime),
-                    "content" to JsonObject(mapOf(
+                    "content" to JsonObject(mutableMapOf(
                         "creator" to JsonPrimitive(userId),
                         "room_version" to JsonPrimitive("9")
                     )),
@@ -310,13 +310,13 @@ fun Route.roomRoutes(config: ServerConfig) {
                 ))
                 broadcastEDU(roomId, createEvent)
 
-                val memberEvent = JsonObject(mapOf(
+                val memberEvent = JsonObject(mutableMapOf(
                     "event_id" to JsonPrimitive("\$${currentTime}_member"),
                     "type" to JsonPrimitive("m.room.member"),
                     "sender" to JsonPrimitive(userId),
                     "room_id" to JsonPrimitive(roomId),
                     "origin_server_ts" to JsonPrimitive(currentTime),
-                    "content" to JsonObject(mapOf(
+                    "content" to JsonObject(mutableMapOf(
                         "membership" to JsonPrimitive("join"),
                         "displayname" to JsonPrimitive(userId.split(":")[0].substring(1))
                     )),
@@ -325,12 +325,12 @@ fun Route.roomRoutes(config: ServerConfig) {
                 broadcastEDU(roomId, memberEvent)
             }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "room_id" to roomId
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error: ${e.message}"
             ))
@@ -344,7 +344,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val roomId = call.parameters["roomId"]
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId parameter"
                 ))
@@ -357,7 +357,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Room not found"
                 ))
@@ -376,7 +376,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             if (currentMembership == "join") {
-                call.respond(mapOf(
+                call.respond(mutableMapOf(
                     "room_id" to roomId
                 ))
                 return@post
@@ -428,7 +428,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val memberEventId = "\$${currentTime}_join_${userId.hashCode()}"
 
             // Create member event content
-            val memberContent = JsonObject(mapOf(
+            val memberContent = JsonObject(mutableMapOf(
                 "membership" to JsonPrimitive("join"),
                 "displayname" to JsonPrimitive(userId.split(":")[0].substring(1))
             ))
@@ -453,7 +453,7 @@ fun Route.roomRoutes(config: ServerConfig) {
 
             // Broadcast join event
             runBlocking {
-                val joinEvent = JsonObject(mapOf(
+                val joinEvent = JsonObject(mutableMapOf(
                     "event_id" to JsonPrimitive(memberEventId),
                     "type" to JsonPrimitive("m.room.member"),
                     "sender" to JsonPrimitive(userId),
@@ -465,12 +465,12 @@ fun Route.roomRoutes(config: ServerConfig) {
                 broadcastEDU(roomId, joinEvent)
             }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "room_id" to roomId
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error: ${e.message}"
             ))
@@ -484,7 +484,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val roomId = call.parameters["roomId"]
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId parameter"
                 ))
@@ -497,7 +497,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Room not found"
                 ))
@@ -516,7 +516,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             if (currentMembership != "join") {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_NOT_MEMBER",
                     "error" to "User is not joined to this room"
                 ))
@@ -569,7 +569,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val leaveEventId = "\$${currentTime}_leave_${userId.hashCode()}"
 
             // Create leave event content
-            val leaveContent = JsonObject(mapOf(
+            val leaveContent = JsonObject(mutableMapOf(
                 "membership" to JsonPrimitive("leave")
             ))
 
@@ -593,7 +593,7 @@ fun Route.roomRoutes(config: ServerConfig) {
 
             // Broadcast leave event
             runBlocking {
-                val leaveEvent = JsonObject(mapOf(
+                val leaveEvent = JsonObject(mutableMapOf(
                     "event_id" to JsonPrimitive(leaveEventId),
                     "type" to JsonPrimitive("m.room.member"),
                     "sender" to JsonPrimitive(userId),
@@ -605,10 +605,10 @@ fun Route.roomRoutes(config: ServerConfig) {
                 broadcastEDU(roomId, leaveEvent)
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error: ${e.message}"
             ))
@@ -622,7 +622,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val roomId = call.parameters["roomId"]
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId parameter"
                 ))
@@ -638,7 +638,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             call.respond(stateEvents)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -652,7 +652,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val roomId = call.parameters["roomId"]
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId parameter"
                 ))
@@ -671,7 +671,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             if (currentMembership != "join") {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "User is not joined to this room"
                 ))
@@ -706,7 +706,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
 
                 query.map { row ->
-                    mapOf(
+                    mutableMapOf(
                         "event_id" to row[Events.eventId],
                         "type" to row[Events.type],
                         "sender" to row[Events.sender],
@@ -718,12 +718,12 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
             }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "chunk" to members
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))

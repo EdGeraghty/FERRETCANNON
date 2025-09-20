@@ -111,7 +111,7 @@ fun extractServerNameFromAuth(authHeader: String): String? {
 }
 
 fun getAuthState(event: JsonObject, _roomId: String): Map<String, JsonObject> {
-    val authEvents = event["auth_events"]?.jsonArray ?: return emptyMap()
+    val authEvents = event["auth_events"]?.jsonArray ?: return mutableMapOf()
     val state = mutableMapOf<String, JsonObject>()
     transaction {
         for (authEventId in authEvents) {

@@ -10,7 +10,8 @@ import io.ktor.server.request.*
 import kotlinx.serialization.json.*
 import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPublicKey
-import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
+import net.i2p.crypto.eddsa.EdDSAPrivateKey
+import java.security.spec.X509EncodedKeySpec
 import java.security.MessageDigest
 import java.security.Signature
 import java.util.*
@@ -123,7 +124,7 @@ object MatrixAuth {
             } catch (e: IllegalArgumentException) {
                 Base64.getDecoder().decode(keyBase64)
             }
-            val spec = EdDSAPublicKeySpec(keyBytes, null)
+            val spec = X509EncodedKeySpec(keyBytes)
             EdDSAPublicKey(spec)
         } catch (e: Exception) {
             println("Error fetching public key from $serverName: ${e.message}")
@@ -214,7 +215,10 @@ object MatrixAuth {
     fun canonicalizeJson(data: Any): String {
         return when (data) {
             is Map<*, *> -> {
-                val sortedMap = (data as? Map<String, Any>)?.toSortedMap(compareBy { it }) ?: throw IllegalArgumentException("Invalid map type")
+                val stringKeyMap = data.entries.associate { (key, value) ->
+                    key.toString() to value
+                }
+                val sortedMap = stringKeyMap.toSortedMap(compareBy { it })
                 val jsonString = buildString {
                     append("{")
                     sortedMap.entries.forEachIndexed { index, (key, value) ->
@@ -273,13 +277,13 @@ object MatrixAuth {
         val contentHash = computeContentHash(event)
 
         val eventWithHashes = event.toMutableMap()
-        eventWithHashes["hashes"] = JsonObject(mapOf("sha256" to JsonPrimitive(contentHash)))
-        eventWithHashes["signatures"] = JsonObject(mapOf(serverName to JsonObject(mapOf(ServerKeys.getKeyId() to JsonPrimitive("")))))
+        eventWithHashes["hashes"] = JsonObject(mutableMapOf("sha256" to JsonPrimitive(contentHash)))
+        eventWithHashes["signatures"] = JsonObject(mutableMapOf(serverName to JsonObject(mutableMapOf(ServerKeys.getKeyId() to JsonPrimitive("")))))
 
         val canonicalJson = canonicalizeJson(eventWithHashes)
         val signature = ServerKeys.sign(canonicalJson.toByteArray(Charsets.UTF_8))
 
-        val signatures = JsonObject(mapOf(serverName to JsonObject(mapOf(ServerKeys.getKeyId() to JsonPrimitive(signature)))))
+        val signatures = JsonObject(mutableMapOf(serverName to JsonObject(mutableMapOf(ServerKeys.getKeyId() to JsonPrimitive(signature)))))
         eventWithHashes["signatures"] = signatures
 
         return JsonObject(eventWithHashes)

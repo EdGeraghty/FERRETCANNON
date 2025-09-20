@@ -39,16 +39,16 @@ fun Application.keyV2Routes() {
                         logger.trace("Server key response: server_name=$serverName, valid_until_ts=$validUntilTs")
 
                         // Create response manually to avoid serialization issues
-                        val responseJson = kotlinx.serialization.json.JsonObject(mapOf(
+                        val responseJson = kotlinx.serialization.json.JsonObject(mutableMapOf(
                             "server_name" to kotlinx.serialization.json.JsonPrimitive(serverName),
-                            "signatures" to kotlinx.serialization.json.JsonObject(mapOf(
-                                serverName to kotlinx.serialization.json.JsonObject(mapOf(
+                            "signatures" to kotlinx.serialization.json.JsonObject(mutableMapOf(
+                                serverName to kotlinx.serialization.json.JsonObject(mutableMapOf(
                                     keyId to kotlinx.serialization.json.JsonPrimitive(ServerKeys.sign("$serverName valid_until_ts:$validUntilTs".toByteArray()))
                                 ))
                             )),
                             "valid_until_ts" to kotlinx.serialization.json.JsonPrimitive(validUntilTs),
-                            "verify_keys" to kotlinx.serialization.json.JsonObject(mapOf(
-                                keyId to kotlinx.serialization.json.JsonObject(mapOf(
+                            "verify_keys" to kotlinx.serialization.json.JsonObject(mutableMapOf(
+                                keyId to kotlinx.serialization.json.JsonObject(mutableMapOf(
                                     "key" to kotlinx.serialization.json.JsonPrimitive(publicKeyBase64)
                                 ))
                             ))
@@ -66,7 +66,7 @@ fun Application.keyV2Routes() {
                             val body = call.receiveText()
                             logger.debug("Key query request body length: ${body.length}")
                             val requestBody = Json.parseToJsonElement(body).jsonObject
-                            val serverKeys = requestBody["server_keys"]?.jsonObject ?: JsonObject(emptyMap())
+                            val serverKeys = requestBody["server_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
 
                             val response = mutableMapOf<String, Any>()
 
@@ -75,7 +75,7 @@ fun Application.keyV2Routes() {
                             for (serverName in serverKeys.keys) {
                                 logger.debug("Processing key query for server: $serverName")
                                 val requestedKeysJson = serverKeys[serverName]
-                                val globalServerKeys = utils.serverKeys[serverName] ?: emptyMap<String, Map<String, Any?>>()
+                                val globalServerKeys = utils.serverKeys[serverName] ?: mapOf<String, Map<String, Any?>>()
                                 val serverKeyData = mutableMapOf<String, Map<String, Any?>>()
 
                                 if (requestedKeysJson is JsonNull) {
@@ -189,7 +189,7 @@ suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<S
         keyData["server_name"] = serverNameResponse
         keyData["verify_keys"] = verifyKeys
         keyData["valid_until_ts"] = validUntilTs
-        keyData["signatures"] = data["signatures"]?.jsonObject ?: emptyMap<String, Any>()
+        keyData["signatures"] = data["signatures"]?.jsonObject ?: mapOf<String, Any>()
 
         logger.debug("Successfully parsed server keys for $serverName")
         keyData

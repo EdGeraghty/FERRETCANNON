@@ -131,7 +131,7 @@ fun processPDU(pdu: JsonElement): JsonElement? {
             val type = event["type"]?.jsonPrimitive?.content ?: ""
             val stateKey = event["state_key"]?.jsonPrimitive?.content ?: ""
             val key = "$type:$stateKey"
-            newState[key] = event["content"]?.jsonObject ?: JsonObject(emptyMap())
+            newState[key] = event["content"]?.jsonObject ?: JsonObject(mutableMapOf())
             stateResolver.updateResolvedState(roomId, newState)
         }
 

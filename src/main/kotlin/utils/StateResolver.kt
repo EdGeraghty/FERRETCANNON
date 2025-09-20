@@ -18,7 +18,7 @@ class StateResolver {
      * Resolve the current state of a room from a set of events
      */
     fun resolveState(_roomId: String, events: List<JsonObject>): Map<String, JsonObject> {
-        if (events.isEmpty()) return emptyMap()
+        if (events.isEmpty()) return mutableMapOf()
 
         // Group events by state key
         val stateEvents = events.filter { it["state_key"] != null }
@@ -249,9 +249,16 @@ class StateResolver {
         return transaction {
             val row = Rooms.select { Rooms.roomId eq _roomId }.singleOrNull()
             if (row != null) {
-                Json.decodeFromString(row[Rooms.currentState])
+                try {
+                    val decodedState = Json.decodeFromString<Map<String, JsonObject>>(row[Rooms.currentState])
+                    // Ensure we return a mutable map to avoid EmptyMap serialization issues
+                    decodedState.toMutableMap()
+                } catch (e: Exception) {
+                    // If decoding fails due to EmptyMap or other issues, return empty mutable map
+                    mutableMapOf()
+                }
             } else {
-                emptyMap()
+                mutableMapOf()
             }
         }
     }

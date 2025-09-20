@@ -123,7 +123,7 @@ fun Route.federationV1ThirdParty() {
                         putJsonObject("signed") {
                             put("mxid", "@$address:$medium")
                             put("token", "placeholder_token")
-                            put("signatures", JsonObject(emptyMap()))
+                            put("signatures", JsonObject(mutableMapOf()))
                         }
                     }
                 }

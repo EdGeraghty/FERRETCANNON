@@ -88,16 +88,16 @@ object SyncManager {
         val accountData = getAccountData(userId, since)
 
         // Get device lists (simplified)
-        val deviceLists = mapOf(
+        val deviceLists = mutableMapOf(
             "changed" to emptyList<String>(),
             "left" to emptyList<String>()
         )
 
         // Get device one-time keys count (simplified)
-        val deviceOneTimeKeysCount = emptyMap<String, Int>()
+        val deviceOneTimeKeysCount = mapOf<String, Int>()
 
         // Get to-device messages (simplified)
-        val toDevice = mapOf("events" to emptyList<JsonElement>())
+        val toDevice = mutableMapOf("events" to emptyList<JsonElement>())
 
         // Generate next batch token
         val nextBatchToken = MatrixPagination.createSyncToken(
@@ -209,7 +209,7 @@ object SyncManager {
         }
 
         // Get ephemeral events (typing notifications)
-        val typingUsers = typingMap[roomId] ?: emptyMap()
+        val typingUsers = typingMap[roomId] ?: mutableMapOf()
         if (typingUsers.isNotEmpty()) {
             ephemeral.add(buildJsonObject {
                 put("type", "m.typing")

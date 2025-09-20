@@ -320,7 +320,7 @@ object AuthUtils {
             val userRow = Users.select { Users.userId eq userId }.singleOrNull()
                 ?: return@transaction null
 
-            mapOf(
+            mutableMapOf(
                 "user_id" to userRow[Users.userId],
                 "username" to userRow[Users.username],
                 "displayname" to userRow[Users.displayName],
@@ -359,7 +359,7 @@ object AuthUtils {
         return transaction {
             Devices.select { Devices.userId eq userId }
                 .map { deviceRow ->
-                    mapOf(
+                    mutableMapOf(
                         "device_id" to deviceRow[Devices.deviceId],
                         "display_name" to deviceRow[Devices.displayName],
                         "last_seen_ts" to deviceRow[Devices.lastSeen],
@@ -384,7 +384,7 @@ object AuthUtils {
                 (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
             }.singleOrNull() ?: return@transaction null
 
-            mapOf(
+            mutableMapOf(
                 "device_id" to deviceRow[Devices.deviceId],
                 "display_name" to deviceRow[Devices.displayName],
                 "last_seen_ts" to deviceRow[Devices.lastSeen],
@@ -599,7 +599,7 @@ object AuthUtils {
     fun getAllUsers(): List<Map<String, Any?>> {
         return transaction {
             Users.selectAll().map { userRow ->
-                mapOf(
+                mutableMapOf(
                     "user_id" to userRow[Users.userId],
                     "username" to userRow[Users.username],
                     "display_name" to userRow[Users.displayName],

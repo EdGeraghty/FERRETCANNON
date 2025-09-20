@@ -7,35 +7,9 @@ Write-Host ""
 # Server URL
 $SERVER_URL = "http://localhost:8080"
 
-Write-Host "1. Registering a test user..." -ForegroundColor Yellow
-$REGISTER_BODY = @{
-    auth = @{
-        type = "m.login.password"
-    }
-    username = "testuser_capabilities"
-    password = "TestPassword123!"
-    device_id = "capabilities_test_device"
-} | ConvertTo-Json
-
-try {
-    $REGISTER_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/register" -Method POST -Body $REGISTER_BODY -ContentType "application/json"
-    Write-Host "Registration response:" -ForegroundColor Cyan
-    $REGISTER_RESPONSE | ConvertTo-Json
-    Write-Host ""
-} catch {
-    Write-Host "Registration failed:" -ForegroundColor Red
-    $_.Exception.Message
-    exit 1
-}
-
-# Extract access token and user ID
-$ACCESS_TOKEN = $REGISTER_RESPONSE.access_token
-$USER_ID = $REGISTER_RESPONSE.user_id
-
-if (-not $ACCESS_TOKEN) {
-    Write-Host "Failed to register user or get access token" -ForegroundColor Red
-    exit 1
-}
+Write-Host "1. Testing capabilities endpoint with existing test user..." -ForegroundColor Yellow
+$ACCESS_TOKEN = "FucJYFOn1oPU-Z4lDcAbCnw50ONFGEjN7KH2oz78oPs"
+$USER_ID = "@testuser:localhost"
 
 Write-Host "2. Testing capabilities endpoint..." -ForegroundColor Yellow
 try {

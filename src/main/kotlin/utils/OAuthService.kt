@@ -57,7 +57,7 @@ object OAuthService {
     /**
      * Build authorization URL for OAuth provider
      */
-    fun buildAuthorizationUrl(provider: OAuthProvider, state: String, additionalParams: Map<String, String> = emptyMap()): String {
+    fun buildAuthorizationUrl(provider: OAuthProvider, state: String, additionalParams: Map<String, String> = mutableMapOf()): String {
         val params = mutableMapOf(
             "client_id" to provider.clientId,
             "redirect_uri" to provider.redirectUri,

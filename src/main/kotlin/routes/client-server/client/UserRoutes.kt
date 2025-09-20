@@ -183,7 +183,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                 }
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /profile/{userId}/displayname: ${e.message}")
@@ -264,7 +264,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                 }
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /profile/{userId}/avatar_url: ${e.message}")

@@ -938,7 +938,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
                 }
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(
@@ -982,7 +982,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
                 return@delete
             }
 
-            call.respond(emptyMap<String, Any>())
+            call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mapOf(

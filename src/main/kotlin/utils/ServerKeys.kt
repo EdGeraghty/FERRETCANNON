@@ -175,7 +175,7 @@ object ServerKeys {
     fun getStoredKeys(): List<Map<String, Any>> {
         return transaction {
             ServerKeysTable.selectAll().map { row ->
-                mapOf(
+                mutableMapOf(
                     "server_name" to row[ServerKeysTable.serverName],
                     "key_id" to row[ServerKeysTable.keyId],
                     "public_key" to row[ServerKeysTable.publicKey],
@@ -193,7 +193,7 @@ object ServerKeys {
                 (ServerKeysTable.serverName eq serverName) and
                 (ServerKeysTable.keyId eq keyId)
             }.singleOrNull()?.let { row ->
-                mapOf(
+                mutableMapOf(
                     "server_name" to row[ServerKeysTable.serverName],
                     "key_id" to row[ServerKeysTable.keyId],
                     "public_key" to row[ServerKeysTable.publicKey],
@@ -318,11 +318,11 @@ object ServerKeys {
 
                 if (keyId == currentKeyId) {
                     // Current key goes in verify_keys - use its stored validity time
-                    verifyKeys[keyId] = mapOf("key" to publicKey)
+                    verifyKeys[keyId] = mutableMapOf("key" to publicKey)
                     validUntilTs = keyValidUntilTs // Use the stored validity time for consistency
                 } else {
                     // Old keys go in old_verify_keys
-                    oldVerifyKeys[keyId] = mapOf(
+                    oldVerifyKeys[keyId] = mutableMapOf(
                         "key" to publicKey,
                         "expired_ts" to keyValidUntilTs
                     )
@@ -332,16 +332,16 @@ object ServerKeys {
 
         // If no keys found in database, use current key with default validity
         if (verifyKeys.isEmpty()) {
-            verifyKeys[currentKeyId] = mapOf("key" to currentPublicKeyBase64)
+            verifyKeys[currentKeyId] = mutableMapOf("key" to currentPublicKeyBase64)
         }
 
-        val serverKeys = mapOf(
+        val serverKeys = mutableMapOf(
             "server_name" to serverName,
             "valid_until_ts" to validUntilTs,
             "verify_keys" to verifyKeys,
             "old_verify_keys" to oldVerifyKeys,
-            "signatures" to mapOf(
-                serverName to mapOf(
+            "signatures" to mutableMapOf(
+                serverName to mutableMapOf(
                     currentKeyId to sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8))
                 )
             )

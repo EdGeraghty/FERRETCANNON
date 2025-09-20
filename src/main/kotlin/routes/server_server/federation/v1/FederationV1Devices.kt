@@ -57,7 +57,7 @@ fun Route.federationV1Devices() {
 
         try {
             // Get user's devices
-            val userDevices = deviceKeys[userId] ?: emptyMap()
+            val userDevices = deviceKeys[userId] ?: mutableMapOf()
 
             // Convert devices to the expected format
             val devices = userDevices.map { (deviceId, deviceInfo) ->
@@ -110,13 +110,13 @@ fun Route.federationV1Devices() {
 
         try {
             val requestBody = Json.parseToJsonElement(body).jsonObject
-            val oneTimeKeys = requestBody["one_time_keys"]?.jsonObject ?: JsonObject(emptyMap())
+            val oneTimeKeys = requestBody["one_time_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
 
             val claimedKeys = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>()
 
             // Process each user's requested keys
             for (userId in oneTimeKeys.keys) {
-                val userRequestedKeys = oneTimeKeys[userId]?.jsonObject ?: JsonObject(emptyMap())
+                val userRequestedKeys = oneTimeKeys[userId]?.jsonObject ?: JsonObject(mutableMapOf())
                 val userClaimedKeys = mutableMapOf<String, Map<String, Any?>>()
 
                 for (deviceKeyId in userRequestedKeys.keys) {
@@ -128,7 +128,7 @@ fun Route.federationV1Devices() {
                     val _keyId = parts[1]
 
                     // Find available one-time key for this user and algorithm
-                    val globalUserOneTimeKeys = utils.oneTimeKeys[userId] ?: emptyMap<String, Map<String, Any?>>()
+                    val globalUserOneTimeKeys = utils.oneTimeKeys[userId] ?: mapOf<String, Map<String, Any?>>()
                     val availableKey = globalUserOneTimeKeys.entries.find { (key, _) ->
                         key.startsWith("$algorithm:")
                     }
@@ -176,13 +176,13 @@ fun Route.federationV1Devices() {
 
         try {
             val requestBody = Json.parseToJsonElement(body).jsonObject
-            val deviceKeys = requestBody["device_keys"]?.jsonObject ?: JsonObject(emptyMap())
+            val deviceKeys = requestBody["device_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
 
             // Process device keys
             val deviceKeysResponse = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>()
             for (userId in deviceKeys.keys) {
                 val requestedDevicesJson = deviceKeys[userId]
-                val globalUserDevices = utils.deviceKeys[userId] ?: emptyMap<String, Map<String, Any?>>()
+                val globalUserDevices = utils.deviceKeys[userId] ?: mapOf<String, Map<String, Any?>>()
                 val userDeviceKeys = mutableMapOf<String, Map<String, Any?>>()
 
                 if (requestedDevicesJson is JsonNull) {

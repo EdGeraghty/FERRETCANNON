@@ -31,7 +31,7 @@ class CryptoTestVectors {
     }
 
     fun testEmptyObjectSigning(): Boolean {
-        val jsonObject = JsonObject(emptyMap())
+        val jsonObject = JsonObject(mutableMapOf())
         val canonicalJson = canonicalJson(jsonObject)
         val signature = signJson(canonicalJson)
 

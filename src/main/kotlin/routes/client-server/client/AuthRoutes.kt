@@ -285,28 +285,37 @@ fun Route.authRoutes(config: ServerConfig) {
 
     // GET /capabilities - Server capabilities
     get("/capabilities") {
-        call.respond(buildJsonObject {
-            putJsonObject("capabilities") {
-                putJsonObject("m.change_password") {
-                    put("enabled", true)
-                }
-                putJsonObject("m.room_versions") {
-                    put("default", "9")
-                    putJsonObject("available") {
-                        put("9", "stable")
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+
+            call.respond(buildJsonObject {
+                putJsonObject("capabilities") {
+                    putJsonObject("m.change_password") {
+                        put("enabled", true)
+                    }
+                    putJsonObject("m.room_versions") {
+                        put("default", "9")
+                        putJsonObject("available") {
+                            put("9", "stable")
+                        }
+                    }
+                    putJsonObject("m.set_displayname") {
+                        put("enabled", true)
+                    }
+                    putJsonObject("m.set_avatar_url") {
+                        put("enabled", true)
+                    }
+                    putJsonObject("m.3pid_changes") {
+                        put("enabled", true)
                     }
                 }
-                putJsonObject("m.set_displayname") {
-                    put("enabled", true)
-                }
-                putJsonObject("m.set_avatar_url") {
-                    put("enabled", true)
-                }
-                putJsonObject("m.3pid_changes") {
-                    put("enabled", true)
-                }
-            }
-        })
+            })
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
     }
 
     // GET /register/available - Check username availability
