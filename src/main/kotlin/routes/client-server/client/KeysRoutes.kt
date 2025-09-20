@@ -38,14 +38,14 @@ fun Route.keysRoutes(config: ServerConfig) {
                     // Return all devices for this user
                     val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
                     if (userDeviceKeys.containsKey(queryUserId)) {
-                        result[queryUserId] = Json.encodeToJsonElement(userDeviceKeys[queryUserId]!!)
+                        result[queryUserId] = JsonObject(userDeviceKeys[queryUserId]!!)
                     }
                 } else if (requestedDevices is JsonObject) {
                     val deviceIds = requestedDevices["device_ids"]?.jsonArray ?: JsonArray(emptyList())
                     if (deviceIds.isNotEmpty()) {
                         // Return only requested devices
                         val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
-                        val filteredDevices = mutableMapOf<String, Map<String, Any>>()
+                        val filteredDevices = mutableMapOf<String, JsonElement>()
 
                         deviceIds.forEach { deviceIdElement ->
                             val deviceId = deviceIdElement.jsonPrimitive.content
@@ -56,7 +56,7 @@ fun Route.keysRoutes(config: ServerConfig) {
                         }
 
                         if (filteredDevices.isNotEmpty()) {
-                            result[queryUserId] = Json.encodeToJsonElement(filteredDevices)
+                            result[queryUserId] = JsonObject(filteredDevices)
                         }
                     }
                 }
@@ -99,7 +99,7 @@ fun Route.keysRoutes(config: ServerConfig) {
 
             for (claimUserId in oneTimeKeys.keys) {
                 val userRequestedKeys = oneTimeKeys[claimUserId]?.jsonObject ?: buildJsonObject { }
-                val userClaimedKeys = mutableMapOf<String, Map<String, Any>>()
+                val userClaimedKeys = mutableMapOf<String, JsonElement>()
 
                 for (keyId in userRequestedKeys.keys) {
                     // Parse the key ID (format: algorithm:key_id)
@@ -110,15 +110,16 @@ fun Route.keysRoutes(config: ServerConfig) {
 
                         // For now, return a placeholder response
                         // In a full implementation, this would claim actual one-time keys
-                        userClaimedKeys[keyId] = buildJsonObject {
+                        val keyData = buildJsonObject {
                             put("key", "placeholder_key_data")
                             put("signatures", buildJsonObject { })
                         }
+                        userClaimedKeys[keyId] = keyData
                     }
                 }
 
                 if (userClaimedKeys.isNotEmpty()) {
-                    result[claimUserId] = Json.encodeToJsonElement(userClaimedKeys)
+                    result[claimUserId] = JsonObject(userClaimedKeys)
                 }
             }
 

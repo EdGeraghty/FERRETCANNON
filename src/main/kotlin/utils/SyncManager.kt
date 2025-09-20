@@ -241,10 +241,10 @@ object SyncManager {
         return transaction {
             val room = Rooms.select { Rooms.roomId eq roomId }.singleOrNull()
             if (room != null) {
-                val summary = mutableMapOf<String, Any>()
+                val summary = mutableMapOf<String, JsonElement>()
 
-                room[Rooms.name]?.let { summary["name"] = it }
-                room[Rooms.topic]?.let { summary["topic"] = it }
+                room[Rooms.name]?.let { summary["name"] = JsonPrimitive(it) }
+                room[Rooms.topic]?.let { summary["topic"] = JsonPrimitive(it) }
 
                 // Get member count
                 val memberCount = Events.select {
@@ -253,17 +253,17 @@ object SyncManager {
                     (Events.content.like("%\"membership\":\"join\"%"))
                 }.count()
 
-                summary["joined_member_count"] = memberCount.toInt()
+                summary["joined_member_count"] = JsonPrimitive(memberCount.toInt())
 
                 // Get room aliases
                 val aliases = RoomAliases.select { RoomAliases.roomId eq roomId }
                     .map { it[RoomAliases.alias] }
 
                 if (aliases.isNotEmpty()) {
-                    summary["aliases"] = aliases
+                    summary["aliases"] = JsonArray(aliases.map { JsonPrimitive(it) })
                 }
 
-                Json.encodeToJsonElement(summary)
+                JsonObject(summary)
             } else null
         }
     }
@@ -281,21 +281,23 @@ object SyncManager {
             }
 
             query.map { row ->
-                val presence = mutableMapOf<String, Any>(
-                    "type" to "m.presence",
-                    "sender" to row[Presence.userId],
-                    "content" to mapOf(
-                        "presence" to row[Presence.presence],
-                        "last_active_ago" to row[Presence.lastActiveAgo],
-                        "currently_active" to row[Presence.currentlyActive]
-                    )
+                val contentMap = mutableMapOf<String, JsonElement>(
+                    "presence" to JsonPrimitive(row[Presence.presence]),
+                    "last_active_ago" to JsonPrimitive(row[Presence.lastActiveAgo]),
+                    "currently_active" to JsonPrimitive(row[Presence.currentlyActive])
                 )
 
                 row[Presence.statusMsg]?.let {
-                    (presence["content"] as MutableMap<String, Any>)["status_msg"] = it
+                    contentMap["status_msg"] = JsonPrimitive(it)
                 }
 
-                Json.encodeToJsonElement(presence)
+                val presence = mapOf(
+                    "type" to JsonPrimitive("m.presence"),
+                    "sender" to JsonPrimitive(row[Presence.userId]),
+                    "content" to JsonObject(contentMap)
+                )
+
+                JsonObject(presence)
             }
         }
     }
