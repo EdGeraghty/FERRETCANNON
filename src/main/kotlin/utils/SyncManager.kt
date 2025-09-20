@@ -4,6 +4,11 @@ import models.*
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import kotlinx.serialization.json.*
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 import java.util.*
 import utils.*
 import utils.MatrixPagination
@@ -16,19 +21,6 @@ import utils.typingMap
 object SyncManager {
 
     private val json = Json { encodeDefaults = true }
-
-    /**
-     * Sync response data class
-     */
-    data class SyncResponse(
-        val nextBatch: String,
-        val rooms: JsonElement,
-        val presence: JsonElement,
-        val accountData: JsonElement?,
-        val deviceLists: JsonElement?,
-        val deviceOneTimeKeysCount: JsonElement?,
-        val toDevice: JsonElement?
-    )
 
     /**
      * Room sync data
@@ -53,7 +45,7 @@ object SyncManager {
         timeout: Long = 30000,
         filter: String? = null,
         setPresence: String? = null
-    ): SyncResponse {
+    ): JsonObject {
         val currentTime = System.currentTimeMillis()
 
         // Get user's joined rooms
@@ -64,19 +56,29 @@ object SyncManager {
 
         // Get room data for each joined room
         val joinRooms = mutableMapOf<String, JsonElement>()
-        val inviteRooms = emptyMap<String, JsonElement>() // Empty for now
-        val leaveRooms = emptyMap<String, JsonElement>() // Empty for now
+        val inviteRooms = buildJsonObject { } // Empty for now
+        val leaveRooms = buildJsonObject { } // Empty for now
 
         for (roomId in joinedRoomIds) {
             val roomData = getRoomSyncData(userId, roomId, since, isFullState)
-            joinRooms[roomId] = Json.encodeToJsonElement(mapOf(
-                "timeline" to mapOf("events" to roomData.timeline, "limited" to false, "prev_batch" to null),
-                "state" to mapOf("events" to roomData.state),
-                "ephemeral" to mapOf("events" to roomData.ephemeral),
-                "account_data" to mapOf("events" to roomData.accountData),
-                "summary" to (roomData.summary ?: JsonNull),
-                "unread_notifications" to roomData.unreadNotifications
-            ))
+            joinRooms[roomId] = buildJsonObject {
+                put("timeline", buildJsonObject {
+                    put("events", JsonArray(roomData.timeline))
+                    put("limited", false)
+                    put("prev_batch", JsonNull)
+                })
+                put("state", buildJsonObject {
+                    put("events", JsonArray(roomData.state))
+                })
+                put("ephemeral", buildJsonObject {
+                    put("events", JsonArray(roomData.ephemeral))
+                })
+                put("account_data", buildJsonObject {
+                    put("events", JsonArray(roomData.accountData))
+                })
+                put("summary", if (roomData.summary != null) roomData.summary else JsonNull)
+                put("unread_notifications", if (roomData.unreadNotifications != null) roomData.unreadNotifications else JsonNull)
+            }
         }
 
         // Get presence events
@@ -104,19 +106,34 @@ object SyncManager {
             roomId = null
         )
 
-        return SyncResponse(
-            nextBatch = nextBatchToken,
-            rooms = Json.encodeToJsonElement(mapOf(
-                "join" to joinRooms,
-                "invite" to inviteRooms,
-                "leave" to leaveRooms
-            )),
-            presence = Json.encodeToJsonElement(mapOf("events" to presenceEvents)),
-            accountData = if (accountData.isNotEmpty()) Json.encodeToJsonElement(mapOf("events" to accountData)) else null,
-            deviceLists = Json.encodeToJsonElement(deviceLists),
-            deviceOneTimeKeysCount = Json.encodeToJsonElement(deviceOneTimeKeysCount),
-            toDevice = Json.encodeToJsonElement(toDevice)
-        )
+        return buildJsonObject {
+            put("next_batch", nextBatchToken)
+            put("rooms", buildJsonObject {
+                put("join", JsonObject(joinRooms))
+                put("invite", inviteRooms)
+                put("leave", leaveRooms)
+            })
+            put("presence", buildJsonObject {
+                put("events", JsonArray(presenceEvents.toList()))
+            })
+            if (accountData.isNotEmpty()) {
+                put("account_data", buildJsonObject {
+                    put("events", JsonArray(accountData.toList()))
+                })
+            }
+            put("device_lists", buildJsonObject {
+                put("changed", JsonArray(deviceLists["changed"]?.map { JsonPrimitive(it) } ?: emptyList()))
+                put("left", JsonArray(deviceLists["left"]?.map { JsonPrimitive(it) } ?: emptyList()))
+            })
+            put("device_one_time_keys_count", buildJsonObject {
+                deviceOneTimeKeysCount.forEach { (key, value) ->
+                    put(key, value)
+                }
+            })
+            put("to_device", buildJsonObject {
+                put("events", JsonArray(toDevice["events"] ?: emptyList()))
+            })
+        }
     }
 
     /**
@@ -158,14 +175,14 @@ object SyncManager {
             query.orderBy(Events.originServerTs, SortOrder.DESC)
                 .limit(50) // Limit to recent events
                 .map { row ->
-                    Json.encodeToJsonElement(mapOf(
-                        "event_id" to row[Events.eventId],
-                        "type" to row[Events.type],
-                        "sender" to row[Events.sender],
-                        "origin_server_ts" to row[Events.originServerTs],
-                        "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
-                        "unsigned" to emptyMap<String, JsonElement>()
-                    ))
+                    buildJsonObject {
+                        put("event_id", row[Events.eventId])
+                        put("type", row[Events.type])
+                        put("sender", row[Events.sender])
+                        put("origin_server_ts", row[Events.originServerTs])
+                        put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                        put("unsigned", buildJsonObject { })
+                    }
                 }
         }
         timeline.addAll(timelineEvents)
@@ -177,15 +194,15 @@ object SyncManager {
                     (Events.roomId eq roomId) and
                     (Events.stateKey.isNotNull())
                 }.map { row ->
-                    Json.encodeToJsonElement(mapOf(
-                        "event_id" to row[Events.eventId],
-                        "type" to row[Events.type],
-                        "sender" to row[Events.sender],
-                        "origin_server_ts" to row[Events.originServerTs],
-                        "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
-                        "state_key" to row[Events.stateKey],
-                        "unsigned" to emptyMap<String, JsonElement>()
-                    ))
+                    buildJsonObject {
+                        put("event_id", row[Events.eventId])
+                        put("type", row[Events.type])
+                        put("sender", row[Events.sender])
+                        put("origin_server_ts", row[Events.originServerTs])
+                        put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                        put("state_key", row[Events.stateKey])
+                        put("unsigned", buildJsonObject { })
+                    }
                 }
             }
             state.addAll(stateEvents)
@@ -194,10 +211,12 @@ object SyncManager {
         // Get ephemeral events (typing notifications)
         val typingUsers = typingMap[roomId] ?: emptyMap()
         if (typingUsers.isNotEmpty()) {
-            ephemeral.add(Json.encodeToJsonElement(mapOf(
-                "type" to "m.typing",
-                "content" to mapOf("user_ids" to typingUsers.keys.toList())
-            )))
+            ephemeral.add(buildJsonObject {
+                put("type", "m.typing")
+                put("content", buildJsonObject {
+                    put("user_ids", JsonArray(typingUsers.keys.map { JsonPrimitive(it) }))
+                })
+            })
         }
 
         // Get room account data
@@ -206,10 +225,10 @@ object SyncManager {
                 (AccountData.userId eq userId) and
                 (AccountData.roomId eq roomId)
             }.map { row ->
-                Json.encodeToJsonElement(mapOf(
-                    "type" to row[AccountData.type],
-                    "content" to Json.parseToJsonElement(row[AccountData.content]).jsonObject
-                ))
+                buildJsonObject {
+                    put("type", row[AccountData.type])
+                    put("content", Json.parseToJsonElement(row[AccountData.content]).jsonObject)
+                }
             }
         }
         accountData.addAll(roomAccountData)
@@ -218,10 +237,10 @@ object SyncManager {
         val summary = getRoomSummary(roomId)
 
         // Get unread notifications (simplified)
-        val unreadNotifications = Json.encodeToJsonElement(mapOf(
-            "notification_count" to 0,
-            "highlight_count" to 0
-        ))
+        val unreadNotifications = buildJsonObject {
+            put("notification_count", 0)
+            put("highlight_count", 0)
+        }
 
         return RoomSyncData(
             roomId = roomId,
@@ -291,13 +310,11 @@ object SyncManager {
                     contentMap["status_msg"] = JsonPrimitive(it)
                 }
 
-                val presence = mapOf(
-                    "type" to JsonPrimitive("m.presence"),
-                    "sender" to JsonPrimitive(row[Presence.userId]),
-                    "content" to JsonObject(contentMap)
-                )
-
-                JsonObject(presence)
+                buildJsonObject {
+                    put("type", "m.presence")
+                    put("sender", row[Presence.userId])
+                    put("content", JsonObject(contentMap))
+                }
             }
         }
     }
@@ -318,10 +335,10 @@ object SyncManager {
             }
 
             query.map { row ->
-                Json.encodeToJsonElement(mapOf(
-                    "type" to row[AccountData.type],
-                    "content" to Json.parseToJsonElement(row[AccountData.content]).jsonObject
-                ))
+                buildJsonObject {
+                    put("type", row[AccountData.type])
+                    put("content", Json.parseToJsonElement(row[AccountData.content]).jsonObject)
+                }
             }
         }
     }
