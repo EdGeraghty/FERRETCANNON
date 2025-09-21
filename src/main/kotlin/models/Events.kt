@@ -56,7 +56,6 @@ object Users : Table("users") {
     val passwordHash = varchar("password_hash", 255)
     val displayName = varchar("display_name", 255).nullable()
     val avatarUrl = varchar("avatar_url", 500).nullable()
-    val timezone = varchar("timezone", 100).nullable()
     val isGuest = bool("is_guest").default(false)
     val deactivated = bool("deactivated").default(false)
     val isAdmin = bool("is_admin").default(false)

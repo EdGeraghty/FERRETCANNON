@@ -35,9 +35,26 @@ COPY --from=builder /app/build/install/FERRETCANNON /app/
 COPY config.prod.yml config.yml
 
 # Create a script to conditionally delete the database based on isDebug config
-RUN echo '#!/bin/sh' > /app/check_debug.sh && \
+RUN mkdir -p /data && \
+    echo '#!/bin/sh' > /app/check_debug.sh && \
     echo 'if grep -q "isDebug: true" /app/config.yml; then rm -f /data/ferretcannon.db; fi' >> /app/check_debug.sh && \
     chmod +x /app/check_debug.sh
+
+# Install sqlite for migration
+RUN apk add --no-cache sqlite
+
+# Create a wrapper script that includes migration
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo './check_debug.sh' >> /app/start.sh && \
+    echo 'echo "Starting database migration..."' >> /app/start.sh && \
+    echo 'if [ -f "/data/ferretcannon.db" ]; then' >> /app/start.sh && \
+    echo '  sqlite3 /data/ferretcannon.db "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;" 2>/dev/null || echo "is_admin column may already exist"' >> /app/start.sh && \
+    echo '  echo "Migration completed."' >> /app/start.sh && \
+    echo 'else' >> /app/start.sh && \
+    echo '  echo "Database not found, skipping migration."' >> /app/start.sh && \
+    echo 'fi' >> /app/start.sh && \
+    echo './bin/FERRETCANNON' >> /app/start.sh && \
+    chmod +x /app/start.sh
 
 # Expose the port the app runs on
 EXPOSE 8080
@@ -47,4 +64,4 @@ ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
 # Force clean build - version 4
 # Run the application directly
-CMD ["sh", "-c", "./check_debug.sh && ./bin/FERRETCANNON"]
+CMD ["./start.sh"]

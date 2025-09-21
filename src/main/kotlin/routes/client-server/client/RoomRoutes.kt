@@ -222,6 +222,12 @@ fun Route.roomRoutes(config: ServerConfig) {
             val preset = jsonBody["preset"]?.jsonPrimitive?.content ?: "private_chat"
             val visibility = jsonBody["visibility"]?.jsonPrimitive?.content ?: "private"
 
+            // Determine join rule based on preset
+            val joinRule = when (preset) {
+                "public_chat" -> "public"
+                else -> "invite"
+            }
+
             // Generate room ID
             val roomId = "!${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().replace("-", "")}:${config.federation.serverName}"
 
@@ -320,10 +326,6 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
 
                 // Create m.room.join_rules event
-                val joinRule = when (preset) {
-                    "public_chat" -> "public"
-                    else -> "invite"
-                }
                 val joinRulesContent = JsonObject(mutableMapOf(
                     "join_rule" to JsonPrimitive(joinRule)
                 ))
@@ -373,6 +375,23 @@ fun Route.roomRoutes(config: ServerConfig) {
                     }
                 }
             }
+
+            // Initialize resolved state with all events from the database
+            val allEvents = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .map { row ->
+                        JsonObject(mutableMapOf(
+                            "event_id" to JsonPrimitive(row[Events.eventId]),
+                            "type" to JsonPrimitive(row[Events.type]),
+                            "sender" to JsonPrimitive(row[Events.sender]),
+                            "origin_server_ts" to JsonPrimitive(row[Events.originServerTs]),
+                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                            "state_key" to JsonPrimitive(row[Events.stateKey] ?: "")
+                        ))
+                    }
+            }
+            val initialResolvedState = stateResolver.resolveState(allEvents)
+            stateResolver.updateResolvedState(roomId, initialResolvedState)
 
             // Broadcast room creation events
             runBlocking {
@@ -531,6 +550,23 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
             }
 
+            // Update resolved state
+            val allEvents = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .map { row ->
+                        JsonObject(mutableMapOf(
+                            "event_id" to JsonPrimitive(row[Events.eventId]),
+                            "type" to JsonPrimitive(row[Events.type]),
+                            "sender" to JsonPrimitive(row[Events.sender]),
+                            "origin_server_ts" to JsonPrimitive(row[Events.originServerTs]),
+                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                            "state_key" to JsonPrimitive(row[Events.stateKey] ?: "")
+                        ))
+                    }
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents)
+            stateResolver.updateResolvedState(roomId, newResolvedState)
+
             // Broadcast join event
             runBlocking {
                 val joinEvent = JsonObject(mutableMapOf(
@@ -671,6 +707,23 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
             }
 
+            // Update resolved state
+            val allEvents = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .map { row ->
+                        JsonObject(mutableMapOf(
+                            "event_id" to JsonPrimitive(row[Events.eventId]),
+                            "type" to JsonPrimitive(row[Events.type]),
+                            "sender" to JsonPrimitive(row[Events.sender]),
+                            "origin_server_ts" to JsonPrimitive(row[Events.originServerTs]),
+                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                            "state_key" to JsonPrimitive(row[Events.stateKey] ?: "")
+                        ))
+                    }
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents)
+            stateResolver.updateResolvedState(roomId, newResolvedState)
+
             // Broadcast leave event
             runBlocking {
                 val leaveEvent = JsonObject(mutableMapOf(
@@ -712,8 +765,29 @@ fun Route.roomRoutes(config: ServerConfig) {
             // Get the resolved state for the room
             val resolvedState = stateResolver.getResolvedState(roomId)
 
-            // Convert the state map to an array of state events
-            val stateEvents = resolvedState.values.toList()
+            // If resolved state is empty, fall back to getting current state from events
+            val stateEvents = if (resolvedState.isNotEmpty()) {
+                resolvedState.values.toList()
+            } else {
+                // Get current state events from the database
+                transaction {
+                    Events.select { Events.roomId eq roomId }
+                        .mapNotNull { row ->
+                            // Only include events that have a state_key (state events)
+                            row[Events.stateKey]?.let { stateKey ->
+                                buildJsonObject {
+                                    put("event_id", row[Events.eventId])
+                                    put("type", row[Events.type])
+                                    put("sender", row[Events.sender])
+                                    put("origin_server_ts", row[Events.originServerTs])
+                                    put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                                    put("state_key", stateKey)
+                                    put("unsigned", buildJsonObject { })
+                                }
+                            }
+                        }
+                }
+            }
 
             call.respond(stateEvents)
 
@@ -826,6 +900,23 @@ fun Route.roomRoutes(config: ServerConfig) {
                     it[Events.signatures] = "{}"
                 }
             }
+
+            // Update resolved state
+            val allEvents = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .map { row ->
+                        JsonObject(mutableMapOf(
+                            "event_id" to JsonPrimitive(row[Events.eventId]),
+                            "type" to JsonPrimitive(row[Events.type]),
+                            "sender" to JsonPrimitive(row[Events.sender]),
+                            "origin_server_ts" to JsonPrimitive(row[Events.originServerTs]),
+                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                            "state_key" to JsonPrimitive(row[Events.stateKey] ?: "")
+                        ))
+                    }
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents)
+            stateResolver.updateResolvedState(roomId, newResolvedState)
 
             // Broadcast state event
             runBlocking {

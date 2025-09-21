@@ -102,12 +102,6 @@ fun Route.userRoutes() {
                 response["avatar_url"] = avatarUrl
             }
 
-            // Get timezone from Users table
-            val timezone = profile[Users.timezone]
-            if (timezone != null) {
-                response["timezone"] = timezone
-            }
-
             // Get custom profile fields from account data (m.profile_fields type)
             val customFields = transaction {
                 AccountData.select {
@@ -177,18 +171,8 @@ fun Route.userRoutes() {
             }
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
 
-            // Handle timezone update
-            val timezone = jsonBody["timezone"]?.jsonPrimitive?.content
-            if (timezone != null) {
-                transaction {
-                    Users.update({ Users.userId eq userId }) {
-                        it[Users.timezone] = timezone
-                    }
-                }
-            }
-
             // Handle custom profile fields
-            val customFields = jsonBody.filterKeys { it !in setOf("displayname", "avatar_url", "timezone") }
+            val customFields = jsonBody.filterKeys { it !in setOf("displayname", "avatar_url") }
             if (customFields.isNotEmpty()) {
                 transaction {
                     val existing = AccountData.select {

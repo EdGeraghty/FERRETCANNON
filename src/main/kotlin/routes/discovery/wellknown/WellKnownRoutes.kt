@@ -35,9 +35,9 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // For production, use HTTPS without port (fly.io handles this)
                     // For development, use the configured base URL
                     val baseUrl = if (config.federation.serverName.contains("localhost")) {
-                        "http://${config.federation.serverName}:${config.server.port}"
+                        "http://${config.federation.serverName}:${config.server.port}/"
                     } else {
-                        "https://${config.federation.serverName}"
+                        "https://${config.federation.serverName}/"
                     }
 
                     // Use buildJsonObject for proper JSON serialization
@@ -77,9 +77,9 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 get("/identity/v2/terms") {
                     // Terms of service for identity server
                     val baseUrl = if (config.federation.serverName.contains("localhost")) {
-                        "http://${config.federation.serverName}:${config.server.port}"
+                        "http://${config.federation.serverName}:${config.server.port}/"
                     } else {
-                        "https://${config.federation.serverName}"
+                        "https://${config.federation.serverName}/"
                     }
 
                     call.respond(mutableMapOf(
@@ -199,14 +199,12 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 // Add caching headers for discovery
                 call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                val serverName = config.federation.serverName
-                val baseUrl = if (serverName.contains("localhost")) {
-                    "http://${serverName}:${config.server.port}"
-                } else {
-                    "https://${serverName}"
-                }
-
-                // OAuth 2.0 Authorization Server Metadata
+                    val serverName = config.federation.serverName
+                    val baseUrl = if (serverName.contains("localhost")) {
+                        "http://${serverName}:${config.server.port}/"
+                    } else {
+                        "https://${serverName}/"
+                    }                // OAuth 2.0 Authorization Server Metadata
                 val metadata = mapOf(
                     "issuer" to baseUrl,  // Full base URL as issuer
                     "authorization_endpoint" to "$baseUrl/oauth2/authorize",
