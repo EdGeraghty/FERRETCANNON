@@ -41,7 +41,8 @@ object SyncManager {
     fun performSync(
         userId: String,
         since: MatrixPagination.SyncToken? = null,
-        fullState: Boolean = false
+        fullState: Boolean = false,
+        useStateAfter: Boolean = false
     ): JsonObject {
         val currentTime = System.currentTimeMillis()
 
@@ -130,6 +131,9 @@ object SyncManager {
             put("to_device", buildJsonObject {
                 put("events", JsonArray(toDevice["events"] ?: emptyList()))
             })
+            if (useStateAfter) {
+                put("state_after", nextBatchToken)
+            }
         }
     }
 

@@ -21,7 +21,87 @@ import routes.client_server.client.MATRIX_USER_ID_KEY
 fun Route.roomRoutes(config: ServerConfig) {
     val stateResolver = StateResolver()
 
-    // PUT /rooms/{roomId}/send/{eventType}/{txnId} - Send event to room
+        // GET /rooms/{roomId}/state/{eventType}/{stateKey} - Get specific state event
+    get("/rooms/{roomId}/state/{eventType}/{stateKey}") {
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+            val roomId = call.parameters["roomId"]
+            val eventType = call.parameters["eventType"]
+            val stateKey = call.parameters["stateKey"]
+            val format = call.request.queryParameters["format"] ?: "content"
+
+            if (roomId == null || eventType == null || stateKey == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing required parameters"
+                ))
+                return@get
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@get
+            }
+
+            // Get the specific state event
+            val stateEvent = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq eventType) and
+                    (Events.stateKey eq stateKey)
+                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+            }
+
+            if (stateEvent == null) {
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
+                    "errcode" to "M_NOT_FOUND",
+                    "error" to "State event not found"
+                ))
+                return@get
+            }
+
+            if (format == "event") {
+                // Return full event format
+                val eventJson = buildJsonObject {
+                    put("event_id", stateEvent[Events.eventId])
+                    put("type", stateEvent[Events.type])
+                    put("sender", stateEvent[Events.sender])
+                    put("origin_server_ts", stateEvent[Events.originServerTs])
+                    put("content", Json.parseToJsonElement(stateEvent[Events.content]).jsonObject)
+                    put("state_key", stateEvent[Events.stateKey])
+                    put("unsigned", buildJsonObject { })
+                }
+                call.respond(eventJson)
+            } else {
+                // Return content only (default)
+                call.respond(Json.parseToJsonElement(stateEvent[Events.content]).jsonObject)
+            }
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // PUT /rooms/{roomId}/state/{eventType}/{stateKey} - Send state event
     put("/rooms/{roomId}/send/{eventType}/{txnId}") {
         try {
             val userId = call.validateAccessToken() ?: return@put
@@ -155,7 +235,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                     it[Rooms.name] = roomName
                     it[Rooms.topic] = roomTopic
                     it[Rooms.visibility] = visibility
-                    it[Rooms.roomVersion] = "9"
+                    it[Rooms.roomVersion] = "12"
                     it[Rooms.isDirect] = preset == "trusted_private_chat"
                     it[Rooms.currentState] = Json.encodeToString(JsonObject.serializer(), JsonObject(mutableMapOf())) // Initialize with empty JSON object
                     it[Rooms.stateGroups] = Json.encodeToString(JsonObject.serializer(), JsonObject(mutableMapOf())) // Initialize with empty JSON object
@@ -171,7 +251,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                 // Create m.room.create event
                 val createContent = JsonObject(mutableMapOf(
                     "creator" to JsonPrimitive(userId),
-                    "room_version" to JsonPrimitive("9"),
+                    "room_version" to JsonPrimitive("12"),
                     "predecessor" to JsonNull
                 ))
 
@@ -304,7 +384,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                     "origin_server_ts" to JsonPrimitive(currentTime),
                     "content" to JsonObject(mutableMapOf(
                         "creator" to JsonPrimitive(userId),
-                        "room_version" to JsonPrimitive("9")
+                        "room_version" to JsonPrimitive("12")
                     )),
                     "state_key" to JsonPrimitive("")
                 ))
@@ -641,6 +721,134 @@ fun Route.roomRoutes(config: ServerConfig) {
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // PUT /rooms/{roomId}/state/{eventType}/{stateKey} - Send state event
+    put("/rooms/{roomId}/state/{eventType}/{stateKey}") {
+        try {
+            val userId = call.validateAccessToken() ?: return@put
+            val roomId = call.parameters["roomId"]
+            val eventType = call.parameters["eventType"]
+            val stateKey = call.parameters["stateKey"]
+
+            if (roomId == null || eventType == null || stateKey == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing required parameters"
+                ))
+                return@put
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@put
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+            val currentTime = System.currentTimeMillis()
+
+            // Get latest event for prev_events
+            val latestEvent = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+            }
+
+            val prevEvents = if (latestEvent != null) {
+                "[[\"${latestEvent[Events.eventId]}\",{}]]"
+            } else {
+                "[]"
+            }
+
+            val depth = if (latestEvent != null) {
+                latestEvent[Events.depth] + 1
+            } else {
+                1
+            }
+
+            // Get auth events (create and power levels)
+            val authEvents = transaction {
+                val createEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()
+
+                val powerLevelsEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.power_levels")
+                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+
+                val authList = mutableListOf<String>()
+                createEvent?.let { authList.add("\"${it[Events.eventId]}\"") }
+                powerLevelsEvent?.let { authList.add("\"${it[Events.eventId]}\"") }
+                "[${authList.joinToString(",")}]"
+            }
+
+            // Generate event ID
+            val eventId = "\$${currentTime}_${stateKey.hashCode()}"
+
+            // Store state event
+            transaction {
+                Events.insert {
+                    it[Events.eventId] = eventId
+                    it[Events.roomId] = roomId
+                    it[Events.type] = eventType
+                    it[Events.sender] = userId
+                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), jsonBody)
+                    it[Events.originServerTs] = currentTime
+                    it[Events.stateKey] = stateKey
+                    it[Events.prevEvents] = prevEvents
+                    it[Events.authEvents] = authEvents
+                    it[Events.depth] = depth
+                    it[Events.hashes] = "{}"
+                    it[Events.signatures] = "{}"
+                }
+            }
+
+            // Broadcast state event
+            runBlocking {
+                val eventJson = JsonObject(mutableMapOf(
+                    "event_id" to JsonPrimitive(eventId),
+                    "type" to JsonPrimitive(eventType),
+                    "sender" to JsonPrimitive(userId),
+                    "room_id" to JsonPrimitive(roomId),
+                    "origin_server_ts" to JsonPrimitive(currentTime),
+                    "content" to jsonBody,
+                    "state_key" to JsonPrimitive(stateKey)
+                ))
+                broadcastEDU(roomId, eventJson)
+            }
+
+            call.respond(mutableMapOf(
+                "event_id" to eventId
+            ))
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
             ))
         }
     }

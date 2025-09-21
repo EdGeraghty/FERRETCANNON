@@ -26,7 +26,7 @@ object Rooms : Table("rooms") {
     val name = varchar("name", 255).nullable()
     val topic = text("topic").nullable()
     val visibility = varchar("visibility", 50).default("private")
-    val roomVersion = varchar("room_version", 50).default("9")
+    val roomVersion = varchar("room_version", 50).default("12")
     val isDirect = bool("is_direct").default(false)
     val currentState = text("current_state") // JSON map of state
     val stateGroups = text("state_groups") // JSON map of state groups for resolution
@@ -56,6 +56,7 @@ object Users : Table("users") {
     val passwordHash = varchar("password_hash", 255)
     val displayName = varchar("display_name", 255).nullable()
     val avatarUrl = varchar("avatar_url", 500).nullable()
+    val timezone = varchar("timezone", 100).nullable()
     val isGuest = bool("is_guest").default(false)
     val deactivated = bool("deactivated").default(false)
     val isAdmin = bool("is_admin").default(false)

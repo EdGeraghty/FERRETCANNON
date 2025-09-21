@@ -102,10 +102,139 @@ fun Route.userRoutes() {
                 response["avatar_url"] = avatarUrl
             }
 
+            // Get timezone from Users table
+            val timezone = profile[Users.timezone]
+            if (timezone != null) {
+                response["timezone"] = timezone
+            }
+
+            // Get custom profile fields from account data (m.profile_fields type)
+            val customFields = transaction {
+                AccountData.select {
+                    (AccountData.userId eq userId) and
+                    (AccountData.type eq "m.profile_fields") and
+                    (AccountData.roomId.isNull())
+                }.singleOrNull()?.let { row ->
+                    try {
+                        Json.parseToJsonElement(row[AccountData.content]).jsonObject
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            }
+
+            if (customFields != null) {
+                for ((key, value) in customFields) {
+                    if (value is JsonPrimitive && value.isString) {
+                        response[key] = value.content
+                    }
+                }
+            }
+
             call.respond(response)
 
         } catch (e: Exception) {
             println("ERROR: Exception in GET /profile/{userId}: ${e.message}")
+            e.printStackTrace()
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // PUT /profile/{userId} - Update user profile (custom fields)
+    put("/profile/{userId}") {
+        try {
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            val profileUserId = call.parameters["userId"]
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@put
+            }
+
+            if (profileUserId == null || userId != profileUserId) {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "Can only set your own profile"
+                ))
+                return@put
+            }
+
+            // Parse request body
+            val requestBody = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_BAD_JSON",
+                    "error" to "Failed to read request body: ${e.message}"
+                ))
+                return@put
+            }
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+            // Handle timezone update
+            val timezone = jsonBody["timezone"]?.jsonPrimitive?.content
+            if (timezone != null) {
+                transaction {
+                    Users.update({ Users.userId eq userId }) {
+                        it[Users.timezone] = timezone
+                    }
+                }
+            }
+
+            // Handle custom profile fields
+            val customFields = jsonBody.filterKeys { it !in setOf("displayname", "avatar_url", "timezone") }
+            if (customFields.isNotEmpty()) {
+                transaction {
+                    val existing = AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq "m.profile_fields") and
+                        (AccountData.roomId.isNull())
+                    }.singleOrNull()
+
+                    val currentContent = if (existing != null) {
+                        Json.parseToJsonElement(existing[AccountData.content]).jsonObject.toMutableMap()
+                    } else {
+                        mutableMapOf()
+                    }
+
+                    // Update custom fields
+                    for ((key, value) in customFields) {
+                        if (value is JsonPrimitive && value.isString) {
+                            currentContent[key] = value
+                        } else if (value is JsonNull) {
+                            currentContent.remove(key)
+                        } else {
+                            // Ignore other value types for custom fields
+                        }
+                    }
+
+                    if (existing != null) {
+                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq "m.profile_fields") and (AccountData.roomId.isNull()) }) {
+                            it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(currentContent))
+                        }
+                    } else if (currentContent.isNotEmpty()) {
+                        AccountData.insert {
+                            it[AccountData.userId] = userId
+                            it[AccountData.type] = "m.profile_fields"
+                            it[AccountData.roomId] = null
+                            it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(currentContent))
+                        }
+                    } else {
+                        // No custom fields to store
+                    }
+                }
+            }
+
+            call.respond(mapOf<String, Any>())
+
+        } catch (e: Exception) {
+            println("ERROR: Exception in PUT /profile/{userId}: ${e.message}")
             e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",

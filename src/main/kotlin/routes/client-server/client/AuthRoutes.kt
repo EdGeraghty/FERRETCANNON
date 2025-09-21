@@ -294,18 +294,24 @@ fun Route.authRoutes(config: ServerConfig) {
                         put("enabled", true)
                     }
                     putJsonObject("m.room_versions") {
-                        put("default", "9")
+                        put("default", "12")
                         putJsonObject("available") {
                             put("9", "stable")
+                            put("10", "stable")
+                            put("11", "stable")
+                            put("12", "stable")
                         }
                     }
                     putJsonObject("m.set_displayname") {
-                        put("enabled", true)
+                        put("enabled", false)
                     }
                     putJsonObject("m.set_avatar_url") {
-                        put("enabled", true)
+                        put("enabled", false)
                     }
                     putJsonObject("m.3pid_changes") {
+                        put("enabled", true)
+                    }
+                    putJsonObject("m.profile_fields") {
                         put("enabled", true)
                     }
                 }

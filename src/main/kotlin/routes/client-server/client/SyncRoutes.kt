@@ -41,13 +41,15 @@ fun Route.syncRoutes() {
 
             // Parse query parameters
             val since = call.request.queryParameters["since"]
+            val useStateAfter = call.request.queryParameters["use_state_after"]?.toBoolean() ?: false
 
-            println("DEBUG: SyncRoutes - performing sync for user: $userId")
+            println("DEBUG: SyncRoutes - performing sync for user: $userId, useStateAfter: $useStateAfter")
             // Perform sync
             val syncResponse = SyncManager.performSync(
                 userId = userId,
                 since = since?.let { MatrixPagination.parseSyncToken(it) },
-                fullState = false
+                fullState = false,
+                useStateAfter = useStateAfter
             )
 
             println("DEBUG: SyncRoutes - sync completed, responding")
