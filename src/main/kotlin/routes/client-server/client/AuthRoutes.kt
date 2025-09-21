@@ -124,6 +124,7 @@ fun Route.authRoutes(config: ServerConfig) {
             val password = jsonBody["password"]?.jsonPrimitive?.content
             val auth = jsonBody["auth"]?.jsonObject
             val inhibitLogin = jsonBody["inhibit_login"]?.jsonPrimitive?.boolean ?: false
+            val deviceIdFromRequest = jsonBody["device_id"]?.jsonPrimitive?.content
 
             // Check if auth is provided
             if (auth == null) {
@@ -195,8 +196,8 @@ fun Route.authRoutes(config: ServerConfig) {
                 // Create the user
                 val userId = AuthUtils.createUser(finalUsername, finalPassword, serverName = config.federation.serverName)
 
-                // Generate device ID and create access token
-                val deviceId = AuthUtils.generateDeviceId()
+                // Generate device ID or use provided one
+                val deviceId = deviceIdFromRequest ?: AuthUtils.generateDeviceId()
                 val accessToken = AuthUtils.createAccessToken(userId, deviceId)
 
                 val response = buildJsonObject {
@@ -260,8 +261,8 @@ fun Route.authRoutes(config: ServerConfig) {
             // Create the user
             val userId = AuthUtils.createUser(username, password, serverName = config.federation.serverName)
 
-            // Generate device ID and create access token
-            val deviceId = AuthUtils.generateDeviceId()
+            // Generate device ID or use provided one
+            val deviceId = deviceIdFromRequest ?: AuthUtils.generateDeviceId()
             val accessToken = AuthUtils.createAccessToken(userId, deviceId)
 
             val response = buildJsonObject {

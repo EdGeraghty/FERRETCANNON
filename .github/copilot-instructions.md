@@ -20,14 +20,14 @@
 - For all local testing, use `start-server.ps1 -NoPrompt` to start the server in background. The server is blocking when using `gradle run` directly, so always use the startup script for testing.
 - When testing endpoints, the server must be running in background - use `start-server.ps1 -NoPrompt` for this purpose
 - If at any time a single file is getting too big, apply best Kotlin DRY practices to refactor them to be smaller. Make sure there is always one single source of truth for all code paths.
-- This is a Matrix Server. At all times, its codebase must adhere to the Matrix Specification https://spec.matrix.org/v1.15/
+- This is a Matrix Server. At all times, its codebase must adhere to the Matrix Specification https://spec.matrix.org/v1.16/
 
 ### MATRIX SPECIFICATION COMPLIANCE
-- ALL endpoint responses MUST match the Matrix Specification v1.15 exactly
+- ALL endpoint responses MUST match the Matrix Specification v1.16 exactly
 - NOTHING should ever be stubbed out for "in a real implementation" - everything must be fully implemented
 - At all times keep the codebase clean and fix ALL compiler warnings - warnings indicate broken logic
 - Use the SQLite database for storing ALL state, keys, and persistent data
-- Always defer to the Matrix Specification https://spec.matrix.org/v1.15/ for implementation details
+- Always defer to the Matrix Specification https://spec.matrix.org/v1.16/ for implementation details
 - Implement complete database schemas for all required data structures
 - Ensure proper error handling with Matrix-compliant error codes and messages
 - Validate all request/response formats against the specification

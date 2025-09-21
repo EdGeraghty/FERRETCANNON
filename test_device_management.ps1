@@ -12,8 +12,8 @@ $REGISTER_BODY = @{
     auth = @{
         type = "m.login.password"
     }
-    username = "testuser"
-    password = "TestPassword123!"
+    username = "testuser2"
+    password = "TestPass987!"
     device_id = "test_device_001"
 } | ConvertTo-Json
 
@@ -24,7 +24,20 @@ try {
     Write-Host ""
 } catch {
     Write-Host "Registration failed:" -ForegroundColor Red
-    $_.Exception.Message
+    Write-Host "Status Code: $($_.Exception.Response.StatusCode)" -ForegroundColor Red
+    Write-Host "Status Description: $($_.Exception.Response.StatusDescription)" -ForegroundColor Red
+    $errorContent = $_.ErrorDetails.Message
+    if ($errorContent) {
+        Write-Host "Error Content: $errorContent" -ForegroundColor Red
+    }
+    try {
+        $responseStream = $_.Exception.Response.GetResponseStream()
+        $reader = New-Object System.IO.StreamReader($responseStream)
+        $responseBody = $reader.ReadToEnd()
+        Write-Host "Response Body: $responseBody" -ForegroundColor Red
+    } catch {
+        Write-Host "Could not read response body" -ForegroundColor Red
+    }
     exit 1
 }
 
@@ -39,7 +52,7 @@ if (-not $ACCESS_TOKEN) {
 
 Write-Host "2. Getting user's devices..." -ForegroundColor Yellow
 try {
-    $DEVICES_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
+    $DEVICES_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
     Write-Host "Devices response:" -ForegroundColor Cyan
     $DEVICES_RESPONSE | ConvertTo-Json
     Write-Host ""
@@ -51,7 +64,7 @@ try {
 
 Write-Host "3. Getting specific device information..." -ForegroundColor Yellow
 try {
-    $DEVICE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices/test_device_001" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
+    $DEVICE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices/test_device_001" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
     Write-Host "Specific device response:" -ForegroundColor Cyan
     $DEVICE_RESPONSE | ConvertTo-Json
     Write-Host ""
@@ -67,7 +80,7 @@ $UPDATE_BODY = @{
 } | ConvertTo-Json
 
 try {
-    $UPDATE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices/test_device_001" -Method PUT -Body $UPDATE_BODY -ContentType "application/json" -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
+    $UPDATE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices/test_device_001" -Method PUT -Body $UPDATE_BODY -ContentType "application/json" -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
     Write-Host "Update response:" -ForegroundColor Cyan
     $UPDATE_RESPONSE | ConvertTo-Json
     Write-Host ""
@@ -79,7 +92,7 @@ try {
 
 Write-Host "5. Verifying device display name was updated..." -ForegroundColor Yellow
 try {
-    $UPDATED_DEVICE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices/test_device_001" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
+    $UPDATED_DEVICE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices/test_device_001" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
     Write-Host "Updated device response:" -ForegroundColor Cyan
     $UPDATED_DEVICE_RESPONSE | ConvertTo-Json
     Write-Host ""
@@ -92,8 +105,8 @@ try {
 Write-Host "6. Creating another device (simulating login from different device)..." -ForegroundColor Yellow
 $SECOND_LOGIN_BODY = @{
     type = "m.login.password"
-    user = "testuser"
-    password = "TestPassword123!"
+    user = "testuser2"
+    password = "TestPass987!"
     device_id = "test_device_002"
     initial_device_display_name = "Second Device"
 } | ConvertTo-Json
@@ -114,7 +127,7 @@ $SECOND_ACCESS_TOKEN = $SECOND_LOGIN_RESPONSE.access_token
 
 Write-Host "7. Checking devices list again (should show both devices)..." -ForegroundColor Yellow
 try {
-    $ALL_DEVICES_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
+    $ALL_DEVICES_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
     Write-Host "All devices response:" -ForegroundColor Cyan
     $ALL_DEVICES_RESPONSE | ConvertTo-Json
     Write-Host ""
@@ -128,13 +141,13 @@ Write-Host "8. Testing device deletion (with authentication)..." -ForegroundColo
 $DELETE_BODY = @{
     auth = @{
         type = "m.login.password"
-        user = "testuser"
-        password = "TestPassword123!"
+        user = "testuser2"
+        password = "TestPass987!"
     }
 } | ConvertTo-Json
 
 try {
-    $DELETE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices/test_device_002" -Method DELETE -Body $DELETE_BODY -ContentType "application/json" -Headers @{Authorization = "Bearer $SECOND_ACCESS_TOKEN"}
+    $DELETE_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices/test_device_002" -Method DELETE -Body $DELETE_BODY -ContentType "application/json" -Headers @{Authorization = "Bearer $SECOND_ACCESS_TOKEN"}
     Write-Host "Delete response:" -ForegroundColor Cyan
     $DELETE_RESPONSE | ConvertTo-Json
     Write-Host ""
@@ -146,7 +159,7 @@ try {
 
 Write-Host "9. Final devices list (should only show first device)..." -ForegroundColor Yellow
 try {
-    $FINAL_DEVICES_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/user/devices" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
+    $FINAL_DEVICES_RESPONSE = Invoke-RestMethod -Uri "$SERVER_URL/_matrix/client/v3/devices" -Method GET -Headers @{Authorization = "Bearer $ACCESS_TOKEN"}
     Write-Host "Final devices response:" -ForegroundColor Cyan
     $FINAL_DEVICES_RESPONSE | ConvertTo-Json
     Write-Host ""

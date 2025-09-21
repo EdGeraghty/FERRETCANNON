@@ -204,6 +204,26 @@ fun Route.federationV1Membership() {
                 return@put
             }
 
+            // Validate room version (v1.16 compliance)
+            val roomVersion = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()?.let { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["room_version"]?.jsonPrimitive?.content ?: "1"
+                } ?: "1"
+            }
+
+            // Check if room version is supported
+            val supportedVersions = setOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")
+            if (roomVersion !in supportedVersions) {
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INCOMPATIBLE_ROOM_VERSION")
+                    put("error", "Room version $roomVersion is not supported")
+                })
+                return@put
+            }
+
             // Process the join event as a PDU
             val result = processPDU(Json.parseToJsonElement(body))
             if (result != null) {
@@ -448,6 +468,26 @@ fun Route.federationV1Membership() {
                 return@put
             }
 
+            // Validate room version (v1.16 compliance)
+            val roomVersion = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()?.let { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["room_version"]?.jsonPrimitive?.content ?: "1"
+                } ?: "1"
+            }
+
+            // Check if room version is supported
+            val supportedVersions = setOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")
+            if (roomVersion !in supportedVersions) {
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INCOMPATIBLE_ROOM_VERSION")
+                    put("error", "Room version $roomVersion is not supported")
+                })
+                return@put
+            }
+
             // Process the knock event as a PDU
             val result = processPDU(Json.parseToJsonElement(body))
             if (result != null) {
@@ -567,6 +607,26 @@ fun Route.federationV1Membership() {
                 call.respond(HttpStatusCode.NotFound, buildJsonObject {
                     put("errcode", "M_NOT_FOUND")
                     put("error", "Room not found")
+                })
+                return@put
+            }
+
+            // Validate room version (v1.16 compliance)
+            val roomVersion = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()?.let { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["room_version"]?.jsonPrimitive?.content ?: "1"
+                } ?: "1"
+            }
+
+            // Check if room version is supported
+            val supportedVersions = setOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")
+            if (roomVersion !in supportedVersions) {
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INCOMPATIBLE_ROOM_VERSION")
+                    put("error", "Room version $roomVersion is not supported")
                 })
                 return@put
             }

@@ -392,7 +392,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                         ))
                     }
             }
-            val initialResolvedState = stateResolver.resolveState(allEvents)
+            val initialResolvedState = stateResolver.resolveState(allEvents, "12")
             stateResolver.updateResolvedState(roomId, initialResolvedState)
 
             // Broadcast room creation events
@@ -566,7 +566,10 @@ fun Route.roomRoutes(config: ServerConfig) {
                         ))
                     }
             }
-            val newResolvedState = stateResolver.resolveState(allEvents)
+            val roomVersion = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.single()[Rooms.roomVersion]
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents, roomVersion)
             stateResolver.updateResolvedState(roomId, newResolvedState)
 
             // Broadcast join event
@@ -723,7 +726,10 @@ fun Route.roomRoutes(config: ServerConfig) {
                         ))
                     }
             }
-            val newResolvedState = stateResolver.resolveState(allEvents)
+            val roomVersion = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.single()[Rooms.roomVersion]
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents, roomVersion)
             stateResolver.updateResolvedState(roomId, newResolvedState)
 
             // Broadcast leave event
@@ -940,7 +946,10 @@ fun Route.roomRoutes(config: ServerConfig) {
                         ))
                     }
             }
-            val newResolvedState = stateResolver.resolveState(allEvents)
+            val roomVersion = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.single()[Rooms.roomVersion]
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents, roomVersion)
             stateResolver.updateResolvedState(roomId, newResolvedState)
 
             // Broadcast state event

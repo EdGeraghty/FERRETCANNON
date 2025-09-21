@@ -102,14 +102,14 @@ fun Route.pushRoutes() {
                                 add("dont_notify")
                             })
                         })
-                        // .m.rule.is_user_mention - User mentions
+                        // .m.rule.is_user_mention - User mentions (intentional only per MSC4142)
                         add(buildJsonObject {
                             put("rule_id", ".m.rule.is_user_mention")
                             put("default", true)
                             put("enabled", true)
                             put("conditions", buildJsonArray {
                                 add(buildJsonObject {
-                                    put("kind", "contains_display_name")
+                                    put("kind", "org.matrix.experimental.msc4142.is_user_mention")
                                 })
                             })
                             put("actions", buildJsonArray {
@@ -396,12 +396,16 @@ fun Route.pushRoutes() {
                     put("sender", buildJsonObject { })
                     put("room", buildJsonObject { })
                     put("content", buildJsonObject {
-                        // .m.rule.is_room_mention - Room mentions
+                        // .m.rule.is_room_mention - Room mentions (intentional only per MSC4142)
                         put(".m.rule.is_room_mention", buildJsonObject {
                             put("rule_id", ".m.rule.is_room_mention")
                             put("default", true)
                             put("enabled", true)
-                            put("pattern", "@room")
+                            put("conditions", buildJsonArray {
+                                add(buildJsonObject {
+                                    put("kind", "org.matrix.experimental.msc4142.is_room_mention")
+                                })
+                            })
                             put("actions", buildJsonArray {
                                 add("notify")
                                 add(buildJsonObject {
@@ -515,14 +519,14 @@ fun Route.pushRoutes() {
                             add("dont_notify")
                         })
                     })
-                    // .m.rule.is_user_mention - User mentions
+                    // .m.rule.is_user_mention - User mentions (intentional only per MSC4142)
                     add(buildJsonObject {
                         put("rule_id", ".m.rule.is_user_mention")
                         put("default", true)
                         put("enabled", true)
                         put("conditions", buildJsonArray {
                             add(buildJsonObject {
-                                put("kind", "contains_display_name")
+                                put("kind", "org.matrix.experimental.msc4142.is_user_mention")
                             })
                         })
                         put("actions", buildJsonArray {
@@ -813,12 +817,16 @@ fun Route.pushRoutes() {
                 put("sender", buildJsonObject { })
                 put("room", buildJsonObject { })
                 put("content", buildJsonObject {
-                    // .m.rule.is_room_mention - Room mentions
+                    // .m.rule.is_room_mention - Room mentions (intentional only per MSC4142)
                     put(".m.rule.is_room_mention", buildJsonObject {
                         put("rule_id", ".m.rule.is_room_mention")
                         put("default", true)
                         put("enabled", true)
-                        put("pattern", "@room")
+                        put("conditions", buildJsonArray {
+                            add(buildJsonObject {
+                                put("kind", "org.matrix.experimental.msc4142.is_room_mention")
+                            })
+                        })
                         put("actions", buildJsonArray {
                             add("notify")
                             add(buildJsonObject {

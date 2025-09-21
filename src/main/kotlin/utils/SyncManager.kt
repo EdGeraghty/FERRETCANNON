@@ -48,14 +48,16 @@ object SyncManager {
 
         // Get user's joined rooms
         val joinedRoomIds = getUserJoinedRooms(userId)
+        val invitedRoomIds = getUserInvitedRooms(userId)
+        val leftRoomIds = getUserLeftRooms(userId)
 
         // Determine if this is a full state sync
         val isFullState = fullState || since == null
 
         // Get room data for each joined room
         val joinRooms = mutableMapOf<String, JsonElement>()
-        val inviteRooms = buildJsonObject { } // Empty for now
-        val leaveRooms = buildJsonObject { } // Empty for now
+        val inviteRooms = mutableMapOf<String, JsonElement>()
+        val leaveRooms = mutableMapOf<String, JsonElement>()
 
         for (roomId in joinedRoomIds) {
             val roomData = getRoomSyncData(userId, roomId, since, isFullState)
@@ -76,6 +78,29 @@ object SyncManager {
                 })
                 put("summary", if (roomData.summary != null) roomData.summary else JsonNull)
                 put("unread_notifications", if (roomData.unreadNotifications != null) roomData.unreadNotifications else JsonNull)
+            }
+        }
+
+        for (roomId in invitedRoomIds) {
+            val strippedState = getStrippedState(roomId)
+            inviteRooms[roomId] = buildJsonObject {
+                put("invite_state", buildJsonObject {
+                    put("events", JsonArray(strippedState))
+                })
+            }
+        }
+
+        for (roomId in leftRoomIds) {
+            val roomData = getRoomSyncData(userId, roomId, since, isFullState)
+            leaveRooms[roomId] = buildJsonObject {
+                put("timeline", buildJsonObject {
+                    put("events", JsonArray(roomData.timeline))
+                    put("limited", false)
+                    put("prev_batch", JsonNull)
+                })
+                put("state", buildJsonObject {
+                    put("events", JsonArray(roomData.state))
+                })
             }
         }
 
@@ -108,8 +133,8 @@ object SyncManager {
             put("next_batch", nextBatchToken)
             put("rooms", buildJsonObject {
                 put("join", JsonObject(joinRooms))
-                put("invite", inviteRooms)
-                put("leave", leaveRooms)
+                put("invite", JsonObject(inviteRooms))
+                put("leave", JsonObject(leaveRooms))
             })
             put("presence", buildJsonObject {
                 put("events", JsonArray(presenceEvents.toList()))
@@ -147,6 +172,76 @@ object SyncManager {
                 (Events.stateKey eq userId) and
                 (Events.content.like("%\"membership\":\"join\"%"))
             }.map { it[Events.roomId] }.distinct()
+        }
+    }
+
+    /**
+     * Get rooms that the user has been invited to
+     */
+    private fun getUserInvitedRooms(userId: String): List<String> {
+        return transaction {
+            Events.select {
+                (Events.type eq "m.room.member") and
+                (Events.stateKey eq userId) and
+                (Events.content.like("%\"membership\":\"invite\"%"))
+            }.map { it[Events.roomId] }.distinct()
+        }
+    }
+
+    /**
+     * Get rooms that the user has left
+     */
+    private fun getUserLeftRooms(userId: String): List<String> {
+        return transaction {
+            Events.select {
+                (Events.type eq "m.room.member") and
+                (Events.stateKey eq userId) and
+                (Events.content.like("%\"membership\":\"leave\"%"))
+            }.map { it[Events.roomId] }.distinct()
+        }
+    }
+
+    /**
+     * Get stripped state for a room (for invites)
+     */
+    private fun getStrippedState(roomId: String): List<JsonElement> {
+        return transaction {
+            val strippedEvents = mutableListOf<JsonElement>()
+
+            // Always include m.room.create
+            val createEvent = Events.select {
+                (Events.roomId eq roomId) and
+                (Events.type eq "m.room.create")
+            }.singleOrNull()
+            if (createEvent != null) {
+                strippedEvents.add(buildJsonObject {
+                    put("event_id", createEvent[Events.eventId])
+                    put("type", createEvent[Events.type])
+                    put("sender", createEvent[Events.sender])
+                    put("origin_server_ts", createEvent[Events.originServerTs])
+                    put("content", Json.parseToJsonElement(createEvent[Events.content]).jsonObject)
+                    put("state_key", createEvent[Events.stateKey])
+                })
+            }
+
+            // Include other state events that are typically in stripped state
+            val otherEvents = Events.select {
+                (Events.roomId eq roomId) and
+                (Events.stateKey.isNotNull()) and
+                (Events.type inList listOf("m.room.name", "m.room.topic", "m.room.avatar", "m.room.join_rules", "m.room.canonical_alias"))
+            }.map { row ->
+                buildJsonObject {
+                    put("event_id", row[Events.eventId])
+                    put("type", row[Events.type])
+                    put("sender", row[Events.sender])
+                    put("origin_server_ts", row[Events.originServerTs])
+                    put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                    put("state_key", row[Events.stateKey])
+                }
+            }
+            strippedEvents.addAll(otherEvents)
+
+            strippedEvents
         }
     }
 
