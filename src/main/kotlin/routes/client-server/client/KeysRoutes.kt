@@ -181,10 +181,10 @@ fun Route.keysRoutes() {
 
             // Return room keys backup version information
             // In a real implementation, this would return the current backup version
-            // For now, return a placeholder response
+            // For now, return a 404 indicating no backup exists (which is valid per spec)
             call.respond(HttpStatusCode.NotFound, buildJsonObject {
                 put("errcode", "M_NOT_FOUND")
-                put("error", "Room keys backup not found")
+                put("error", "No current backup")
             })
 
         } catch (e: Exception) {

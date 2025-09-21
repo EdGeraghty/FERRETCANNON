@@ -989,4 +989,22 @@ fun Route.pushRoutes() {
             ))
         }
     }
+
+    // GET /pushers - Get pushers
+    get("/pushers") {
+        try {
+            call.validateAccessToken() ?: return@get
+
+            // Return pushers configured for the user
+            // In a real implementation, this would query a database table for pushers
+            // For now, return an empty array as no pushers are configured
+            call.respond(buildJsonArray { })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error"
+            ))
+        }
+    }
 }

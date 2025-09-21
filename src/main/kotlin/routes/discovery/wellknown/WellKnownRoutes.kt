@@ -202,21 +202,33 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
 
-                    // Only return OAuth metadata if providers are configured
-                    if (OAuthConfig.getEnabledProviders().isEmpty()) {
-                        call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                            put("error", "oauth_not_configured")
-                            put("error_description", "OAuth 2.0 is not configured on this server")
-                        })
-                        return@get
-                    }
-
                     val serverName = config.federation.serverName
                     val baseUrl = if (serverName.contains("localhost")) {
                         "http://${serverName}:${config.server.port}"
                     } else {
                         "https://${serverName}"
                     }
+
+                    // If no OAuth providers are configured, return a minimal discovery document
+                    // indicating OAuth is not available
+                    if (OAuthConfig.getEnabledProviders().isEmpty()) {
+                        call.respond(buildJsonObject {
+                            put("issuer", "$baseUrl/")
+                            putJsonArray("response_types_supported") {
+                                // Empty - no response types supported
+                            }
+                            putJsonArray("grant_types_supported") {
+                                // Empty - no grant types supported
+                            }
+                            putJsonArray("code_challenge_methods_supported") {
+                                // Empty - no challenge methods supported
+                            }
+                            put("error", "oauth_not_configured")
+                            put("error_description", "OAuth 2.0 is not configured on this server")
+                        })
+                        return@get
+                    }
+
                     // OAuth 2.0 Authorization Server Metadata
                     val metadata = buildJsonObject {
                         put("issuer", "$baseUrl/")

@@ -946,4 +946,22 @@ fun Route.userRoutes() {
             })
         }
     }
+
+    // GET /account/3pid - Get third-party identifiers
+    get("/account/3pid") {
+        try {
+            call.validateAccessToken() ?: return@get
+
+            // Return third-party identifiers associated with the user
+            // In a real implementation, this would query a database table for 3PIDs
+            // For now, return an empty array as no 3PIDs are configured
+            call.respond(buildJsonArray { })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
 }
