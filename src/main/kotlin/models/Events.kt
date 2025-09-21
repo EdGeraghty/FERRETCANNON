@@ -212,6 +212,22 @@ object PushRules : Table("push_rules") {
     override val primaryKey = PrimaryKey(userId, scope, kind, ruleId)
 }
 
+object Pushers : Table("pushers") {
+    val userId = varchar("user_id", 255)
+    val pushkey = varchar("pushkey", 255) // Unique identifier for the pusher
+    val kind = varchar("kind", 50) // "http"
+    val appId = varchar("app_id", 255) // Application identifier
+    val appDisplayName = varchar("app_display_name", 255).nullable()
+    val deviceDisplayName = varchar("device_display_name", 255).nullable()
+    val profileTag = varchar("profile_tag", 255).nullable()
+    val lang = varchar("lang", 10).default("en")
+    val data = text("data") // JSON object with push data (url, format, etc.)
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val lastSeen = long("last_seen").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId, pushkey)
+}
+
 object RoomAliases : Table("room_aliases") {
     val roomId = varchar("room_id", 255)
     val alias = varchar("alias", 255).uniqueIndex()

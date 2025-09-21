@@ -40,15 +40,24 @@ fun Route.deviceRoutes() {
             // Get devices from AuthUtils
             val devices = AuthUtils.getUserDevices(userId)
             println("DEBUG: DeviceRoutes - returning devices response")
-            // Use manual JSON construction to avoid serialization issues
-            val devicesJson = devices.joinToString(",", "[", "]") { device ->
-                device.entries.joinToString(",", "{", "}") { 
-                    "\"${it.key}\":\"${it.value}\""
+            // Convert to proper JSON
+            val devicesJson = buildJsonArray {
+                devices.forEach { device ->
+                    addJsonObject {
+                        device.forEach { (key, value) ->
+                            when (value) {
+                                is String -> put(key, value)
+                                is Long -> put(key, value)
+                                is Int -> put(key, value)
+                                is Boolean -> put(key, value)
+                                null -> put(key, JsonNull)
+                                else -> put(key, value.toString())
+                            }
+                        }
+                    }
                 }
             }
-            call.respondText("""{"devices":$devicesJson}""", ContentType.Application.Json)
-
-        } catch (e: Exception) {
+            call.respond(mapOf("devices" to devicesJson))        } catch (e: Exception) {
             println("ERROR: DeviceRoutes - Exception in /devices: ${e.message}")
             e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
@@ -93,19 +102,26 @@ fun Route.deviceRoutes() {
             // Get device info from AuthUtils
             val device = AuthUtils.getUserDevice(userId, deviceId)
             if (device != null) {
-                // Convert Map to JSON manually since Kotlinx serialization has issues with Map types
-                val jsonString = device.entries.joinToString(",", "{", "}") { 
-                    "\"${it.key}\":\"${it.value}\""
+                // Convert to proper JSON
+                val deviceJson = buildJsonObject {
+                    device.forEach { (key, value) ->
+                        when (value) {
+                            is String -> put(key, value)
+                            is Long -> put(key, value)
+                            is Int -> put(key, value)
+                            is Boolean -> put(key, value)
+                            null -> put(key, JsonNull)
+                            else -> put(key, value.toString())
+                        }
+                    }
                 }
-                call.respondText(jsonString, ContentType.Application.Json)
+                call.respond(deviceJson)
             } else {
                 call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Device not found"
                 ))
-            }
-
-        } catch (e: Exception) {
+            }        } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
