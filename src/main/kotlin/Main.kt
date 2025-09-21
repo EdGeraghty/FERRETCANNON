@@ -37,6 +37,9 @@ import models.ApplicationServices
 import models.LoginTokens
 import models.CrossSigningKeys
 import models.DehydratedDevices
+import models.RoomKeyVersions
+import models.RoomKeys
+import models.OneTimeKeys
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -101,7 +104,7 @@ fun main() {
 
     transaction {
         logger.debug("Creating database schema...")
-        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, CrossSigningKeys, DehydratedDevices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, Pushers, RoomAliases, RegistrationTokens, ServerKeys, Filters, ThirdPartyIdentifiers, ApplicationServices, LoginTokens)
+        SchemaUtils.create(Events, Rooms, StateGroups, AccountData, Users, AccessTokens, Devices, CrossSigningKeys, DehydratedDevices, OAuthAuthorizationCodes, OAuthAccessTokens, OAuthStates, Media, Receipts, Presence, PushRules, Pushers, RoomAliases, RegistrationTokens, ServerKeys, Filters, ThirdPartyIdentifiers, ApplicationServices, LoginTokens, RoomKeyVersions, RoomKeys, OneTimeKeys)
         logger.info("✅ Database schema created/verified")
 
         // Create test user for development (if enabled in config)

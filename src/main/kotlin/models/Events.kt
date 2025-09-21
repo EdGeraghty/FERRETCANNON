@@ -277,3 +277,37 @@ object ThirdPartyIdentifiers : Table("third_party_identifiers") {
 
     override val primaryKey = PrimaryKey(userId, medium, address)
 }
+
+object RoomKeyVersions : Table("room_key_versions") {
+    val userId = varchar("user_id", 255).uniqueIndex()
+    val version = varchar("version", 255)
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val lastModified = long("last_modified").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId)
+}
+
+object RoomKeys : Table("room_keys") {
+    val userId = varchar("user_id", 255)
+    val version = varchar("version", 255)
+    val roomId = varchar("room_id", 255)
+    val sessionId = varchar("session_id", 255)
+    val keyData = text("key_data") // JSON key data
+    val lastModified = long("last_modified").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId, version, roomId, sessionId)
+}
+
+object OneTimeKeys : Table("one_time_keys") {
+    val userId = varchar("user_id", 255)
+    val deviceId = varchar("device_id", 255)
+    val keyId = varchar("key_id", 255) // e.g., "curve25519:AAAAA"
+    val keyData = text("key_data") // JSON key data
+    val algorithm = varchar("algorithm", 50) // e.g., "curve25519", "signed_curve25519"
+    val isClaimed = bool("is_claimed").default(false)
+    val claimedBy = varchar("claimed_by", 255).nullable() // userId who claimed it
+    val claimedAt = long("claimed_at").nullable()
+    val uploadedAt = long("uploaded_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId, deviceId, keyId)
+}

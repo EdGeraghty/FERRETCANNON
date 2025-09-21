@@ -16,6 +16,8 @@ import io.ktor.http.content.PartData
 import models.Events
 import models.Rooms
 import models.Filters
+import models.DehydratedDevices
+import models.ThirdPartyIdentifiers
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -1070,21 +1072,33 @@ fun Route.userRoutes() {
     // GET /user/dehydrated_device - Get dehydrated device information (unstable)
     get("/user/dehydrated_device") {
         try {
-            call.validateAccessToken() ?: return@get
+            val userId = call.validateAccessToken() ?: return@get
 
             // Return dehydrated device information
-            // In a real implementation, this would return information about dehydrated devices
-            // For now, return a 404 indicating no dehydrated device
-            call.respond(HttpStatusCode.NotFound, mutableMapOf(
-                "errcode" to "M_NOT_FOUND",
-                "error" to "No dehydrated device found"
-            ))
+            // MSC3814: Dehydrated devices for cross-device message continuity
+            val dehydratedDevice = transaction {
+                DehydratedDevices.select {
+                    DehydratedDevices.userId eq userId
+                }.singleOrNull()
+            }
+
+            if (dehydratedDevice != null) {
+                call.respond(buildJsonObject {
+                    put("device_id", dehydratedDevice[DehydratedDevices.deviceId])
+                    put("device_data", Json.parseToJsonElement(dehydratedDevice[DehydratedDevices.deviceData]))
+                })
+            } else {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "No dehydrated device found")
+                })
+            }
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error"
-            ))
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
         }
     }
 
@@ -1108,12 +1122,22 @@ fun Route.userRoutes() {
     // GET /account/3pid - Get third-party identifiers
     get("/account/3pid") {
         try {
-            call.validateAccessToken() ?: return@get
+            val userId = call.validateAccessToken() ?: return@get
 
-            // Return third-party identifiers associated with the user
-            // In a real implementation, this would query a database table for 3PIDs
-            // For now, return an empty array as no 3PIDs are configured
-            call.respond(buildJsonArray { })
+            // Query third-party identifiers for this user
+            val tpids = transaction {
+                ThirdPartyIdentifiers.select { ThirdPartyIdentifiers.userId eq userId }
+                    .map { row ->
+                        buildJsonObject {
+                            put("medium", row[ThirdPartyIdentifiers.medium])
+                            put("address", row[ThirdPartyIdentifiers.address])
+                            put("validated_at", row[ThirdPartyIdentifiers.validatedAt])
+                            put("added_at", row[ThirdPartyIdentifiers.addedAt])
+                        }
+                    }
+            }
+
+            call.respond(JsonArray(tpids))
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {

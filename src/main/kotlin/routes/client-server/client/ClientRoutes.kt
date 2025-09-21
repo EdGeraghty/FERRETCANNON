@@ -15,6 +15,7 @@ import io.ktor.http.content.*
 import io.ktor.http.content.PartData
 import models.Events
 import models.Rooms
+import models.DehydratedDevices
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -298,15 +299,91 @@ fun Application.clientRoutes(config: ServerConfig) {
                         // GET /dehydrated_device - Get dehydrated device information
                         get("/dehydrated_device") {
                             try {
-                                call.validateAccessToken() ?: return@get
+                                val userId = call.validateAccessToken() ?: return@get
 
                                 // Return dehydrated device information
-                                // In a real implementation, this would return information about dehydrated devices
-                                // For now, return a 404 indicating no dehydrated device
-                                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                                    put("errcode", "M_NOT_FOUND")
-                                    put("error", "No dehydrated device found")
+                                // MSC3814: Dehydrated devices for cross-device message continuity
+                                val dehydratedDevice = transaction {
+                                    DehydratedDevices.select {
+                                        DehydratedDevices.userId eq userId
+                                    }.singleOrNull()
+                                }
+
+                                if (dehydratedDevice != null) {
+                                    call.respond(buildJsonObject {
+                                        put("device_id", dehydratedDevice[DehydratedDevices.deviceId])
+                                        put("device_data", Json.parseToJsonElement(dehydratedDevice[DehydratedDevices.deviceData]))
+                                    })
+                                } else {
+                                    call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                                        put("errcode", "M_NOT_FOUND")
+                                        put("error", "No dehydrated device found")
+                                    })
+                                }
+
+                            } catch (e: Exception) {
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Internal server error")
                                 })
+                            }
+                        }
+
+                        // PUT /dehydrated_device - Create/update dehydrated device
+                        put("/dehydrated_device") {
+                            try {
+                                val userId = call.validateAccessToken() ?: return@put
+
+                                // Parse request body
+                                val requestBody = call.receiveText()
+                                val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+                                val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content
+                                val deviceData = jsonBody["device_data"]?.toString()
+
+                                if (deviceId == null || deviceData == null) {
+                                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                                        put("errcode", "M_INVALID_PARAM")
+                                        put("error", "Missing device_id or device_data")
+                                    })
+                                    return@put
+                                }
+
+                                // Store the dehydrated device
+                                transaction {
+                                    DehydratedDevices.insert {
+                                        it[DehydratedDevices.userId] = userId
+                                        it[DehydratedDevices.deviceId] = deviceId
+                                        it[DehydratedDevices.deviceData] = deviceData
+                                        it[DehydratedDevices.lastModified] = System.currentTimeMillis()
+                                    }
+                                }
+
+                                // Return success response
+                                call.respond(buildJsonObject { })
+
+                            } catch (e: Exception) {
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Internal server error")
+                                })
+                            }
+                        }
+
+                        // DELETE /dehydrated_device - Delete dehydrated device
+                        delete("/dehydrated_device") {
+                            try {
+                                val userId = call.validateAccessToken() ?: return@delete
+
+                                // Delete the dehydrated device
+                                transaction {
+                                    DehydratedDevices.deleteWhere {
+                                        DehydratedDevices.userId eq userId
+                                    }
+                                }
+
+                                // Return success response
+                                call.respond(buildJsonObject { })
 
                             } catch (e: Exception) {
                                 call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
