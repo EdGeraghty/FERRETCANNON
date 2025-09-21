@@ -45,21 +45,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                         putJsonObject("m.homeserver") {
                             put("base_url", baseUrl)
                         }
-                        // OAuth 2.0 properties at root level (some clients expect this)
-                        put("issuer", baseUrl)
-                        put("authorization_endpoint", "$baseUrl/oauth2/authorize")
-                        put("token_endpoint", "$baseUrl/oauth2/token")
-                        put("revocation_endpoint", "$baseUrl/oauth2/revoke")
-                        putJsonArray("response_types_supported") {
-                            add("code")
-                        }
-                        putJsonArray("grant_types_supported") {
-                            add("authorization_code")
-                        }
-                        putJsonArray("code_challenge_methods_supported") {
-                            add("S256")
-                        }
-                        // Also include under the spec-compliant key
+                        // OAuth 2.0 configuration as per MSC 2965
                         putJsonObject("org.matrix.msc2965.authentication") {
                             put("issuer", baseUrl)
                             put("authorization_endpoint", "$baseUrl/oauth2/authorize")
