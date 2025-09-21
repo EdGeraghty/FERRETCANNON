@@ -10,6 +10,11 @@ import utils.AuthUtils
 import config.ServerConfig
 import routes.client_server.client.MATRIX_USER_ID_KEY
 import routes.client_server.client.MATRIX_DEVICE_ID_KEY
+import models.CrossSigningKeys
+import models.DehydratedDevices
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.*
 
 fun Route.keysRoutes() {
     // POST /keys/query - Query device keys for users
@@ -190,18 +195,206 @@ fun Route.keysRoutes() {
         }
     }
 
+    // POST /keys/device_signing/upload - Upload cross-signing keys
+    post("/keys/device_signing/upload") {
+        try {
+            val userId = call.validateAccessToken() ?: return@post
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+            val masterKey = jsonBody["master_key"]?.jsonObject
+            val selfSigningKey = jsonBody["self_signing_key"]?.jsonObject
+            val userSigningKey = jsonBody["user_signing_key"]?.jsonObject
+
+            // Validate keys before storing
+            if (masterKey != null) {
+                val keyId = masterKey["key_id"]?.jsonPrimitive?.content
+                val publicKey = masterKey["public_key"]?.jsonPrimitive?.content
+                if (keyId == null || publicKey == null) {
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_INVALID_PARAM")
+                        put("error", "Missing key_id or public_key for master_key")
+                    })
+                    return@post
+                }
+            }
+
+            if (selfSigningKey != null) {
+                val keyId = selfSigningKey["key_id"]?.jsonPrimitive?.content
+                val publicKey = selfSigningKey["public_key"]?.jsonPrimitive?.content
+                if (keyId == null || publicKey == null) {
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_INVALID_PARAM")
+                        put("error", "Missing key_id or public_key for self_signing_key")
+                    })
+                    return@post
+                }
+            }
+
+            if (userSigningKey != null) {
+                val keyId = userSigningKey["key_id"]?.jsonPrimitive?.content
+                val publicKey = userSigningKey["public_key"]?.jsonPrimitive?.content
+                if (keyId == null || publicKey == null) {
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_INVALID_PARAM")
+                        put("error", "Missing key_id or public_key for user_signing_key")
+                    })
+                    return@post
+                }
+            }
+
+            // Store the cross-signing keys
+            transaction {
+                // Store master key
+                if (masterKey != null) {
+                    val keyId = masterKey["key_id"]?.jsonPrimitive?.content!!
+                    val publicKey = masterKey["public_key"]?.jsonPrimitive?.content!!
+                    val signatures = masterKey["signatures"]?.toString()
+
+                    CrossSigningKeys.insert {
+                        it[CrossSigningKeys.userId] = userId
+                        it[CrossSigningKeys.keyType] = "master"
+                        it[CrossSigningKeys.keyId] = keyId
+                        it[CrossSigningKeys.publicKey] = publicKey
+                        it[CrossSigningKeys.signatures] = signatures
+                        it[CrossSigningKeys.lastModified] = System.currentTimeMillis()
+                    }
+                }
+
+                // Store self-signing key
+                if (selfSigningKey != null) {
+                    val keyId = selfSigningKey["key_id"]?.jsonPrimitive?.content!!
+                    val publicKey = selfSigningKey["public_key"]?.jsonPrimitive?.content!!
+                    val signatures = selfSigningKey["signatures"]?.toString()
+
+                    CrossSigningKeys.insert {
+                        it[CrossSigningKeys.userId] = userId
+                        it[CrossSigningKeys.keyType] = "self_signing"
+                        it[CrossSigningKeys.keyId] = keyId
+                        it[CrossSigningKeys.publicKey] = publicKey
+                        it[CrossSigningKeys.signatures] = signatures
+                        it[CrossSigningKeys.lastModified] = System.currentTimeMillis()
+                    }
+                }
+
+                // Store user-signing key
+                if (userSigningKey != null) {
+                    val keyId = userSigningKey["key_id"]?.jsonPrimitive?.content!!
+                    val publicKey = userSigningKey["public_key"]?.jsonPrimitive?.content!!
+                    val signatures = userSigningKey["signatures"]?.toString()
+
+                    CrossSigningKeys.insert {
+                        it[CrossSigningKeys.userId] = userId
+                        it[CrossSigningKeys.keyType] = "user_signing"
+                        it[CrossSigningKeys.keyId] = keyId
+                        it[CrossSigningKeys.publicKey] = publicKey
+                        it[CrossSigningKeys.signatures] = signatures
+                        it[CrossSigningKeys.lastModified] = System.currentTimeMillis()
+                    }
+                }
+            }
+
+            // Return success response
+            call.respond(buildJsonObject { })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
     // GET /unstable/org.matrix.msc3814.v1/dehydrated_device - Get dehydrated device
     get("/unstable/org.matrix.msc3814.v1/dehydrated_device") {
         try {
-            call.validateAccessToken() ?: return@get
+            val userId = call.validateAccessToken() ?: return@get
 
             // Return dehydrated device information
             // MSC3814: Dehydrated devices for cross-device message continuity
-            // For now, return that no dehydrated device exists
-            call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                put("errcode", "M_NOT_FOUND")
-                put("error", "No dehydrated device found")
+            val dehydratedDevice = transaction {
+                DehydratedDevices.select {
+                    DehydratedDevices.userId eq userId
+                }.singleOrNull()
+            }
+
+            if (dehydratedDevice != null) {
+                call.respond(buildJsonObject {
+                    put("device_id", dehydratedDevice[DehydratedDevices.deviceId])
+                    put("device_data", Json.parseToJsonElement(dehydratedDevice[DehydratedDevices.deviceData]))
+                })
+            } else {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "No dehydrated device found")
+                })
+            }
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
             })
+        }
+    }
+
+    // PUT /unstable/org.matrix.msc3814.v1/dehydrated_device - Create/update dehydrated device
+    put("/unstable/org.matrix.msc3814.v1/dehydrated_device") {
+        try {
+            val userId = call.validateAccessToken() ?: return@put
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+            val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content
+            val deviceData = jsonBody["device_data"]?.toString()
+
+            if (deviceId == null || deviceData == null) {
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing device_id or device_data")
+                })
+                return@put
+            }
+
+            // Store the dehydrated device
+            transaction {
+                DehydratedDevices.insert {
+                    it[DehydratedDevices.userId] = userId
+                    it[DehydratedDevices.deviceId] = deviceId
+                    it[DehydratedDevices.deviceData] = deviceData
+                    it[DehydratedDevices.lastModified] = System.currentTimeMillis()
+                }
+            }
+
+            // Return success response
+            call.respond(buildJsonObject { })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
+    // DELETE /unstable/org.matrix.msc3814.v1/dehydrated_device - Delete dehydrated device
+    delete("/unstable/org.matrix.msc3814.v1/dehydrated_device") {
+        try {
+            val userId = call.validateAccessToken() ?: return@delete
+
+            // Delete the dehydrated device
+            transaction {
+                DehydratedDevices.deleteWhere {
+                    DehydratedDevices.userId eq userId
+                }
+            }
+
+            // Return success response
+            call.respond(buildJsonObject { })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {

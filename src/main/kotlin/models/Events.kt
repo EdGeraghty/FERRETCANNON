@@ -98,6 +98,29 @@ object Devices : Table("devices") {
     override val primaryKey = PrimaryKey(userId, deviceId)
 }
 
+object CrossSigningKeys : Table("cross_signing_keys") {
+    val userId = varchar("user_id", 255)
+    val keyType = varchar("key_type", 50) // "master", "self_signing", "user_signing"
+    val keyId = varchar("key_id", 255) // Key ID like "ed25519:ABCDEF"
+    val publicKey = text("public_key") // Base64 encoded public key
+    val privateKey = text("private_key").nullable() // Encrypted private key (optional)
+    val signatures = text("signatures").nullable() // JSON object of signatures
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val lastModified = long("last_modified").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId, keyType)
+}
+
+object DehydratedDevices : Table("dehydrated_devices") {
+    val userId = varchar("user_id", 255).uniqueIndex()
+    val deviceId = varchar("device_id", 255)
+    val deviceData = text("device_data") // JSON device data
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val lastModified = long("last_modified").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(userId)
+}
+
 object OAuthAuthorizationCodes : Table("oauth_auth_codes") {
     val code = varchar("code", 255).uniqueIndex()
     val clientId = varchar("client_id", 255)
