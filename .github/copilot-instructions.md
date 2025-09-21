@@ -9,6 +9,7 @@
 - Keep explanations concise and focused.
 
 ### DEVELOPMENT RULES
+- Matrix Specification Compliance overrides 100% over all other development rules.
 - Use '.' as the working directory unless user specifies otherwise.
 - Avoid adding media or external links unless explicitly requested.
 - Use placeholders only with a note that they should be replaced.
