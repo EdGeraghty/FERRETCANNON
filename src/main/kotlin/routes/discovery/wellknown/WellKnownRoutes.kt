@@ -12,6 +12,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.security.MessageDigest
 import java.util.Base64
+import utils.OAuthConfig
 
 fun Application.wellKnownRoutes(config: ServerConfig) {
     routing {
@@ -35,30 +36,32 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // For production, use HTTPS without port (fly.io handles this)
                     // For development, use the configured base URL
                     val baseUrl = if (config.federation.serverName.contains("localhost")) {
-                        "http://${config.federation.serverName}:${config.server.port}/"
+                        "http://${config.federation.serverName}:${config.server.port}"
                     } else {
-                        "https://${config.federation.serverName}/"
+                        "https://${config.federation.serverName}"
                     }
 
                     // Use buildJsonObject for proper JSON serialization
                     val response = buildJsonObject {
                         putJsonObject("m.homeserver") {
-                            put("base_url", baseUrl)
+                            put("base_url", "$baseUrl/")
                         }
-                        // OAuth 2.0 configuration as per MSC 2965
-                        putJsonObject("org.matrix.msc2965.authentication") {
-                            put("issuer", baseUrl)
-                            put("authorization_endpoint", "$baseUrl/oauth2/authorize")
-                            put("token_endpoint", "$baseUrl/oauth2/token")
-                            put("revocation_endpoint", "$baseUrl/oauth2/revoke")
-                            putJsonArray("response_types_supported") {
-                                add("code")
-                            }
-                            putJsonArray("grant_types_supported") {
-                                add("authorization_code")
-                            }
-                            putJsonArray("code_challenge_methods_supported") {
-                                add("S256")
+                        // Only include OAuth if providers are configured
+                        if (OAuthConfig.getEnabledProviders().isNotEmpty()) {
+                            putJsonObject("org.matrix.msc2965.authentication") {
+                                put("issuer", "$baseUrl/")
+                                put("authorization_endpoint", "$baseUrl/oauth2/authorize")
+                                put("token_endpoint", "$baseUrl/oauth2/token")
+                                put("revocation_endpoint", "$baseUrl/oauth2/revoke")
+                                putJsonArray("response_types_supported") {
+                                    add("code")
+                                }
+                                putJsonArray("grant_types_supported") {
+                                    add("authorization_code")
+                                }
+                                putJsonArray("code_challenge_methods_supported") {
+                                    add("S256")
+                                }
                             }
                         }
                     }
@@ -192,41 +195,75 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                 }
             }
 
-            // OAuth 2.0 Authorization Server Metadata
-            get("/oauth-authorization-server") {
-                // OAuth 2.0 discovery endpoint
-                // This provides metadata about the OAuth 2.0 authorization server
-                // Add caching headers for discovery
-                call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+                // OAuth 2.0 Authorization Server Metadata
+                get("/oauth-authorization-server") {
+                    // OAuth 2.0 discovery endpoint
+                    // This provides metadata about the OAuth 2.0 authorization server
+                    // Add caching headers for discovery
+                    call.response.headers.append("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+
+                    // Only return OAuth metadata if providers are configured
+                    if (OAuthConfig.getEnabledProviders().isEmpty()) {
+                        call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                            put("error", "oauth_not_configured")
+                            put("error_description", "OAuth 2.0 is not configured on this server")
+                        })
+                        return@get
+                    }
 
                     val serverName = config.federation.serverName
                     val baseUrl = if (serverName.contains("localhost")) {
-                        "http://${serverName}:${config.server.port}/"
+                        "http://${serverName}:${config.server.port}"
                     } else {
-                        "https://${serverName}/"
-                    }                // OAuth 2.0 Authorization Server Metadata
-                val metadata = mapOf(
-                    "issuer" to baseUrl,  // Full base URL as issuer
-                    "authorization_endpoint" to "$baseUrl/oauth2/authorize",
-                    "token_endpoint" to "$baseUrl/oauth2/token",
-                    "revocation_endpoint" to "$baseUrl/oauth2/revoke",
-                    "introspection_endpoint" to "$baseUrl/oauth2/introspect",
-                    "userinfo_endpoint" to "$baseUrl/oauth2/userinfo",
-                    "jwks_uri" to "$baseUrl/oauth2/jwks",
-                    "response_types_supported" to listOf("code"),
-                    "grant_types_supported" to listOf("authorization_code", "refresh_token"),
-                    "code_challenge_methods_supported" to listOf("S256"),
-                    "token_endpoint_auth_methods_supported" to listOf("client_secret_basic", "client_secret_post"),
-                    "revocation_endpoint_auth_methods_supported" to listOf("client_secret_basic", "client_secret_post"),
-                    "introspection_endpoint_auth_methods_supported" to listOf("client_secret_basic", "client_secret_post"),
-                    "scopes_supported" to listOf("openid", "profile"),
-                    "response_modes_supported" to listOf("query", "fragment"),
-                    "service_documentation" to "$baseUrl/docs/oauth2",
-                    "ui_locales_supported" to listOf("en")
-                )
+                        "https://${serverName}"
+                    }
+                    // OAuth 2.0 Authorization Server Metadata
+                    val metadata = buildJsonObject {
+                        put("issuer", "$baseUrl/")
+                        put("authorization_endpoint", "$baseUrl/oauth2/authorize")
+                        put("token_endpoint", "$baseUrl/oauth2/token")
+                        put("revocation_endpoint", "$baseUrl/oauth2/revoke")
+                        put("introspection_endpoint", "$baseUrl/oauth2/introspect")
+                        put("userinfo_endpoint", "$baseUrl/oauth2/userinfo")
+                        put("jwks_uri", "$baseUrl/oauth2/jwks")
+                        putJsonArray("response_types_supported") {
+                            add("code")
+                        }
+                        putJsonArray("grant_types_supported") {
+                            add("authorization_code")
+                            add("refresh_token")
+                        }
+                        putJsonArray("code_challenge_methods_supported") {
+                            add("S256")
+                        }
+                        putJsonArray("token_endpoint_auth_methods_supported") {
+                            add("client_secret_basic")
+                            add("client_secret_post")
+                        }
+                        putJsonArray("revocation_endpoint_auth_methods_supported") {
+                            add("client_secret_basic")
+                            add("client_secret_post")
+                        }
+                        putJsonArray("introspection_endpoint_auth_methods_supported") {
+                            add("client_secret_basic")
+                            add("client_secret_post")
+                        }
+                        putJsonArray("scopes_supported") {
+                            add("openid")
+                            add("profile")
+                        }
+                        putJsonArray("response_modes_supported") {
+                            add("query")
+                            add("fragment")
+                        }
+                        put("service_documentation", "$baseUrl/docs/oauth2")
+                        putJsonArray("ui_locales_supported") {
+                            add("en")
+                        }
+                    }
 
-                call.respond(metadata)
-            }
+                    call.respond(metadata)
+                }
         }
     }
 }

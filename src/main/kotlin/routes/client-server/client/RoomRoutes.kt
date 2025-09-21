@@ -13,24 +13,26 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import models.Rooms
 import models.Events
 import models.RoomAliases
+import models.Receipts
 import utils.AuthUtils
 import utils.StateResolver
 import routes.server_server.federation.v1.broadcastEDU
 import routes.client_server.client.MATRIX_USER_ID_KEY
+import utils.typingMap
 
 fun Route.roomRoutes(config: ServerConfig) {
     val stateResolver = StateResolver()
 
         // GET /rooms/{roomId}/state/{eventType}/{stateKey} - Get specific state event
-    get("/rooms/{roomId}/state/{eventType}/{stateKey}") {
+    get("/rooms/{roomId}/state/{eventType}/{stateKey?}") {
         try {
             val userId = call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
             val eventType = call.parameters["eventType"]
-            val stateKey = call.parameters["stateKey"]
+            val stateKey = call.parameters["stateKey"] ?: "" // Default to empty string for events with no state key
             val format = call.request.queryParameters["format"] ?: "content"
 
-            if (roomId == null || eventType == null || stateKey == null) {
+            if (roomId == null || eventType == null) {
                 call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing required parameters"
@@ -767,7 +769,30 @@ fun Route.roomRoutes(config: ServerConfig) {
 
             // If resolved state is empty, fall back to getting current state from events
             val stateEvents = if (resolvedState.isNotEmpty()) {
-                resolvedState.values.toList()
+                // Ensure the create event is always included
+                val events = resolvedState.values.toList().toMutableList()
+                val hasCreateEvent = events.any { it["type"]?.jsonPrimitive?.content == "m.room.create" }
+                if (!hasCreateEvent) {
+                    // Try to get the create event from the database
+                    val createEvent = transaction {
+                        Events.select {
+                            (Events.roomId eq roomId) and
+                            (Events.type eq "m.room.create")
+                        }.singleOrNull()?.let { row ->
+                            buildJsonObject {
+                                put("event_id", row[Events.eventId])
+                                put("type", row[Events.type])
+                                put("sender", row[Events.sender])
+                                put("origin_server_ts", row[Events.originServerTs])
+                                put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                                put("state_key", row[Events.stateKey] ?: "")
+                                put("unsigned", buildJsonObject { })
+                            }
+                        }
+                    }
+                    createEvent?.let { events.add(it) }
+                }
+                events
             } else {
                 // Get current state events from the database
                 transaction {
@@ -980,6 +1005,10 @@ fun Route.roomRoutes(config: ServerConfig) {
             // Parse query parameters
             val membership = call.request.queryParameters["membership"] ?: "join"
             val notMembership = call.request.queryParameters["not_membership"]
+            val at = call.request.queryParameters["at"] // Historical point - for now, we ignore this and return current state
+
+            // Note: Historical membership queries (at parameter) are not fully implemented yet
+            // For now, we return current membership state regardless of the 'at' parameter
 
             // Get room members based on membership status
             val members = transaction {
@@ -1004,26 +1033,167 @@ fun Route.roomRoutes(config: ServerConfig) {
                 }
 
                 query.map { row ->
-                    mutableMapOf(
-                        "event_id" to row[Events.eventId],
-                        "type" to row[Events.type],
-                        "sender" to row[Events.sender],
-                        "origin_server_ts" to row[Events.originServerTs],
-                        "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
-                        "state_key" to row[Events.stateKey],
-                        "room_id" to row[Events.roomId]
-                    )
+                    buildJsonObject {
+                        put("event_id", row[Events.eventId])
+                        put("type", row[Events.type])
+                        put("sender", row[Events.sender])
+                        put("origin_server_ts", row[Events.originServerTs])
+                        put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                        put("state_key", row[Events.stateKey])
+                        put("room_id", row[Events.roomId])
+                    }
                 }
             }
 
-            call.respond(mutableMapOf(
-                "chunk" to members
-            ))
+            call.respond(buildJsonObject {
+                putJsonArray("chunk") {
+                    members.forEach { member ->
+                        add(member)
+                    }
+                }
+            })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
+            ))
+        }
+    }
+
+    // PUT /rooms/{roomId}/typing/{userId} - Send typing notification
+    put("/rooms/{roomId}/typing/{userId}") {
+        try {
+            val authenticatedUserId = call.validateAccessToken() ?: return@put
+            val roomId = call.parameters["roomId"]
+            val userId = call.parameters["userId"]
+
+            if (roomId == null || userId == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing required parameters"
+                ))
+                return@put
+            }
+
+            // Verify that the authenticated user matches the userId in the path
+            if (authenticatedUserId != userId) {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "Can only set typing status for yourself"
+                ))
+                return@put
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@put
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val typing = jsonBody["typing"]?.jsonPrimitive?.boolean ?: false
+            val timeout = jsonBody["timeout"]?.jsonPrimitive?.long ?: 30000 // Default 30 seconds
+
+            val currentTime = System.currentTimeMillis()
+
+            // Update typing state
+            val roomTyping = typingMap.getOrPut(roomId) { mutableMapOf() }
+
+            if (typing) {
+                // User started typing
+                roomTyping[userId] = currentTime + timeout
+            } else {
+                // User stopped typing
+                roomTyping.remove(userId)
+            }
+
+            // Clean up old typing entries (older than current time)
+            roomTyping.entries.removeIf { it.value < currentTime }
+
+            // Broadcast typing update to room clients
+            runBlocking {
+                val typingEvent = JsonObject(mutableMapOf(
+                    "type" to JsonPrimitive("m.typing"),
+                    "room_id" to JsonPrimitive(roomId),
+                    "content" to JsonObject(mutableMapOf(
+                        "user_ids" to JsonArray(roomTyping.keys.map { JsonPrimitive(it) })
+                    ))
+                ))
+                broadcastEDU(roomId, typingEvent)
+            }
+
+            call.respondText("{}", ContentType.Application.Json)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
+            ))
+        }
+    }
+
+    // DELETE /rooms/{roomId}/typing/{userId} - Stop typing notification
+    delete("/rooms/{roomId}/typing/{userId}") {
+        try {
+            val authenticatedUserId = call.validateAccessToken() ?: return@delete
+            val roomId = call.parameters["roomId"]
+            val userId = call.parameters["userId"]
+
+            if (roomId == null || userId == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing required parameters"
+                ))
+                return@delete
+            }
+
+            // Verify that the authenticated user matches the userId in the path
+            if (authenticatedUserId != userId) {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "Can only set typing status for yourself"
+                ))
+                return@delete
+            }
+
+            // Remove user from typing state
+            val roomTyping = typingMap[roomId]
+            roomTyping?.remove(userId)
+
+            // Broadcast typing update to room clients
+            runBlocking {
+                val typingEvent = JsonObject(mutableMapOf(
+                    "type" to JsonPrimitive("m.typing"),
+                    "room_id" to JsonPrimitive(roomId),
+                    "content" to JsonObject(mutableMapOf(
+                        "user_ids" to JsonArray(roomTyping?.keys?.map { JsonPrimitive(it) } ?: emptyList())
+                    ))
+                ))
+                broadcastEDU(roomId, typingEvent)
+            }
+
+            call.respondText("{}", ContentType.Application.Json)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
             ))
         }
     }

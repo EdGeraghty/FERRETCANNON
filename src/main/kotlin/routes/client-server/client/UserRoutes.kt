@@ -929,4 +929,21 @@ fun Route.userRoutes() {
             ))
         }
     }
+
+    // GET /account/whoami - Get information about the authenticated user
+    get("/account/whoami") {
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+
+            call.respond(buildJsonObject {
+                put("user_id", userId)
+            })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
 }

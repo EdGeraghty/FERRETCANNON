@@ -207,6 +207,26 @@ object SyncManager {
                 }
             }
             state.addAll(stateEvents)
+        } else {
+            // For incremental syncs, at minimum include the create event
+            // This is critical for clients to determine room type and version
+            val createEvent = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()?.let { row ->
+                    buildJsonObject {
+                        put("event_id", row[Events.eventId])
+                        put("type", row[Events.type])
+                        put("sender", row[Events.sender])
+                        put("origin_server_ts", row[Events.originServerTs])
+                        put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                        put("state_key", row[Events.stateKey])
+                        put("unsigned", buildJsonObject { })
+                    }
+                }
+            }
+            createEvent?.let { state.add(it) }
         }
 
         // Get ephemeral events (typing notifications)
