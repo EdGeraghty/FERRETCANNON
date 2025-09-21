@@ -44,7 +44,7 @@ import io.ktor.util.AttributeKey
 // Define the attribute key locally
 val LOCAL_MATRIX_USER_ID_KEY = AttributeKey<String>("MatrixUserId")
 
-fun Route.thirdPartyRoutes(_config: ServerConfig) {
+fun Route.thirdPartyRoutes() {
     // GET /thirdparty/protocols - Get third-party protocols
     get("/thirdparty/protocols") {
         try {
@@ -75,16 +75,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/protocol/{protocol} - Get protocol information
     get("/thirdparty/protocol/{protocol}") {
         try {
-            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val protocol = call.parameters["protocol"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (protocol == null) {
                 call.respond(HttpStatusCode.BadRequest, mutableMapOf(
@@ -111,16 +102,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/location/{protocol} - Get location information
     get("/thirdparty/location/{protocol}") {
         try {
-            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val protocol = call.parameters["protocol"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (protocol == null) {
                 call.respond(HttpStatusCode.BadRequest, mutableMapOf(
@@ -144,16 +126,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/user/{protocol} - Get user information
     get("/thirdparty/user/{protocol}") {
         try {
-            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
             val protocol = call.parameters["protocol"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
 
             if (protocol == null) {
                 call.respond(HttpStatusCode.BadRequest, mutableMapOf(
@@ -177,17 +150,6 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/location - Search locations
     get("/thirdparty/location") {
         try {
-            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
-            val _search = call.request.queryParameters["search"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
-
             // Search locations (simplified)
             call.respond(emptyList<Map<String, Any>>())
 
@@ -202,17 +164,6 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
     // GET /thirdparty/user - Search users
     get("/thirdparty/user") {
         try {
-            val userId = call.attributes.getOrNull(LOCAL_MATRIX_USER_ID_KEY)
-            val _search = call.request.queryParameters["search"]
-
-            if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
-                    "errcode" to "M_MISSING_TOKEN",
-                    "error" to "Missing access token"
-                ))
-                return@get
-            }
-
             // Search users (simplified)
             call.respond(emptyList<Map<String, Any>>())
 

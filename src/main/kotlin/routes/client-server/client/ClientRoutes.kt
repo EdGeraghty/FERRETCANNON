@@ -249,16 +249,16 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                     // Include all the modular route files
                     authRoutes(config)
-                    userRoutes(config)
-                    deviceRoutes(config)
+                    userRoutes()
+                    deviceRoutes()
                     roomRoutes(config)
-                    eventRoutes(config)
-                    pushRoutes(config)
+                    eventRoutes()
+                    pushRoutes()
                     adminRoutes(config)
-                    thirdPartyRoutes(config)
+                    thirdPartyRoutes()
                     // oauthRoutes(config) - moved to root level
-                    syncRoutes(config)
-                    keysRoutes(config)
+                    syncRoutes()
+                    keysRoutes()
                 }
 
                 route("/unstable") {
@@ -272,7 +272,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                         // GET /dehydrated_device - Get dehydrated device information
                         get("/dehydrated_device") {
                             try {
-                                val userId = call.validateAccessToken() ?: return@get
+                                call.validateAccessToken() ?: return@get
 
                                 // Return dehydrated device information
                                 // In a real implementation, this would return information about dehydrated devices

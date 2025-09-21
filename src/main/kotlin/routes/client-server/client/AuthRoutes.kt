@@ -286,7 +286,7 @@ fun Route.authRoutes(config: ServerConfig) {
     // GET /capabilities - Server capabilities
     get("/capabilities") {
         try {
-            val userId = call.validateAccessToken() ?: return@get
+            call.validateAccessToken() ?: return@get
 
             call.respond(buildJsonObject {
                 putJsonObject("capabilities") {

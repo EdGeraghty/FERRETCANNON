@@ -618,7 +618,7 @@ fun Route.roomRoutes(config: ServerConfig) {
     // GET /rooms/{roomId}/state - Get room state
     get("/rooms/{roomId}/state") {
         try {
-            val userId = call.validateAccessToken() ?: return@get
+            call.validateAccessToken() ?: return@get
             val roomId = call.parameters["roomId"]
 
             if (roomId == null) {
@@ -679,7 +679,6 @@ fun Route.roomRoutes(config: ServerConfig) {
             }
 
             // Parse query parameters
-            val at = call.request.queryParameters["at"]
             val membership = call.request.queryParameters["membership"] ?: "join"
             val notMembership = call.request.queryParameters["not_membership"]
 

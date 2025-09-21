@@ -110,7 +110,7 @@ fun extractServerNameFromAuth(authHeader: String): String? {
     }
 }
 
-fun getAuthState(event: JsonObject, _roomId: String): Map<String, JsonObject> {
+fun getAuthState(event: JsonObject): Map<String, JsonObject> {
     val authEvents = event["auth_events"]?.jsonArray ?: return mutableMapOf()
     val state = mutableMapOf<String, JsonObject>()
     transaction {
@@ -194,7 +194,6 @@ fun getCurrentStateEvents(roomId: String): List<Map<String, Any?>> {
 
         currentState.map { entry: Map.Entry<String, JsonObject> ->
             val stateKey = entry.key
-            val stateEvent = entry.value
             // Find the actual event in the database
             val (type, stateKeyValue) = stateKey.split(":", limit = 2)
             val eventRow = Events.select {
@@ -232,15 +231,15 @@ fun getCurrentStateEventIds(roomId: String): List<String> {
     return getCurrentStateEvents(roomId).map { it["event_id"] as String }
 }
 
-fun getStateAtEvent(_roomId: String, _eventId: String): List<Map<String, Any?>> {
+fun getStateAtEvent(roomId: String): List<Map<String, Any?>> {
     // This is a simplified implementation - in a real implementation,
     // you'd need to reconstruct the state at a specific event
     // For now, return current state
-    return getCurrentStateEvents(_roomId)
+    return getCurrentStateEvents(roomId)
 }
 
-fun getStateEventIdsAtEvent(roomId: String, eventId: String): List<String> {
-    return getStateAtEvent(roomId, eventId).map { it["event_id"] as String }
+fun getStateEventIdsAtEvent(roomId: String): List<String> {
+    return getStateAtEvent(roomId).map { it["event_id"] as String }
 }
 
 fun getRoomInfo(roomId: String): Map<String, Any?>? {

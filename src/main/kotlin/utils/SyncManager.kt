@@ -41,10 +41,7 @@ object SyncManager {
     fun performSync(
         userId: String,
         since: MatrixPagination.SyncToken? = null,
-        fullState: Boolean = false,
-        _timeout: Long = 30000,
-        _filter: String? = null,
-        _setPresence: String? = null
+        fullState: Boolean = false
     ): JsonObject {
         val currentTime = System.currentTimeMillis()
 
@@ -82,7 +79,7 @@ object SyncManager {
         }
 
         // Get presence events
-        val presenceEvents = getPresenceEvents(userId, since)
+        val presenceEvents = getPresenceEvents(since)
 
         // Get account data
         val accountData = getAccountData(userId, since)
@@ -290,7 +287,7 @@ object SyncManager {
     /**
      * Get presence events
      */
-    private fun getPresenceEvents(userId: String, since: MatrixPagination.SyncToken?): Collection<JsonElement> {
+    private fun getPresenceEvents(since: MatrixPagination.SyncToken?): Collection<JsonElement> {
         return transaction {
             val query = Presence.selectAll()
 

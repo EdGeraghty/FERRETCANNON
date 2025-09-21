@@ -460,7 +460,7 @@ object AuthUtils {
     /**
      * Validate application service token (real implementation)
      */
-    fun validateApplicationServiceToken(token: String, serverName: String = "localhost"): String? {
+    fun validateApplicationServiceToken(token: String): String? {
         return transaction {
             // Find the application service by AS token
             val asService = ApplicationServices.select { ApplicationServices.asToken eq token }
@@ -478,7 +478,7 @@ object AuthUtils {
     /**
      * Validate login token (real implementation)
      */
-    fun validateLoginToken(token: String, serverName: String = "localhost"): String? {
+    fun validateLoginToken(token: String): String? {
         val currentTime = System.currentTimeMillis()
 
         return transaction {

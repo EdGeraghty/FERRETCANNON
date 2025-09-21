@@ -111,7 +111,7 @@ fun processPDU(pdu: JsonElement): JsonElement? {
         }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
         // 7. Get auth state from auth_events
-        val authState = getAuthState(event, roomId)
+        val authState = getAuthState(event)
 
         // 8. Check auth based on auth_events
         if (!stateResolver.checkAuthRules(event, authState)) return buildJsonObject {
@@ -312,7 +312,7 @@ fun processTypingEDU(edu: JsonObject): JsonElement {
 
         // Broadcast typing update to room clients
         runBlocking {
-            broadcastTypingUpdate(roomId, userId, typing)
+            broadcastTypingUpdate(roomId)
         }
 
         return buildJsonObject {
@@ -349,11 +349,9 @@ fun processReceiptEDU(edu: JsonObject): JsonElement {
 
             userReceiptsObj.forEach { (eventId, receiptData) ->
                 val receiptObj = receiptData.jsonObject
-                val ts = receiptObj["ts"]?.jsonPrimitive?.long ?: System.currentTimeMillis()
-                val threadId = receiptObj["thread_id"]?.jsonPrimitive?.content
 
                 // Store receipt in database
-                ReceiptsStorage.addReceipt(roomId, userId, eventId, "m.read", threadId)
+                ReceiptsStorage.addReceipt(roomId, userId, eventId, "m.read", receiptObj["thread_id"]?.jsonPrimitive?.content)
             }
         }
 
@@ -390,10 +388,10 @@ fun processDirectToDeviceEDU(edu: JsonObject): JsonElement {
         }
 
         // Process messages for each target user
-        messages.forEach { (targetUserId, userMessages) ->
-            val userMessagesObj = userMessages.jsonObject
+        messages.forEach { (targetUserId, userMessagesObj) ->
+            val userMessages = userMessagesObj.jsonObject
 
-            userMessagesObj.forEach { (deviceId, messageContent) ->
+            userMessages.forEach { (deviceId, messageContent) ->
                 val message = mutableMapOf(
                     "sender" to sender,
                     "type" to type,
@@ -403,12 +401,12 @@ fun processDirectToDeviceEDU(edu: JsonObject): JsonElement {
                 )
 
                 // Store message for delivery to target user
-                val userMessages = directToDeviceMessages.getOrPut(targetUserId) { mutableListOf() }
-                userMessages.add(message)
+                val targetUserMessages = directToDeviceMessages.getOrPut(targetUserId) { mutableListOf() }
+                targetUserMessages.add(message)
 
                 // Clean up old messages (keep only last 100 per user)
-                if (userMessages.size > 100) {
-                    userMessages.removeAt(0)
+                if (targetUserMessages.size > 100) {
+                    targetUserMessages.removeAt(0)
                 }
             }
         }
@@ -505,7 +503,7 @@ suspend fun broadcastPresenceUpdate(userId: String, presence: String, statusMsg:
     }
 }
 
-suspend fun broadcastTypingUpdate(roomId: String, userId: String, typing: Boolean) {
+suspend fun broadcastTypingUpdate(roomId: String) {
     try {
         // Get current typing users for the room
         val currentTypingUsers = typingMap[roomId] ?: mutableMapOf()

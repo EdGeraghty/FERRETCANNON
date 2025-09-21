@@ -39,7 +39,7 @@ fun Route.federationV1State() {
 
         val stateEvents = if (eventId != null) {
             // Get state at specific event
-            getStateAtEvent(roomId, eventId)
+            getStateAtEvent(roomId)
         } else {
             // Get current state
             getCurrentStateEvents(roomId)
@@ -77,7 +77,7 @@ fun Route.federationV1State() {
 
         val stateEventIds = if (eventId != null) {
             // Get state event IDs at specific event
-            getStateEventIdsAtEvent(roomId, eventId)
+            getStateEventIdsAtEvent(roomId)
         } else {
             // Get current state event IDs
             getCurrentStateEventIds(roomId)

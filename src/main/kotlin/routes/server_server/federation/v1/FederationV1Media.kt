@@ -46,9 +46,6 @@ fun Route.federationV1Media() {
                 return@get
             }
 
-            // Get metadata
-            val _metadata = MediaStorage.getMediaMetadata(mediaId)
-
             // Return multipart response as per spec
             val boundary = "boundary_${System.currentTimeMillis()}"
 
@@ -106,7 +103,6 @@ ${String(content, Charsets.UTF_8)}
             val height = call.request.queryParameters["height"]?.toIntOrNull()
             val method = call.request.queryParameters["method"] ?: "scale"
             val animated = call.request.queryParameters["animated"]?.toBoolean() ?: false
-            val _timeoutMs = call.request.queryParameters["timeout_ms"]?.toLongOrNull() ?: 20000L
 
             // Validate required parameters
             if (width == null || height == null) {

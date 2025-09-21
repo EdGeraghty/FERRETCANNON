@@ -574,7 +574,6 @@ fun Route.federationV1Membership() {
             // Get current state to validate invite
             val roomState = stateResolver.getResolvedState(roomId)
             val stateKey = inviteEvent["state_key"]?.jsonPrimitive?.content ?: ""
-            val _sender = inviteEvent["sender"]?.jsonPrimitive?.content ?: ""
 
             // Check if user is already a member
             val membershipKey = "m.room.member:$stateKey"

@@ -206,7 +206,7 @@ fun Route.contentRoutes(config: ServerConfig) {
     // GET /config - Get upload configuration
     get("/config") {
         try {
-            val userId = call.validateAccessToken() ?: return@get
+            call.validateAccessToken() ?: return@get
 
             call.respond(buildJsonObject {
                 put("m.upload.size", buildJsonObject {

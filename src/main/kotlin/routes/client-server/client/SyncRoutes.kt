@@ -11,7 +11,7 @@ import utils.MatrixPagination
 import config.ServerConfig
 import routes.client_server.client.MATRIX_USER_ID_KEY
 
-fun Route.syncRoutes(_config: ServerConfig) {
+fun Route.syncRoutes() {
     // GET /sync - Sync endpoint
     get("/sync") {
         try {
@@ -41,19 +41,13 @@ fun Route.syncRoutes(_config: ServerConfig) {
 
             // Parse query parameters
             val since = call.request.queryParameters["since"]
-            val timeout = call.request.queryParameters["timeout"]?.toLongOrNull() ?: 0L
-            val setPresence = call.request.queryParameters["set_presence"] ?: "online"
-            val filter = call.request.queryParameters["filter"]
 
             println("DEBUG: SyncRoutes - performing sync for user: $userId")
             // Perform sync
             val syncResponse = SyncManager.performSync(
                 userId = userId,
                 since = since?.let { MatrixPagination.parseSyncToken(it) },
-                fullState = false,
-                _timeout = timeout,
-                _filter = filter,
-                _setPresence = setPresence
+                fullState = false
             )
 
             println("DEBUG: SyncRoutes - sync completed, responding")

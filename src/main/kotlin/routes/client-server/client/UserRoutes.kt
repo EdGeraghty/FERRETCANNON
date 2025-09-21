@@ -43,7 +43,7 @@ import utils.MatrixPagination
 
 import routes.client_server.client.MATRIX_USER_ID_KEY
 
-fun Route.userRoutes(_config: ServerConfig) {
+fun Route.userRoutes() {
     // GET /profile/{userId} - Get user profile
     get("/profile/{userId}") {
         try {
@@ -618,7 +618,7 @@ fun Route.userRoutes(_config: ServerConfig) {
     // GET /user_directory/search - Search user directory
     post("/user_directory/search") {
         try {
-            val userId = call.validateAccessToken() ?: return@post
+            call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = try {
@@ -799,7 +799,7 @@ fun Route.userRoutes(_config: ServerConfig) {
     // GET /user/dehydrated_device - Get dehydrated device information (unstable)
     get("/user/dehydrated_device") {
         try {
-            val userId = call.validateAccessToken() ?: return@get
+            call.validateAccessToken() ?: return@get
 
             // Return dehydrated device information
             // In a real implementation, this would return information about dehydrated devices

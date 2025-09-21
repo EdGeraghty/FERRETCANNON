@@ -125,7 +125,6 @@ fun Route.federationV1Devices() {
                     if (parts.size != 2) continue
 
                     val algorithm = parts[0]
-                    val _keyId = parts[1]
 
                     // Find available one-time key for this user and algorithm
                     val globalUserOneTimeKeys = utils.oneTimeKeys[userId] ?: mapOf<String, Map<String, Any?>>()

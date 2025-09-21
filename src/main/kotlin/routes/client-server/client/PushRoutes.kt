@@ -12,7 +12,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import models.PushRules
 
-fun Route.pushRoutes(_config: ServerConfig) {
+fun Route.pushRoutes() {
     // GET /pushrules - Get push rules
     get("/pushrules") {
         try {

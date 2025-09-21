@@ -25,7 +25,7 @@ object ReadMarkers : Table("read_markers") {
     override val primaryKey = PrimaryKey(roomId, userId, markerType)
 }
 
-fun Route.eventRoutes(config: ServerConfig) {
+fun Route.eventRoutes() {
     route("/_matrix/client/v3/rooms/{roomId}") {
         // Receipt endpoint
         post("/receipt/{receiptType}/{eventId}") {

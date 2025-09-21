@@ -11,11 +11,11 @@ import config.ServerConfig
 import routes.client_server.client.MATRIX_USER_ID_KEY
 import routes.client_server.client.MATRIX_DEVICE_ID_KEY
 
-fun Route.keysRoutes(_config: ServerConfig) {
+fun Route.keysRoutes() {
     // POST /keys/query - Query device keys for users
     post("/keys/query") {
         try {
-            val userId = call.validateAccessToken() ?: return@post
+            call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = call.receiveText()
@@ -73,7 +73,7 @@ fun Route.keysRoutes(_config: ServerConfig) {
     // POST /keys/claim - Claim one-time keys
     post("/keys/claim") {
         try {
-            val userId = call.validateAccessToken() ?: return@post
+            call.validateAccessToken() ?: return@post
 
             // Parse request body
             val requestBody = call.receiveText()
@@ -91,9 +91,6 @@ fun Route.keysRoutes(_config: ServerConfig) {
                     // Parse the key ID (format: algorithm:key_id)
                     val parts = keyId.split(":", limit = 2)
                     if (parts.size == 2) {
-                        val _algorithm = parts[0]
-                        val _keyIdValue = parts[1]
-
                         // For now, return a placeholder response
                         // In a full implementation, this would claim actual one-time keys
                         val keyData = buildJsonObject {
@@ -175,7 +172,7 @@ fun Route.keysRoutes(_config: ServerConfig) {
     // GET /room_keys/version - Get room keys version
     get("/room_keys/version") {
         try {
-            val userId = call.validateAccessToken() ?: return@get
+            call.validateAccessToken() ?: return@get
 
             // Return room keys backup version information
             // In a real implementation, this would return the current backup version

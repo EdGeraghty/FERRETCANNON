@@ -29,16 +29,9 @@ fun Route.federationV1ServerKeys() {
         try {
             // Get server keys for the requested server
             val serverKeys = ServerKeys.getServerKeys(serverName)
-            if (serverKeys == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "Server keys not found")
-                })
-                return@get
-            }
 
             // Return the server keys
-            call.respond(serverKeys!!)
+            call.respond(serverKeys)
         } catch (e: Exception) {
             println("Server keys error: ${e.message}")
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {

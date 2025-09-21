@@ -17,7 +17,7 @@ class StateResolver {
     /**
      * Resolve the current state of a room from a set of events
      */
-    fun resolveState(_roomId: String, events: List<JsonObject>): Map<String, JsonObject> {
+    fun resolveState(events: List<JsonObject>): Map<String, JsonObject> {
         if (events.isEmpty()) return mutableMapOf()
 
         // Group events by state key
@@ -65,7 +65,6 @@ class StateResolver {
      */
     private fun getPowerLevel(event: JsonObject): Int {
         val sender = event["sender"]?.jsonPrimitive?.content ?: return 0
-        val roomId = event["room_id"]?.jsonPrimitive?.content ?: return 0
 
         // Get current power levels from auth events or current state
         val authEvents = event["auth_events"]?.jsonArray ?: return 0
@@ -93,7 +92,6 @@ class StateResolver {
     fun checkAuthRules(event: JsonObject, currentState: Map<String, JsonObject>): Boolean {
         val type = event["type"]?.jsonPrimitive?.content ?: return false
         val sender = event["sender"]?.jsonPrimitive?.content ?: return false
-        val _content = event["content"]?.jsonObject ?: return false
 
         when (type) {
             "m.room.create" -> {
