@@ -43,6 +43,15 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     call.respond(mutableMapOf(
                         "m.homeserver" to mutableMapOf(
                             "base_url" to baseUrl
+                        ),
+                        "org.matrix.msc2965.authentication" to mutableMapOf(
+                            "issuer" to baseUrl,
+                            "authorization_endpoint" to "$baseUrl/oauth2/authorize",
+                            "token_endpoint" to "$baseUrl/oauth2/token",
+                            "revocation_endpoint" to "$baseUrl/oauth2/revoke",
+                            "response_types_supported" to listOf("code"),
+                            "grant_types_supported" to listOf("authorization_code"),
+                            "code_challenge_methods_supported" to listOf("S256")
                         )
                         // Removed m.identity_server since we don't implement identity server endpoints
                     ))
