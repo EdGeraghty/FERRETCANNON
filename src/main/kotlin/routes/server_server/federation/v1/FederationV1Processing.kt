@@ -394,7 +394,7 @@ fun processDirectToDeviceEDU(edu: JsonObject): JsonElement {
             val userMessagesObj = userMessages.jsonObject
 
             userMessagesObj.forEach { (deviceId, messageContent) ->
-                val message = mapOf(
+                val message = mutableMapOf(
                     "sender" to sender,
                     "type" to type,
                     "content" to messageContent,

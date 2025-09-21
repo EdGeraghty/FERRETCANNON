@@ -200,7 +200,7 @@ fun main() {
                 val contentLength = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()
                 if (contentLength != null && contentLength > config.server.maxRequestSize) {
                     logger.warn("Request rejected: size ${contentLength} exceeds limit ${config.server.maxRequestSize}")
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                    call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                         "errcode" to "M_TOO_LARGE",
                         "error" to "Request too large"
                     ))

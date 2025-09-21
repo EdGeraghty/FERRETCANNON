@@ -154,7 +154,7 @@ fun findMissingEvents(roomId: String, earliestEvents: List<String>, latestEvents
 
             if (eventRow != null) {
                 // Convert to event format
-                val event = mapOf(
+                val event = mutableMapOf(
                     "event_id" to eventRow[Events.eventId],
                     "type" to eventRow[Events.type],
                     "room_id" to eventRow[Events.roomId],
@@ -206,7 +206,7 @@ fun getCurrentStateEvents(roomId: String): List<Map<String, Any?>> {
             }.orderBy(Events.originServerTs, SortOrder.DESC).firstOrNull()
 
             if (eventRow != null) {
-                mapOf(
+                mutableMapOf(
                     "event_id" to eventRow[Events.eventId],
                     "type" to eventRow[Events.type],
                     "room_id" to eventRow[Events.roomId],

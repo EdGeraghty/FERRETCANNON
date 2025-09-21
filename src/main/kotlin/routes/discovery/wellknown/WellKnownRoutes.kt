@@ -23,7 +23,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Add caching headers for discovery
                     call.response.headers.append("Cache-Control", "public, max-age=86400") // Cache for 24 hours
 
-                    call.respond(mapOf("m.server" to "${config.federation.serverName}:${config.federation.federationPort}"))
+                    call.respond(mutableMapOf("m.server" to "${config.federation.serverName}:${config.federation.federationPort}"))
                 }
 
                 get("/client") {
@@ -40,8 +40,8 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                         "https://${config.federation.serverName}"
                     }
 
-                    call.respond(mapOf(
-                        "m.homeserver" to mapOf(
+                    call.respond(mutableMapOf(
+                        "m.homeserver" to mutableMapOf(
                             "base_url" to baseUrl
                         )
                         // Removed m.identity_server since we don't implement identity server endpoints
@@ -64,18 +64,18 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                         "https://${config.federation.serverName}"
                     }
 
-                    call.respond(mapOf(
-                        "policies" to mapOf(
-                            "privacy_policy" to mapOf(
+                    call.respond(mutableMapOf(
+                        "policies" to mutableMapOf(
+                            "privacy_policy" to mutableMapOf(
                                 "version" to "1.0",
-                                "en" to mapOf(
+                                "en" to mutableMapOf(
                                     "name" to "Privacy Policy",
                                     "url" to "$baseUrl/privacy"
                                 )
                             ),
-                            "terms_of_service" to mapOf(
+                            "terms_of_service" to mutableMapOf(
                                 "version" to "1.0",
-                                "en" to mapOf(
+                                "en" to mutableMapOf(
                                     "name" to "Terms of Service",
                                     "url" to "$baseUrl/terms"
                                 )
@@ -88,7 +88,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     // Hash details for 3PID lookups
                     call.response.headers.append("Cache-Control", "public, max-age=86400")
 
-                    call.respond(mapOf(
+                    call.respond(mutableMapOf(
                         "algorithms" to listOf("sha256"),
                         "lookup_pepper" to "FERRETCANNON_IDENTITY_PEPPER"
                     ))
@@ -112,7 +112,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                         // Validate algorithm (only sha256 is supported)
                         if (algorithm != "sha256") {
-                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                            call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                                 "errcode" to "M_INVALID_PARAM",
                                 "error" to "Unsupported algorithm: $algorithm"
                             ))
@@ -121,7 +121,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                         // Validate pepper matches what we advertise
                         if (pepper != "FERRETCANNON_IDENTITY_PEPPER") {
-                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                            call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                                 "errcode" to "M_INVALID_PARAM",
                                 "error" to "Invalid pepper"
                             ))
@@ -130,7 +130,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
 
                         // Validate that addresses array is not empty
                         if (addresses.isEmpty()) {
-                            call.respond(HttpStatusCode.BadRequest, mapOf(
+                            call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                                 "errcode" to "M_INVALID_PARAM",
                                 "error" to "addresses array cannot be empty"
                             ))
@@ -162,11 +162,11 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                             results
                         }
 
-                        call.respond(mapOf(
+                        call.respond(mutableMapOf(
                             "mappings" to mappings
                         ))
                     } catch (e: Exception) {
-                        call.respond(HttpStatusCode.BadRequest, mapOf(
+                        call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                             "errcode" to "M_INVALID_PARAM",
                             "error" to "Invalid request format"
                         ))

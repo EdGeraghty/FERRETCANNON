@@ -605,7 +605,7 @@ fun Route.roomRoutes(config: ServerConfig) {
                 broadcastEDU(roomId, leaveEvent)
             }
 
-            call.respond(mapOf<String, Any>())
+            call.respondText("{}", ContentType.Application.Json)
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(

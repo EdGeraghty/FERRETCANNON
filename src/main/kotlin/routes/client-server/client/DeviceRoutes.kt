@@ -19,7 +19,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
 
             if (accessToken == null) {
                 println("DEBUG: DeviceRoutes - accessToken is null, returning unauthorized")
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -30,7 +30,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
                 println("DEBUG: DeviceRoutes - userId is null")
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -51,7 +51,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: DeviceRoutes - Exception in /devices: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -65,7 +65,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             val deviceId = call.parameters["deviceId"]
 
             if (accessToken == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -75,7 +75,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             // Get userId from attributes (set by authentication middleware)
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -83,7 +83,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             }
 
             if (deviceId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing deviceId parameter"
                 ))
@@ -99,14 +99,14 @@ fun Route.deviceRoutes(_config: ServerConfig) {
                 }
                 call.respondText(jsonString, ContentType.Application.Json)
             } else {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Device not found"
                 ))
             }
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -120,7 +120,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             val deviceId = call.parameters["deviceId"]
 
             if (accessToken == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -130,7 +130,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             // Get userId from attributes (set by authentication middleware)
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -138,7 +138,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             }
 
             if (deviceId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing deviceId parameter"
                 ))
@@ -155,7 +155,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             call.respondText("{}", ContentType.Application.Json)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -169,7 +169,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             val deviceId = call.parameters["deviceId"]
 
             if (accessToken == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -179,7 +179,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             // Get userId from attributes (set by authentication middleware)
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -187,7 +187,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             }
 
             if (deviceId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing deviceId parameter"
                 ))
@@ -199,7 +199,7 @@ fun Route.deviceRoutes(_config: ServerConfig) {
             call.respondText("{}", ContentType.Application.Json)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))

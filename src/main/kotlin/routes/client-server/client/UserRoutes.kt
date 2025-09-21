@@ -50,7 +50,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val userId = call.parameters["userId"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing userId parameter"
                 ))
@@ -63,7 +63,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (profile == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "User not found"
                 ))
@@ -107,7 +107,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in GET /profile/{userId}: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -121,7 +121,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val profileUserId = call.parameters["userId"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -129,7 +129,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (profileUserId == null || userId != profileUserId) {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own profile"
                 ))
@@ -140,7 +140,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val requestBody = try {
                 call.receiveText()
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_BAD_JSON",
                     "error" to "Failed to read request body: ${e.message}"
                 ))
@@ -188,7 +188,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /profile/{userId}/displayname: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -202,7 +202,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val profileUserId = call.parameters["userId"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -210,7 +210,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (profileUserId == null || userId != profileUserId) {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own profile"
                 ))
@@ -221,7 +221,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val requestBody = try {
                 call.receiveText()
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_BAD_JSON",
                     "error" to "Failed to read request body: ${e.message}"
                 ))
@@ -269,7 +269,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /profile/{userId}/avatar_url: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -287,7 +287,7 @@ fun Route.userRoutes(_config: ServerConfig) {
 
             if (accountUserId == null || userId != accountUserId) {
                 println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
                 ))
@@ -295,7 +295,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (type == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing type parameter"
                 ))
@@ -337,7 +337,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             println("DEBUG: accountData result: $accountData")
 
             if (accountData == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Account data not found"
                 ))
@@ -348,7 +348,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                 call.respond(accountData)
             } catch (e: Exception) {
                 println("ERROR: Failed to send response: ${e.message}")
-                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                     "errcode" to "M_UNKNOWN",
                     "error" to "Failed to serialize response"
                 ))
@@ -357,7 +357,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/account_data/{type}: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -373,7 +373,7 @@ fun Route.userRoutes(_config: ServerConfig) {
 
             if (accountUserId == null || userId != accountUserId) {
                 println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own account data"
                 ))
@@ -381,7 +381,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (type == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing type parameter"
                 ))
@@ -392,7 +392,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val requestBody = try {
                 call.receiveText()
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_BAD_JSON",
                     "error" to "Failed to read request body: ${e.message}"
                 ))
@@ -404,7 +404,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                 try {
                     Json.parseToJsonElement(requestBody)
                 } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                    call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                         "errcode" to "M_BAD_JSON",
                         "error" to "Invalid JSON: ${e.message}"
                     ))
@@ -434,7 +434,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             } catch (e: Exception) {
                 println("ERROR: Failed to store account data: ${e.message}")
                 e.printStackTrace()
-                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                     "errcode" to "M_UNKNOWN",
                     "error" to "Failed to store account data"
                 ))
@@ -446,7 +446,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /user/{userId}/account_data/{type}: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -463,7 +463,7 @@ fun Route.userRoutes(_config: ServerConfig) {
 
             if (accountUserId == null || userId != accountUserId) {
                 println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
                 ))
@@ -471,7 +471,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (roomId == null || type == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId or type parameter"
                 ))
@@ -506,7 +506,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (accountData == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Account data not found"
                 ))
@@ -517,7 +517,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                 call.respond(accountData)
             } catch (e: Exception) {
                 println("ERROR: Failed to send room account data response: ${e.message}")
-                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                     "errcode" to "M_UNKNOWN",
                     "error" to "Failed to serialize response"
                 ))
@@ -526,7 +526,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -543,7 +543,7 @@ fun Route.userRoutes(_config: ServerConfig) {
 
             if (accountUserId == null || userId != accountUserId) {
                 println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own account data"
                 ))
@@ -551,7 +551,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (roomId == null || type == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId or type parameter"
                 ))
@@ -566,7 +566,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                 try {
                     Json.parseToJsonElement(requestBody)
                 } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf(
+                    call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                         "errcode" to "M_BAD_JSON",
                         "error" to "Invalid JSON: ${e.message}"
                     ))
@@ -596,7 +596,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             } catch (e: Exception) {
                 println("ERROR: Failed to store room account data: ${e.message}")
                 e.printStackTrace()
-                call.respond(HttpStatusCode.InternalServerError, mapOf(
+                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                     "errcode" to "M_UNKNOWN",
                     "error" to "Failed to store account data"
                 ))
@@ -608,7 +608,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in PUT /user/{userId}/rooms/{roomId}/account_data/{type}: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -624,7 +624,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val requestBody = try {
                 call.receiveText()
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_BAD_JSON",
                     "error" to "Failed to read request body: ${e.message}"
                 ))
@@ -635,7 +635,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val limit = jsonBody["limit"]?.jsonPrimitive?.int ?: 10
 
             if (searchTerm == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing search_term"
                 ))
@@ -662,7 +662,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                             Json.parseToJsonElement(accountRow[AccountData.content]).jsonObject["displayname"]?.jsonPrimitive?.content
                         }
 
-                        mapOf(
+                        mutableMapOf(
                             "user_id" to dbUserId,
                             "display_name" to displayName,
                             "avatar_url" to null // Simplified
@@ -670,7 +670,7 @@ fun Route.userRoutes(_config: ServerConfig) {
                     }
             }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "results" to results,
                 "limited" to (results.size >= limit)
             ))
@@ -678,7 +678,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in POST /user_directory/search: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -692,7 +692,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val authenticatedUserId = call.validateAccessToken() ?: return@post
 
             if (userId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing userId parameter"
                 ))
@@ -702,7 +702,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             // Verify the authenticated user matches the requested user
             if (authenticatedUserId != userId) {
                 println("DEBUG: Filter creation forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Access token does not match user"
                 ))
@@ -712,7 +712,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val filterJson = try {
                 call.receiveText()
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_BAD_JSON",
                     "error" to "Failed to read request body: ${e.message}"
                 ))
@@ -731,12 +731,12 @@ fun Route.userRoutes(_config: ServerConfig) {
                 }
             }
 
-            call.respond(mapOf("filter_id" to filterId))
+            call.respond(mutableMapOf("filter_id" to filterId))
 
         } catch (e: Exception) {
             println("ERROR: Exception in POST /user/{userId}/filter: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -751,7 +751,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             val authenticatedUserId = call.validateAccessToken() ?: return@get
 
             if (userId == null || filterId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing userId or filterId parameter"
                 ))
@@ -761,7 +761,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             // Verify the authenticated user matches the requested user
             if (authenticatedUserId != userId) {
                 println("DEBUG: Filter retrieval forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Access token does not match user"
                 ))
@@ -776,7 +776,7 @@ fun Route.userRoutes(_config: ServerConfig) {
             }
 
             if (filter == null) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Filter not found"
                 ))
@@ -789,7 +789,7 @@ fun Route.userRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: Exception in GET /user/{userId}/filter/{filterId}: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -804,13 +804,13 @@ fun Route.userRoutes(_config: ServerConfig) {
             // Return dehydrated device information
             // In a real implementation, this would return information about dehydrated devices
             // For now, return a 404 indicating no dehydrated device
-            call.respond(HttpStatusCode.NotFound, mapOf(
+            call.respond(HttpStatusCode.NotFound, mutableMapOf(
                 "errcode" to "M_NOT_FOUND",
                 "error" to "No dehydrated device found"
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))

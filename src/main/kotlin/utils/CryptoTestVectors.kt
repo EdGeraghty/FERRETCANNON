@@ -102,7 +102,7 @@ class CryptoTestVectors {
     }
 
     fun runTests(): Map<String, Boolean> {
-        return mapOf(
+        return mutableMapOf(
             "Empty Object Signing" to testEmptyObjectSigning(),
             "Data Object Signing" to testDataObjectSigning()
         )

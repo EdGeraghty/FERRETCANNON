@@ -21,20 +21,20 @@ fun Route.adminRoutes(config: ServerConfig) {
 
             // Check if user is admin
             if (!AuthUtils.isUserAdmin(userId)) {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "You are not authorized to access this endpoint"
                 ))
                 return@get
             }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "server_version" to "FerretCannon 1.0",
                 "python_version" to "Kotlin/JVM"
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -48,7 +48,7 @@ fun Route.adminRoutes(config: ServerConfig) {
 
             // Check if user is admin
             if (!AuthUtils.isUserAdmin(userId)) {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "You are not authorized to access this endpoint"
                 ))
@@ -58,14 +58,14 @@ fun Route.adminRoutes(config: ServerConfig) {
             val userCount = transaction { Users.selectAll().count() }
             val roomCount = transaction { Rooms.selectAll().count() }
 
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "user_count" to userCount,
                 "room_count" to roomCount,
                 "server_name" to config.federation.serverName
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -79,7 +79,7 @@ fun Route.adminRoutes(config: ServerConfig) {
             val targetUserId = call.parameters["userId"]
 
             if (targetUserId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing userId parameter"
                 ))
@@ -88,7 +88,7 @@ fun Route.adminRoutes(config: ServerConfig) {
 
             // Check if requesting user is admin
             if (!AuthUtils.isUserAdmin(requestingUserId)) {
-                call.respond(HttpStatusCode.Forbidden, mapOf(
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "You are not authorized to access this endpoint"
                 ))
@@ -99,7 +99,7 @@ fun Route.adminRoutes(config: ServerConfig) {
                 Users.select { Users.userId eq targetUserId }
                     .singleOrNull()
                     ?.let { row ->
-                        mapOf(
+                        mutableMapOf(
                             "user_id" to row[Users.userId],
                             "display_name" to row[Users.displayName],
                             "avatar_url" to row[Users.avatarUrl]
@@ -110,14 +110,14 @@ fun Route.adminRoutes(config: ServerConfig) {
             if (user != null) {
                 call.respond(user)
             } else {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "User not found"
                 ))
             }
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))

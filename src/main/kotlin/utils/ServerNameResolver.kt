@@ -189,7 +189,7 @@ object ServerNameResolver {
      */
     fun getServerInfo(): Map<String, Any> {
         return try {
-            mapOf(
+            mutableMapOf(
                 "serverName" to getServerName(),
                 "serverPort" to getServerPort(),
                 "serverAddress" to getServerAddress(),
@@ -201,7 +201,7 @@ object ServerNameResolver {
             )
         } catch (e: Exception) {
             // Fallback response if anything goes wrong
-            mapOf(
+            mutableMapOf(
                 "error" to "Failed to get server info: ${e.message}",
                 "serverName" to (cachedServerName ?: "unknown"),
                 "serverPort" to cachedServerPort

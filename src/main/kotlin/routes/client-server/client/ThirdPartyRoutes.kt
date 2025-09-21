@@ -65,7 +65,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
         } catch (e: Exception) {
             println("ERROR: ThirdPartyRoutes - Exception in /thirdparty/protocols: ${e.message}")
             e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -79,7 +79,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             val protocol = call.parameters["protocol"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -87,7 +87,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             }
 
             if (protocol == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing protocol parameter"
                 ))
@@ -95,13 +95,13 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             }
 
             // Return protocol information (simplified)
-            call.respond(mapOf(
+            call.respond(mutableMapOf(
                 "protocol" to protocol,
                 "instances" to emptyList<Map<String, Any>>()
             ))
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -115,7 +115,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             val protocol = call.parameters["protocol"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -123,7 +123,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             }
 
             if (protocol == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing protocol parameter"
                 ))
@@ -134,7 +134,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             call.respond(emptyList<Map<String, Any>>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -148,7 +148,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             val protocol = call.parameters["protocol"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -156,7 +156,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             }
 
             if (protocol == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing protocol parameter"
                 ))
@@ -167,7 +167,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             call.respond(emptyList<Map<String, Any>>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -181,7 +181,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             val _search = call.request.queryParameters["search"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -192,7 +192,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             call.respond(emptyList<Map<String, Any>>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -206,7 +206,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             val _search = call.request.queryParameters["search"]
 
             if (userId == null) {
-                call.respond(HttpStatusCode.Unauthorized, mapOf(
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
                 ))
@@ -217,7 +217,7 @@ fun Route.thirdPartyRoutes(_config: ServerConfig) {
             call.respond(emptyList<Map<String, Any>>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))

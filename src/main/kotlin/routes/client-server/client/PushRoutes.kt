@@ -420,7 +420,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             call.respond(response)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -838,7 +838,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             call.respond(response)
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -854,7 +854,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             val ruleId = call.parameters["ruleId"]
 
             if (scope == null || kind == null || ruleId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing required parameters"
                 ))
@@ -941,7 +941,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))
@@ -957,7 +957,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             val ruleId = call.parameters["ruleId"]
 
             if (scope == null || kind == null || ruleId == null) {
-                call.respond(HttpStatusCode.BadRequest, mapOf(
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing required parameters"
                 ))
@@ -975,7 +975,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             }
 
             if (deletedRows == 0) {
-                call.respond(HttpStatusCode.NotFound, mapOf(
+                call.respond(HttpStatusCode.NotFound, mutableMapOf(
                     "errcode" to "M_NOT_FOUND",
                     "error" to "Push rule not found"
                 ))
@@ -985,7 +985,7 @@ fun Route.pushRoutes(_config: ServerConfig) {
             call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mapOf(
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
             ))

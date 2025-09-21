@@ -56,7 +56,7 @@ object ReceiptsStorage {
                     val eventId = row[Receipts.eventId]
                     val timestamp = row[Receipts.timestamp]
 
-                    userId to mapOf(
+                    userId to mutableMapOf(
                         "event_id" to eventId,
                         "ts" to timestamp,
                         "thread_id" to row[Receipts.threadId]
@@ -72,7 +72,7 @@ object ReceiptsStorage {
                 (Receipts.roomId eq roomId) and
                 (Receipts.receiptType eq receiptType)
             }.singleOrNull()?.let { row ->
-                mapOf(
+                mutableMapOf(
                     "event_id" to row[Receipts.eventId],
                     "ts" to row[Receipts.timestamp],
                     "thread_id" to row[Receipts.threadId]
@@ -114,7 +114,7 @@ object PresenceStorage {
         return transaction {
             Presence.select { Presence.userId eq userId }
                 .singleOrNull()?.let { row ->
-                    mapOf(
+                    mutableMapOf(
                         "presence" to row[Presence.presence],
                         "status_msg" to row[Presence.statusMsg],
                         "last_active_ago" to row[Presence.lastActiveAgo],
@@ -128,7 +128,7 @@ object PresenceStorage {
         return transaction {
             Presence.selectAll().associate { row ->
                 val userId = row[Presence.userId]
-                userId to mapOf(
+                userId to mutableMapOf(
                     "presence" to row[Presence.presence],
                     "status_msg" to row[Presence.statusMsg],
                     "last_active_ago" to row[Presence.lastActiveAgo],
@@ -177,7 +177,7 @@ object ServerKeysStorage {
                 (models.ServerKeys.serverName eq serverName) and
                 (models.ServerKeys.keyId eq keyId)
             }.singleOrNull()?.let { row ->
-                mapOf(
+                mutableMapOf(
                     "server_name" to row[models.ServerKeys.serverName],
                     "key_id" to row[models.ServerKeys.keyId],
                     "public_key" to row[models.ServerKeys.publicKey],
@@ -191,7 +191,7 @@ object ServerKeysStorage {
         return transaction {
             models.ServerKeys.select { models.ServerKeys.serverName eq serverName }
                 .map { row ->
-                    mapOf(
+                    mutableMapOf(
                         "server_name" to row[models.ServerKeys.serverName],
                         "key_id" to row[models.ServerKeys.keyId],
                         "public_key" to row[models.ServerKeys.publicKey],
