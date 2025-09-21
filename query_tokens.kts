@@ -15,14 +15,7 @@ fun main() {
         Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
 
         transaction {
-            val tokens = AccessTokens.selectAll().toList()
-            if (tokens.isEmpty()) {
-                println("No access tokens found in database.")
-                println("Run this script to create a test token.")
-                return@transaction
-            }
-
-            tokens.forEach { row ->
+            AccessTokens.selectAll().forEach { row ->
                 println("Token: ${row[AccessTokens.token]}")
                 println("User ID: ${row[AccessTokens.userId]}")
                 println("Device ID: ${row[AccessTokens.deviceId]}")
