@@ -40,21 +40,44 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                         "https://${config.federation.serverName}"
                     }
 
-                    call.respond(mutableMapOf(
-                        "m.homeserver" to mutableMapOf(
-                            "base_url" to baseUrl
-                        ),
-                        "org.matrix.msc2965.authentication" to mutableMapOf(
-                            "issuer" to baseUrl,
-                            "authorization_endpoint" to "$baseUrl/oauth2/authorize",
-                            "token_endpoint" to "$baseUrl/oauth2/token",
-                            "revocation_endpoint" to "$baseUrl/oauth2/revoke",
-                            "response_types_supported" to listOf("code"),
-                            "grant_types_supported" to listOf("authorization_code"),
-                            "code_challenge_methods_supported" to listOf("S256")
-                        )
-                        // Removed m.identity_server since we don't implement identity server endpoints
-                    ))
+                    // Use buildJsonObject for proper JSON serialization
+                    val response = buildJsonObject {
+                        putJsonObject("m.homeserver") {
+                            put("base_url", baseUrl)
+                        }
+                        // OAuth 2.0 properties at root level (some clients expect this)
+                        put("issuer", baseUrl)
+                        put("authorization_endpoint", "$baseUrl/oauth2/authorize")
+                        put("token_endpoint", "$baseUrl/oauth2/token")
+                        put("revocation_endpoint", "$baseUrl/oauth2/revoke")
+                        putJsonArray("response_types_supported") {
+                            add("code")
+                        }
+                        putJsonArray("grant_types_supported") {
+                            add("authorization_code")
+                        }
+                        putJsonArray("code_challenge_methods_supported") {
+                            add("S256")
+                        }
+                        // Also include under the spec-compliant key
+                        putJsonObject("org.matrix.msc2965.authentication") {
+                            put("issuer", baseUrl)
+                            put("authorization_endpoint", "$baseUrl/oauth2/authorize")
+                            put("token_endpoint", "$baseUrl/oauth2/token")
+                            put("revocation_endpoint", "$baseUrl/oauth2/revoke")
+                            putJsonArray("response_types_supported") {
+                                add("code")
+                            }
+                            putJsonArray("grant_types_supported") {
+                                add("authorization_code")
+                            }
+                            putJsonArray("code_challenge_methods_supported") {
+                                add("S256")
+                            }
+                        }
+                    }
+
+                    call.respond(response)
                 }
 
                 // Basic identity server endpoints
@@ -197,50 +220,26 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                     "https://${serverName}"
                 }
 
-                // OAuth 2.0 Authorization Server Metadata according to RFC 8414
-                val metadata = buildJsonObject {
-                    put("issuer", baseUrl)  // Full base URL as issuer
-                    put("authorization_endpoint", "$baseUrl/oauth2/authorize")
-                    put("token_endpoint", "$baseUrl/oauth2/token")
-                    put("revocation_endpoint", "$baseUrl/oauth2/revoke")
-                    put("introspection_endpoint", "$baseUrl/oauth2/introspect")
-                    put("userinfo_endpoint", "$baseUrl/oauth2/userinfo")
-                    put("jwks_uri", "$baseUrl/oauth2/jwks")
-                    putJsonArray("response_types_supported") {
-                        add("code")
-                    }
-                    putJsonArray("grant_types_supported") {
-                        add("authorization_code")
-                        add("refresh_token")
-                    }
-                    putJsonArray("code_challenge_methods_supported") {
-                        add("S256")
-                    }
-                    putJsonArray("token_endpoint_auth_methods_supported") {
-                        add("client_secret_basic")
-                        add("client_secret_post")
-                    }
-                    putJsonArray("revocation_endpoint_auth_methods_supported") {
-                        add("client_secret_basic")
-                        add("client_secret_post")
-                    }
-                    putJsonArray("introspection_endpoint_auth_methods_supported") {
-                        add("client_secret_basic")
-                        add("client_secret_post")
-                    }
-                    putJsonArray("scopes_supported") {
-                        add("openid")
-                        add("profile")
-                    }
-                    putJsonArray("response_modes_supported") {
-                        add("query")
-                        add("fragment")
-                    }
-                    put("service_documentation", "$baseUrl/docs/oauth2")
-                    putJsonArray("ui_locales_supported") {
-                        add("en")
-                    }
-                }
+                // OAuth 2.0 Authorization Server Metadata
+                val metadata = mapOf(
+                    "issuer" to baseUrl,  // Full base URL as issuer
+                    "authorization_endpoint" to "$baseUrl/oauth2/authorize",
+                    "token_endpoint" to "$baseUrl/oauth2/token",
+                    "revocation_endpoint" to "$baseUrl/oauth2/revoke",
+                    "introspection_endpoint" to "$baseUrl/oauth2/introspect",
+                    "userinfo_endpoint" to "$baseUrl/oauth2/userinfo",
+                    "jwks_uri" to "$baseUrl/oauth2/jwks",
+                    "response_types_supported" to listOf("code"),
+                    "grant_types_supported" to listOf("authorization_code", "refresh_token"),
+                    "code_challenge_methods_supported" to listOf("S256"),
+                    "token_endpoint_auth_methods_supported" to listOf("client_secret_basic", "client_secret_post"),
+                    "revocation_endpoint_auth_methods_supported" to listOf("client_secret_basic", "client_secret_post"),
+                    "introspection_endpoint_auth_methods_supported" to listOf("client_secret_basic", "client_secret_post"),
+                    "scopes_supported" to listOf("openid", "profile"),
+                    "response_modes_supported" to listOf("query", "fragment"),
+                    "service_documentation" to "$baseUrl/docs/oauth2",
+                    "ui_locales_supported" to listOf("en")
+                )
 
                 call.respond(metadata)
             }
