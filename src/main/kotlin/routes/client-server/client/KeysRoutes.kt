@@ -189,4 +189,25 @@ fun Route.keysRoutes() {
             })
         }
     }
+
+    // GET /unstable/org.matrix.msc3814.v1/dehydrated_device - Get dehydrated device
+    get("/unstable/org.matrix.msc3814.v1/dehydrated_device") {
+        try {
+            call.validateAccessToken() ?: return@get
+
+            // Return dehydrated device information
+            // MSC3814: Dehydrated devices for cross-device message continuity
+            // For now, return that no dehydrated device exists
+            call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                put("errcode", "M_NOT_FOUND")
+                put("error", "No dehydrated device found")
+            })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
 }

@@ -259,6 +259,32 @@ fun Application.clientRoutes(config: ServerConfig) {
                     // oauthRoutes(config) - moved to root level
                     syncRoutes()
                     keysRoutes()
+
+                    // VoIP endpoints
+                    route("/voip") {
+                        // GET /voip/turnServer - Get TURN server credentials for VoIP
+                        get("/turnServer") {
+                            try {
+                                call.validateAccessToken() ?: return@get
+
+                                // Return TURN server information
+                                // In a real implementation, this would return actual TURN server credentials
+                                // For now, return an empty list indicating no TURN servers available
+                                call.respond(buildJsonObject {
+                                    put("username", "")
+                                    put("password", "")
+                                    put("uris", buildJsonArray { })
+                                    put("ttl", 86400)
+                                })
+
+                            } catch (e: Exception) {
+                                call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                    put("errcode", "M_UNKNOWN")
+                                    put("error", "Internal server error")
+                                })
+                            }
+                        }
+                    }
                 }
 
                 route("/unstable") {
