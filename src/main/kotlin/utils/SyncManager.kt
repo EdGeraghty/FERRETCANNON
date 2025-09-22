@@ -283,34 +283,14 @@ object SyncManager {
         }
         timeline.addAll(timelineEvents)
 
-        // Get current state events
-        if (isFullState) {
-            val stateEvents = transaction {
-                Events.select {
-                    (Events.roomId eq roomId) and
-                    (Events.stateKey.isNotNull())
-                }.orderBy(Events.originServerTs, SortOrder.DESC)
-                    .distinctBy { it[Events.type] to it[Events.stateKey] } // Get latest for each state key
-                    .map { row ->
-                        buildJsonObject {
-                            put("event_id", row[Events.eventId])
-                            put("type", row[Events.type])
-                            put("sender", row[Events.sender])
-                            put("origin_server_ts", row[Events.originServerTs])
-                            put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
-                            put("state_key", row[Events.stateKey])
-                            put("unsigned", buildJsonObject { })
-                        }
-                    }
-            }
-            state.addAll(stateEvents)
-        } else {
-            // For incremental syncs, include only essential state events
-            val createEvent = transaction {
-                Events.select {
-                    (Events.roomId eq roomId) and
-                    (Events.type eq "m.room.create")
-                }.singleOrNull()?.let { row ->
+        // Get current state events - always include full state for joined rooms
+        val stateEvents = transaction {
+            Events.select {
+                (Events.roomId eq roomId) and
+                (Events.stateKey.isNotNull())
+            }.orderBy(Events.originServerTs, SortOrder.DESC)
+                .distinctBy { it[Events.type] to it[Events.stateKey] } // Get latest for each state key
+                .map { row ->
                     buildJsonObject {
                         put("event_id", row[Events.eventId])
                         put("type", row[Events.type])
@@ -321,9 +301,8 @@ object SyncManager {
                         put("unsigned", buildJsonObject { })
                     }
                 }
-            }
-            createEvent?.let { state.add(it) }
         }
+        state.addAll(stateEvents)
 
         // Get ephemeral events (typing notifications)
         val typingUsers = typingMap[roomId] ?: mutableMapOf()
