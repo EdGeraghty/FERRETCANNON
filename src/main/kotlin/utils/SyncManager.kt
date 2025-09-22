@@ -65,7 +65,7 @@ object SyncManager {
                 put("timeline", buildJsonObject {
                     put("events", JsonArray(roomData.timeline))
                     put("limited", false)
-                    put("prev_batch", JsonNull)
+                    // prev_batch is optional, omit when null
                 })
                 put("state", buildJsonObject {
                     put("events", JsonArray(roomData.state))
@@ -96,7 +96,7 @@ object SyncManager {
                 put("timeline", buildJsonObject {
                     put("events", JsonArray(roomData.timeline))
                     put("limited", false)
-                    put("prev_batch", JsonNull)
+                    // prev_batch is optional, omit when null
                 })
                 put("state", buildJsonObject {
                     put("events", JsonArray(roomData.state))
@@ -289,22 +289,23 @@ object SyncManager {
                 Events.select {
                     (Events.roomId eq roomId) and
                     (Events.stateKey.isNotNull())
-                }.map { row ->
-                    buildJsonObject {
-                        put("event_id", row[Events.eventId])
-                        put("type", row[Events.type])
-                        put("sender", row[Events.sender])
-                        put("origin_server_ts", row[Events.originServerTs])
-                        put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
-                        put("state_key", row[Events.stateKey])
-                        put("unsigned", buildJsonObject { })
+                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                    .distinctBy { it[Events.type] to it[Events.stateKey] } // Get latest for each state key
+                    .map { row ->
+                        buildJsonObject {
+                            put("event_id", row[Events.eventId])
+                            put("type", row[Events.type])
+                            put("sender", row[Events.sender])
+                            put("origin_server_ts", row[Events.originServerTs])
+                            put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                            put("state_key", row[Events.stateKey])
+                            put("unsigned", buildJsonObject { })
+                        }
                     }
-                }
             }
             state.addAll(stateEvents)
         } else {
-            // For incremental syncs, at minimum include the create event
-            // This is critical for clients to determine room type and version
+            // For incremental syncs, include only essential state events
             val createEvent = transaction {
                 Events.select {
                     (Events.roomId eq roomId) and

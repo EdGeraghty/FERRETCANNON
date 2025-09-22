@@ -248,6 +248,42 @@ fun Application.clientRoutes(config: ServerConfig) {
                         """.trimIndent(), ContentType.Application.Json)
                     }
 
+                    // Capabilities endpoint
+                    get("/capabilities") {
+                        try {
+                            call.validateAccessToken() ?: return@get
+
+                            call.respond(buildJsonObject {
+                                put("capabilities", buildJsonObject {
+                                    put("m.room_versions", buildJsonObject {
+                                        put("default", "12")
+                                        put("available", buildJsonObject {
+                                            put("12", "stable")
+                                        })
+                                    })
+                                    put("m.change_password", buildJsonObject {
+                                        put("enabled", true)
+                                    })
+                                    put("m.set_displayname", buildJsonObject {
+                                        put("enabled", true)
+                                    })
+                                    put("m.set_avatar_url", buildJsonObject {
+                                        put("enabled", true)
+                                    })
+                                    put("m.3pid_changes", buildJsonObject {
+                                        put("enabled", false)
+                                    })
+                                })
+                            })
+
+                        } catch (e: Exception) {
+                            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                                put("errcode", "M_UNKNOWN")
+                                put("error", "Internal server error")
+                            })
+                        }
+                    }
+
                     // Include all the modular route files
                     authRoutes(config)
                     userRoutes()

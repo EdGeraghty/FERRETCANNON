@@ -225,6 +225,7 @@ fun Route.roomRoutes(config: ServerConfig) {
             val roomAlias = jsonBody["room_alias_name"]?.jsonPrimitive?.content
             val preset = jsonBody["preset"]?.jsonPrimitive?.content ?: "private_chat"
             val visibility = jsonBody["visibility"]?.jsonPrimitive?.content ?: "private"
+            val initialState = jsonBody["initial_state"]?.jsonArray
 
             // Determine join rule based on preset
             val joinRule = when (preset) {
@@ -478,6 +479,57 @@ fun Route.roomRoutes(config: ServerConfig) {
                     it[Events.signatures] = signedHistoryVisibilityEvent["signatures"]?.toString() ?: "{}"
                 }
 
+                // Process initial_state events if provided
+                var nextDepth = 6
+                var lastEventId = historyVisibilityEventId
+
+                if (initialState != null) {
+                    for ((index, stateEvent) in initialState.withIndex()) {
+                        val stateEventObj = stateEvent.jsonObject
+                        val eventType = stateEventObj["type"]?.jsonPrimitive?.content ?: continue
+                        val stateKey = stateEventObj["state_key"]?.jsonPrimitive?.content ?: ""
+                        val content = stateEventObj["content"]?.jsonObject ?: JsonObject(mutableMapOf())
+
+                        val stateEventId = "\$${currentTime}_initial_${index}"
+
+                        val stateEventJson = JsonObject(mutableMapOf(
+                            "event_id" to JsonPrimitive(stateEventId),
+                            "type" to JsonPrimitive(eventType),
+                            "sender" to JsonPrimitive(userId),
+                            "content" to content,
+                            "origin_server_ts" to JsonPrimitive(currentTime),
+                            "state_key" to JsonPrimitive(stateKey),
+                            "prev_events" to JsonArray(listOf(JsonArray(listOf(JsonPrimitive(lastEventId), JsonObject(mutableMapOf()))))),
+                            "auth_events" to JsonArray(listOf(
+                                JsonArray(listOf(JsonPrimitive(createEventId), JsonObject(mutableMapOf()))),
+                                JsonArray(listOf(JsonPrimitive(memberEventId), JsonObject(mutableMapOf()))),
+                                JsonArray(listOf(JsonPrimitive(powerLevelsEventId), JsonObject(mutableMapOf())))
+                            )),
+                            "depth" to JsonPrimitive(nextDepth)
+                        ))
+
+                        val signedStateEvent = MatrixAuth.hashAndSignEvent(stateEventJson, config.federation.serverName)
+
+                        Events.insert {
+                            it[Events.eventId] = signedStateEvent["event_id"]?.jsonPrimitive?.content ?: stateEventId
+                            it[Events.roomId] = roomId
+                            it[Events.type] = eventType
+                            it[Events.sender] = userId
+                            it[Events.content] = Json.encodeToString(JsonObject.serializer(), content)
+                            it[Events.originServerTs] = currentTime
+                            it[Events.stateKey] = stateKey
+                            it[Events.prevEvents] = "[[\"$lastEventId\",{}]]"
+                            it[Events.authEvents] = "[[\"$createEventId\",{}], [\"$memberEventId\",{}], [\"$powerLevelsEventId\",{}]]"
+                            it[Events.depth] = nextDepth
+                            it[Events.hashes] = signedStateEvent["hashes"]?.toString() ?: "{}"
+                            it[Events.signatures] = signedStateEvent["signatures"]?.toString() ?: "{}"
+                        }
+
+                        lastEventId = signedStateEvent["event_id"]?.jsonPrimitive?.content ?: stateEventId
+                        nextDepth++
+                    }
+                }
+
                 // Create m.room.name event if name is specified
                 if (roomName != null) {
                     val nameEventId = "\$${currentTime}_name"
@@ -490,13 +542,13 @@ fun Route.roomRoutes(config: ServerConfig) {
                         "content" to nameContent,
                         "origin_server_ts" to JsonPrimitive(currentTime),
                         "state_key" to JsonPrimitive(""),
-                        "prev_events" to JsonArray(listOf(JsonArray(listOf(JsonPrimitive(historyVisibilityEventId), JsonObject(mutableMapOf()))))),
+                        "prev_events" to JsonArray(listOf(JsonArray(listOf(JsonPrimitive(lastEventId), JsonObject(mutableMapOf()))))),
                         "auth_events" to JsonArray(listOf(
                             JsonArray(listOf(JsonPrimitive(createEventId), JsonObject(mutableMapOf()))),
                             JsonArray(listOf(JsonPrimitive(memberEventId), JsonObject(mutableMapOf()))),
                             JsonArray(listOf(JsonPrimitive(powerLevelsEventId), JsonObject(mutableMapOf())))
                         )),
-                        "depth" to JsonPrimitive(6)
+                        "depth" to JsonPrimitive(nextDepth)
                     ))
 
                     val signedNameEvent = MatrixAuth.hashAndSignEvent(nameEventJson, config.federation.serverName)
@@ -509,12 +561,15 @@ fun Route.roomRoutes(config: ServerConfig) {
                         it[Events.content] = Json.encodeToString(JsonObject.serializer(), nameContent)
                         it[Events.originServerTs] = currentTime
                         it[Events.stateKey] = ""
-                        it[Events.prevEvents] = "[[\"$historyVisibilityEventId\",{}]]"
+                        it[Events.prevEvents] = "[[\"$lastEventId\",{}]]"
                         it[Events.authEvents] = "[[\"$createEventId\",{}], [\"$memberEventId\",{}], [\"$powerLevelsEventId\",{}]]"
-                        it[Events.depth] = 6
+                        it[Events.depth] = nextDepth
                         it[Events.hashes] = signedNameEvent["hashes"]?.toString() ?: "{}"
                         it[Events.signatures] = signedNameEvent["signatures"]?.toString() ?: "{}"
                     }
+
+                    lastEventId = signedNameEvent["event_id"]?.jsonPrimitive?.content ?: nameEventId
+                    nextDepth++
                 }
 
                 // Create m.room.topic event if topic is specified
@@ -529,13 +584,13 @@ fun Route.roomRoutes(config: ServerConfig) {
                         "content" to topicContent,
                         "origin_server_ts" to JsonPrimitive(currentTime),
                         "state_key" to JsonPrimitive(""),
-                        "prev_events" to JsonArray(listOf(JsonArray(listOf(JsonPrimitive(if (roomName != null) "\$${currentTime}_name" else historyVisibilityEventId), JsonObject(mutableMapOf()))))),
+                        "prev_events" to JsonArray(listOf(JsonArray(listOf(JsonPrimitive(lastEventId), JsonObject(mutableMapOf()))))),
                         "auth_events" to JsonArray(listOf(
                             JsonArray(listOf(JsonPrimitive(createEventId), JsonObject(mutableMapOf()))),
                             JsonArray(listOf(JsonPrimitive(memberEventId), JsonObject(mutableMapOf()))),
                             JsonArray(listOf(JsonPrimitive(powerLevelsEventId), JsonObject(mutableMapOf())))
                         )),
-                        "depth" to JsonPrimitive(if (roomName != null) 7 else 6)
+                        "depth" to JsonPrimitive(nextDepth)
                     ))
 
                     val signedTopicEvent = MatrixAuth.hashAndSignEvent(topicEventJson, config.federation.serverName)
@@ -548,9 +603,9 @@ fun Route.roomRoutes(config: ServerConfig) {
                         it[Events.content] = Json.encodeToString(JsonObject.serializer(), topicContent)
                         it[Events.originServerTs] = currentTime
                         it[Events.stateKey] = ""
-                        it[Events.prevEvents] = "[[\"${if (roomName != null) "\$${currentTime}_name" else historyVisibilityEventId}\",{}]]"
+                        it[Events.prevEvents] = "[[\"$lastEventId\",{}]]"
                         it[Events.authEvents] = "[[\"$createEventId\",{}], [\"$memberEventId\",{}], [\"$powerLevelsEventId\",{}]]"
-                        it[Events.depth] = if (roomName != null) 7 else 6
+                        it[Events.depth] = nextDepth
                         it[Events.hashes] = signedTopicEvent["hashes"]?.toString() ?: "{}"
                         it[Events.signatures] = signedTopicEvent["signatures"]?.toString() ?: "{}"
                     }
@@ -571,8 +626,8 @@ fun Route.roomRoutes(config: ServerConfig) {
                         ))
                     }
             }
-            val initialResolvedState = stateResolver.resolveState(allEvents, "12")
-            stateResolver.updateResolvedState(roomId, initialResolvedState)
+            // val initialResolvedState = stateResolver.resolveState(allEvents, "12")
+            // stateResolver.updateResolvedState(roomId, initialResolvedState)
 
             // Broadcast room creation events
             runBlocking {

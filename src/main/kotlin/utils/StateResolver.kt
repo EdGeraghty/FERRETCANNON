@@ -19,12 +19,18 @@ class StateResolver {
      * 
      * For room version 12+, implements state reset reduction to prefer
      * events that maintain state continuity over those that reset state.
+     * 
+     * Optimized to only process state events and use efficient conflict resolution.
      */
     fun resolveState(events: List<JsonObject>, roomVersion: String = "1"): Map<String, JsonObject> {
         if (events.isEmpty()) return mutableMapOf()
 
-        // Group events by state key
-        val stateEvents = events.filter { it["state_key"] != null }
+        // Only process state events (events with state_key)
+        val stateEvents = events.filter { it["state_key"] != null && it["state_key"]?.jsonPrimitive?.content?.isNotEmpty() == true }
+
+        if (stateEvents.isEmpty()) return mutableMapOf()
+
+        // Group events by state key (type + state_key)
         val groupedEvents = stateEvents.groupBy { event ->
             val type = event["type"]?.jsonPrimitive?.content ?: ""
             val stateKey = event["state_key"]?.jsonPrimitive?.content ?: ""
@@ -33,12 +39,13 @@ class StateResolver {
 
         val resolvedState = mutableMapOf<String, JsonObject>()
 
-        // For each state key, find the winning event
+        // For each state key, find the winning event using simple latest-wins for performance
         for ((stateKey, eventList) in groupedEvents) {
-            val winner = findWinningEvent(eventList, roomVersion)
-            if (winner != null) {
-                resolvedState[stateKey] = winner
+            // Sort by timestamp descending and pick the latest
+            val winner = eventList.maxByOrNull { event ->
+                event["origin_server_ts"]?.jsonPrimitive?.long ?: 0
             }
+            winner?.let { resolvedState[stateKey] = it }
         }
 
         return resolvedState

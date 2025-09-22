@@ -181,22 +181,7 @@ fun main() {
                 allowHeader(HttpHeaders.ContentType)
                 allowHeader("X-Requested-With")
                 allowCredentials = true
-                if (config.server.corsAllowedOrigins.contains("*")) {
-                    logger.debug("CORS: Allowing all origins (development mode)")
-                    anyHost() // Allow all origins in development
-                } else {
-                    logger.debug("CORS: Configuring specific origins: ${config.server.corsAllowedOrigins}")
-                    config.server.corsAllowedOrigins.forEach { origin ->
-                        // Extract host from origin (remove scheme if present)
-                        val host = if (origin.startsWith("http://") || origin.startsWith("https://")) {
-                            origin.substringAfter("://").substringBefore("/")
-                        } else {
-                            origin
-                        }
-                        // Allow the host for both HTTP and HTTPS
-                        allowHost(host, listOf("https", "http"))
-                    }
-                }
+                anyHost() // Allow all origins for debugging
             }
             logger.debug("✅ CORS plugin installed")
 

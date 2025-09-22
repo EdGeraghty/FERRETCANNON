@@ -284,39 +284,21 @@ fun Route.authRoutes(config: ServerConfig) {
         }
     }
 
-    // GET /capabilities - Server capabilities
-    get("/capabilities") {
+    // POST /logout - User logout
+    post("/logout") {
         try {
-            call.validateAccessToken() ?: return@get
+            val userId = call.validateAccessToken() ?: return@post
 
-            call.respond(buildJsonObject {
-                putJsonObject("capabilities") {
-                    putJsonObject("m.change_password") {
-                        put("enabled", true)
-                    }
-                    putJsonObject("m.room_versions") {
-                        put("default", "12")
-                        putJsonObject("available") {
-                            put("9", "stable")
-                            put("10", "stable")
-                            put("11", "stable")
-                            put("12", "stable")
-                        }
-                    }
-                    putJsonObject("m.set_displayname") {
-                        put("enabled", false)
-                    }
-                    putJsonObject("m.set_avatar_url") {
-                        put("enabled", false)
-                    }
-                    putJsonObject("m.3pid_changes") {
-                        put("enabled", true)
-                    }
-                    putJsonObject("m.profile_fields") {
-                        put("enabled", true)
-                    }
-                }
-            })
+            // Get the access token from the request
+            val accessToken = call.attributes.getOrNull(MATRIX_TOKEN_KEY) as? String
+            if (accessToken != null) {
+                // Invalidate the access token
+                AuthUtils.deleteAccessToken(accessToken)
+            }
+
+            // Return empty response
+            call.respond(buildJsonObject { })
+
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
