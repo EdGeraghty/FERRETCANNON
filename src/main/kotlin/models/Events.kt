@@ -281,6 +281,8 @@ object ThirdPartyIdentifiers : Table("third_party_identifiers") {
 object RoomKeyVersions : Table("room_key_versions") {
     val userId = varchar("user_id", 255).uniqueIndex()
     val version = varchar("version", 255)
+    val algorithm = varchar("algorithm", 255)
+    val authData = text("auth_data") // JSON auth data
     val createdAt = long("created_at").default(System.currentTimeMillis())
     val lastModified = long("last_modified").default(System.currentTimeMillis())
 

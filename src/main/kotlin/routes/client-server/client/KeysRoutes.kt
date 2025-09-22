@@ -19,7 +19,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.*
 
-fun Route.keysRoutes() {
+fun Route.keysRoutes(config: ServerConfig) {
     // POST /keys/query - Query device keys for users
     post("/keys/query") {
         try {
@@ -38,7 +38,7 @@ fun Route.keysRoutes() {
 
                 if (requestedDevices is JsonNull || (requestedDevices is JsonObject && requestedDevices.isEmpty())) {
                     // Return all devices for this user
-                    val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
+                    val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId), config)
                     if (userDeviceKeys.containsKey(queryUserId)) {
                         result[queryUserId] = JsonObject(userDeviceKeys[queryUserId]!!)
                     }
@@ -46,7 +46,7 @@ fun Route.keysRoutes() {
                     val deviceIds = requestedDevices["device_ids"]?.jsonArray ?: JsonArray(emptyList())
                     if (deviceIds.isNotEmpty()) {
                         // Return only requested devices
-                        val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId))
+                        val userDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(queryUserId), config)
                         val filteredDevices = mutableMapOf<String, JsonElement>()
 
                         deviceIds.forEach { deviceIdElement ->
@@ -231,25 +231,80 @@ fun Route.keysRoutes() {
         }
     }
 
-    // GET /room_keys/version - Get room keys version
+    // PUT /room_keys/version - Create a new room key backup version
+    put("/room_keys/version") {
+        try {
+            val userId = call.validateAccessToken() ?: return@put
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val algorithm = jsonBody["algorithm"]?.jsonPrimitive?.content ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing algorithm")
+            })
+            val authData = jsonBody["auth_data"]?.jsonObject ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing auth_data")
+            })
+
+            val version = transaction {
+                // Generate a new version (simple increment)
+                val latestVersion = RoomKeyVersions.select { RoomKeyVersions.userId eq userId }
+                    .orderBy(RoomKeyVersions.version, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+                val newVersion = (latestVersion?.get(RoomKeyVersions.version)?.toIntOrNull() ?: 0) + 1
+
+                RoomKeyVersions.insert {
+                    it[RoomKeyVersions.userId] = userId
+                    it[RoomKeyVersions.version] = newVersion.toString()
+                    it[RoomKeyVersions.algorithm] = algorithm
+                    it[RoomKeyVersions.authData] = Json.encodeToString(JsonObject.serializer(), authData)
+                    it[RoomKeyVersions.createdAt] = System.currentTimeMillis()
+                }
+
+                newVersion.toString()
+            }
+
+            call.respond(buildJsonObject {
+                put("version", version)
+            })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
+    // GET /room_keys/version - Get the current version of the user's room keys
     get("/room_keys/version") {
         try {
             val userId = call.validateAccessToken() ?: return@get
 
-            // Get the current backup version for this user
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
+            // Get the latest room key version for the user
+            val latestVersion = transaction {
+                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }
+                    .orderBy(RoomKeyVersions.version, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
             }
 
-            if (backupVersion != null) {
-                val version = backupVersion[RoomKeyVersions.version]
-                call.respond(buildJsonObject {
-                    put("version", version)
+            if (latestVersion == null) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "No key backup found")
                 })
-            } else {
-                // No backup exists
-                call.respond(HttpStatusCode.NotFound)
+                return@get
             }
+
+            call.respond(buildJsonObject {
+                put("version", latestVersion[RoomKeyVersions.version])
+                put("algorithm", latestVersion[RoomKeyVersions.algorithm])
+                put("auth_data", Json.parseToJsonElement(latestVersion[RoomKeyVersions.authData]).jsonObject)
+            })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
@@ -267,50 +322,43 @@ fun Route.keysRoutes() {
             // Parse request body
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val version = jsonBody["version"]?.jsonPrimitive?.content ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing version")
+            })
+            val rooms = jsonBody["rooms"]?.jsonObject ?: buildJsonObject { }
 
-            val version = jsonBody["version"]?.jsonPrimitive?.content
-            val rooms = jsonBody["rooms"]?.jsonObject
+            // Check if version exists
+            val versionExists = transaction {
+                RoomKeyVersions.select { (RoomKeyVersions.userId eq userId) and (RoomKeyVersions.version eq version) }.count() > 0
+            }
 
-            if (version == null || rooms == null) {
-                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
-                    put("errcode", "M_INVALID_PARAM")
-                    put("error", "Missing version or rooms")
+            if (!versionExists) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Version not found")
                 })
                 return@put
             }
 
-            // Store the backup version
             transaction {
-                RoomKeyVersions.replace {
-                    it[RoomKeyVersions.userId] = userId
-                    it[RoomKeyVersions.version] = version
-                    it[RoomKeyVersions.lastModified] = System.currentTimeMillis()
-                }
-
-                // Store the room keys
+                // Store the keys
                 for (roomId in rooms.keys) {
                     val roomSessions = rooms[roomId]?.jsonObject ?: continue
-                    val sessions = roomSessions["sessions"]?.jsonObject ?: continue
-
-                    for (sessionId in sessions.keys) {
-                        val sessionData = sessions[sessionId]?.jsonObject?.toString() ?: continue
-
-                        RoomKeys.replace {
+                    for (sessionId in roomSessions.keys) {
+                        val sessionData = roomSessions[sessionId]?.jsonObject ?: continue
+                        RoomKeys.insert {
                             it[RoomKeys.userId] = userId
                             it[RoomKeys.version] = version
                             it[RoomKeys.roomId] = roomId
                             it[RoomKeys.sessionId] = sessionId
-                            it[RoomKeys.keyData] = sessionData
-                            it[RoomKeys.lastModified] = System.currentTimeMillis()
+                            it[RoomKeys.keyData] = Json.encodeToString(JsonObject.serializer(), sessionData)
                         }
                     }
                 }
             }
 
-            // Return success
-            call.respond(buildJsonObject {
-                put("count", rooms.size)
-            })
+            call.respond(buildJsonObject { })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
@@ -320,96 +368,30 @@ fun Route.keysRoutes() {
         }
     }
 
-    // GET /room_keys/keys - Get room keys
+    // GET /room_keys/keys - Download room keys
     get("/room_keys/keys") {
         try {
             val userId = call.validateAccessToken() ?: return@get
+            val version = call.request.queryParameters["version"]
 
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
-            }
-
-            if (backupVersion == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
-                })
-                return@get
-            }
-
-            val version = backupVersion[RoomKeyVersions.version]
-
-            // Get all room keys for this version
-            val roomKeys = transaction {
-                RoomKeys.select { (RoomKeys.userId eq userId) and (RoomKeys.version eq version) }
-                    .groupBy { it[RoomKeys.roomId] }
-                    .mapValues { (_, keys) ->
-                        buildJsonObject {
-                            putJsonObject("sessions") {
-                                keys.forEach { key ->
-                                    put(key[RoomKeys.sessionId], Json.parseToJsonElement(key[RoomKeys.keyData]))
-                                }
-                            }
-                        }
-                    }
-            }
-
-            call.respond(buildJsonObject {
-                put("rooms", Json.encodeToJsonElement(roomKeys))
-            })
-
-        } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
-                put("errcode", "M_UNKNOWN")
-                put("error", "Internal server error")
-            })
-        }
-    }
-
-    // GET /room_keys/keys/{roomId} - Get keys for room
-    get("/room_keys/keys/{roomId}") {
-        try {
-            val userId = call.validateAccessToken() ?: return@get
-            val roomId = call.parameters["roomId"] ?: return@get
-
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
-            }
-
-            if (backupVersion == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
-                })
-                return@get
-            }
-
-            val version = backupVersion[RoomKeyVersions.version]
-
-            // Get room keys for this room
-            val roomKeys = transaction {
-                RoomKeys.select { (RoomKeys.userId eq userId) and (RoomKeys.version eq version) and (RoomKeys.roomId eq roomId) }
-                    .associate { key ->
-                        key[RoomKeys.sessionId] to Json.parseToJsonElement(key[RoomKeys.keyData])
-                    }
-            }
-
-            if (roomKeys.isEmpty()) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No keys found for room")
-                })
-                return@get
-            }
-
-            call.respond(buildJsonObject {
-                putJsonObject("sessions") {
-                    roomKeys.forEach { (sessionId, data) ->
-                        put(sessionId, data)
-                    }
+            val rooms = transaction {
+                val query = RoomKeys.select { RoomKeys.userId eq userId }
+                if (version != null) {
+                    query.andWhere { RoomKeys.version eq version }
                 }
+
+                val roomMap = mutableMapOf<String, MutableMap<String, JsonElement>>()
+                query.forEach { row ->
+                    val roomId = row[RoomKeys.roomId]
+                    val sessionId = row[RoomKeys.sessionId]
+                    val sessionData = Json.parseToJsonElement(row[RoomKeys.keyData]).jsonObject
+                    roomMap.computeIfAbsent(roomId) { mutableMapOf() }[sessionId] = sessionData
+                }
+                roomMap
+            }
+
+            call.respond(buildJsonObject {
+                put("rooms", Json.encodeToJsonElement(rooms))
             })
 
         } catch (e: Exception) {
@@ -420,45 +402,51 @@ fun Route.keysRoutes() {
         }
     }
 
-    // PUT /room_keys/keys/{roomId}/{sessionId} - Upload key for session
-    put("/room_keys/keys/{roomId}/{sessionId}") {
+    // PUT /room_keys/keys/{roomId} - Upload room keys for a specific room
+    put("/room_keys/keys/{roomId}") {
         try {
             val userId = call.validateAccessToken() ?: return@put
-            val roomId = call.parameters["roomId"] ?: return@put
-            val sessionId = call.parameters["sessionId"] ?: return@put
+            val roomId = call.parameters["roomId"] ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing roomId")
+            })
 
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val version = jsonBody["version"]?.jsonPrimitive?.content ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing version")
+            })
+            val sessions = jsonBody["sessions"]?.jsonObject ?: buildJsonObject { }
+
+            // Check if version exists
+            val versionExists = transaction {
+                RoomKeyVersions.select { (RoomKeyVersions.userId eq userId) and (RoomKeyVersions.version eq version) }.count() > 0
             }
 
-            if (backupVersion == null) {
+            if (!versionExists) {
                 call.respond(HttpStatusCode.NotFound, buildJsonObject {
                     put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
+                    put("error", "Version not found")
                 })
                 return@put
             }
 
-            val version = backupVersion[RoomKeyVersions.version]
-
-            // Parse request body (the key data)
-            val requestBody = call.receiveText()
-            val keyData = Json.parseToJsonElement(requestBody)
-
-            // Store the key
             transaction {
-                RoomKeys.replace {
-                    it[RoomKeys.userId] = userId
-                    it[RoomKeys.version] = version
-                    it[RoomKeys.roomId] = roomId
-                    it[RoomKeys.sessionId] = sessionId
-                    it[RoomKeys.keyData] = keyData.toString()
-                    it[RoomKeys.lastModified] = System.currentTimeMillis()
+                // Store the keys
+                for (sessionId in sessions.keys) {
+                    val sessionData = sessions[sessionId]?.jsonObject ?: continue
+                    RoomKeys.insert {
+                        it[RoomKeys.userId] = userId
+                        it[RoomKeys.version] = version
+                        it[RoomKeys.roomId] = roomId
+                        it[RoomKeys.sessionId] = sessionId
+                        it[RoomKeys.keyData] = Json.encodeToString(JsonObject.serializer(), sessionData)
+                    }
                 }
             }
 
-            // Return success
             call.respond(buildJsonObject { })
 
         } catch (e: Exception) {
@@ -469,43 +457,65 @@ fun Route.keysRoutes() {
         }
     }
 
-    // GET /room_keys/keys/{roomId}/{sessionId} - Get key for session
-    get("/room_keys/keys/{roomId}/{sessionId}") {
+    // GET /room_keys/keys/{roomId} - Download room keys for a specific room
+    get("/room_keys/keys/{roomId}") {
         try {
             val userId = call.validateAccessToken() ?: return@get
-            val roomId = call.parameters["roomId"] ?: return@get
-            val sessionId = call.parameters["sessionId"] ?: return@get
+            val roomId = call.parameters["roomId"] ?: return@get call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing roomId")
+            })
+            val version = call.request.queryParameters["version"]
 
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
+            val sessions = transaction {
+                val query = RoomKeys.select { (RoomKeys.userId eq userId) and (RoomKeys.roomId eq roomId) }
+                if (version != null) {
+                    query.andWhere { RoomKeys.version eq version }
+                }
+
+                val sessionMap = mutableMapOf<String, JsonElement>()
+                query.forEach { row ->
+                    val sessionId = row[RoomKeys.sessionId]
+                    val sessionData = Json.parseToJsonElement(row[RoomKeys.keyData]).jsonObject
+                    sessionMap[sessionId] = sessionData
+                }
+                sessionMap
             }
 
-            if (backupVersion == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
-                })
-                return@get
-            }
+            call.respond(buildJsonObject {
+                put("sessions", Json.encodeToJsonElement(sessions))
+            })
 
-            val version = backupVersion[RoomKeyVersions.version]
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
 
-            // Get the key
-            val key = transaction {
-                RoomKeys.select { (RoomKeys.userId eq userId) and (RoomKeys.version eq version) and (RoomKeys.roomId eq roomId) and (RoomKeys.sessionId eq sessionId) }
+    // GET /dehydrated_device - Get dehydrated device
+    get("/dehydrated_device") {
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+
+            val dehydratedDevice = transaction {
+                DehydratedDevices.select { DehydratedDevices.userId eq userId }
                     .singleOrNull()
             }
 
-            if (key == null) {
+            if (dehydratedDevice == null) {
                 call.respond(HttpStatusCode.NotFound, buildJsonObject {
                     put("errcode", "M_NOT_FOUND")
-                    put("error", "Key not found")
+                    put("error", "Dehydrated device not found")
                 })
                 return@get
             }
 
-            call.respond(Json.parseToJsonElement(key[RoomKeys.keyData]))
+            call.respond(buildJsonObject {
+                put("device_id", dehydratedDevice[DehydratedDevices.deviceId])
+                put("device_data", Json.parseToJsonElement(dehydratedDevice[DehydratedDevices.deviceData]).jsonObject)
+            })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
@@ -515,108 +525,39 @@ fun Route.keysRoutes() {
         }
     }
 
-    // DELETE /room_keys/keys/{roomId}/{sessionId} - Delete key
-    delete("/room_keys/keys/{roomId}/{sessionId}") {
+    // PUT /dehydrated_device - Upload dehydrated device
+    put("/dehydrated_device") {
         try {
-            val userId = call.validateAccessToken() ?: return@delete
-            val roomId = call.parameters["roomId"] ?: return@delete
-            val sessionId = call.parameters["sessionId"] ?: return@delete
+            val userId = call.validateAccessToken() ?: return@put
 
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
-            }
-
-            if (backupVersion == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
-                })
-                return@delete
-            }
-
-            val version = backupVersion[RoomKeyVersions.version]
-
-            // Delete the key
-            transaction {
-                RoomKeys.deleteWhere { (RoomKeys.userId eq userId) and (RoomKeys.version eq version) and (RoomKeys.roomId eq roomId) and (RoomKeys.sessionId eq sessionId) }
-            }
-
-            // Return success
-            call.respond(buildJsonObject { })
-
-        } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
-                put("errcode", "M_UNKNOWN")
-                put("error", "Internal server error")
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing device_id")
             })
-        }
-    }
-
-    // DELETE /room_keys/keys/{roomId} - Delete all keys for room
-    delete("/room_keys/keys/{roomId}") {
-        try {
-            val userId = call.validateAccessToken() ?: return@delete
-            val roomId = call.parameters["roomId"] ?: return@delete
-
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
-            }
-
-            if (backupVersion == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
-                })
-                return@delete
-            }
-
-            val version = backupVersion[RoomKeyVersions.version]
-
-            // Delete all keys for the room
-            transaction {
-                RoomKeys.deleteWhere { (RoomKeys.userId eq userId) and (RoomKeys.version eq version) and (RoomKeys.roomId eq roomId) }
-            }
-
-            // Return success
-            call.respond(buildJsonObject { })
-
-        } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
-                put("errcode", "M_UNKNOWN")
-                put("error", "Internal server error")
+            val deviceData = jsonBody["device_data"]?.jsonObject ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing device_data")
             })
-        }
-    }
 
-    // DELETE /room_keys/keys - Delete all keys
-    delete("/room_keys/keys") {
-        try {
-            val userId = call.validateAccessToken() ?: return@delete
-
-            // Get the current backup version
-            val backupVersion = transaction {
-                RoomKeyVersions.select { RoomKeyVersions.userId eq userId }.singleOrNull()
-            }
-
-            if (backupVersion == null) {
-                call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                    put("errcode", "M_NOT_FOUND")
-                    put("error", "No backup found")
-                })
-                return@delete
-            }
-
-            val version = backupVersion[RoomKeyVersions.version]
-
-            // Delete all keys for this version
             transaction {
-                RoomKeys.deleteWhere { (RoomKeys.userId eq userId) and (RoomKeys.version eq version) }
+                // Delete any existing dehydrated device for this user
+                DehydratedDevices.deleteWhere { DehydratedDevices.userId eq userId }
+
+                // Insert the new one
+                DehydratedDevices.insert {
+                    it[DehydratedDevices.userId] = userId
+                    it[DehydratedDevices.deviceId] = deviceId
+                    it[DehydratedDevices.deviceData] = Json.encodeToString(JsonObject.serializer(), deviceData)
+                    it[DehydratedDevices.createdAt] = System.currentTimeMillis()
+                }
             }
 
-            // Return success
-            call.respond(buildJsonObject { })
+            call.respond(buildJsonObject {
+                put("device_id", deviceId)
+            })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {

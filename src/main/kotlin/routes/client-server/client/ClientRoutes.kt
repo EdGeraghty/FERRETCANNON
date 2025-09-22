@@ -259,7 +259,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     thirdPartyRoutes()
                     // oauthRoutes(config) - moved to root level
                     syncRoutes()
-                    keysRoutes()
+                    keysRoutes(config)
 
                     // VoIP endpoints
                     route("/voip") {

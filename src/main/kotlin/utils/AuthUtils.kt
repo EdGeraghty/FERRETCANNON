@@ -5,6 +5,9 @@ import models.Devices
 import models.Users
 import models.ApplicationServices
 import models.LoginTokens
+import config.ServerConfig
+import utils.MatrixAuth
+import kotlinx.serialization.json.*
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -16,9 +19,6 @@ import java.security.SecureRandom
 import java.util.*
 import utils.OAuthService
 import kotlin.concurrent.write
-import config.ServerConfig
-import net.i2p.crypto.eddsa.EdDSAPrivateKey
-import kotlinx.serialization.json.*
 
 object AuthUtils {
     private val random = SecureRandom()
@@ -692,7 +692,7 @@ object AuthUtils {
      * Get device keys for multiple users
      * Returns Map<userId, Map<deviceId, deviceKeyData>>
      */
-    fun getDeviceKeysForUsers(userIds: List<String>): Map<String, Map<String, JsonElement>> {
+    fun getDeviceKeysForUsers(userIds: List<String>, config: ServerConfig): Map<String, Map<String, JsonElement>> {
         return transaction {
             val result = mutableMapOf<String, MutableMap<String, JsonElement>>()
 
@@ -716,8 +716,16 @@ object AuthUtils {
                             put("ed25519:$ed25519KeyId", ed25519Key)
                         })
                         put("signatures", buildJsonObject {
-                            put(userId, buildJsonObject {
-                                put("ed25519:$ed25519KeyId", "signature_placeholder") // In real implementation, this would be signed
+                            put(config.federation.serverName, buildJsonObject {
+                                put("ed25519:ed25519:0", MatrixAuth.signJson(buildJsonObject {
+                                    put("user_id", userId)
+                                    put("device_id", deviceId)
+                                    put("algorithms", JsonArray(listOf(JsonPrimitive("m.olm.v1.curve25519-aes-sha2"), JsonPrimitive("m.megolm.v1.aes-sha2"))))
+                                    put("keys", buildJsonObject {
+                                        put("curve25519:$curve25519KeyId", curve25519Key)
+                                        put("ed25519:$ed25519KeyId", ed25519Key)
+                                    })
+                                }))
                             })
                         })
                     }
