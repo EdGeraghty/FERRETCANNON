@@ -98,14 +98,14 @@ fun Route.pushRoutes() {
                         add("dont_notify")
                     })
                 })
-                // .m.rule.is_user_mention - User mentions (intentional only per MSC4142)
+                // .m.rule.is_user_mention - User mentions
                 add(buildJsonObject {
                     put("rule_id", ".m.rule.is_user_mention")
                     put("default", true)
                     put("enabled", true)
                     put("conditions", buildJsonArray {
                         add(buildJsonObject {
-                            put("kind", "org.matrix.experimental.msc4142.is_user_mention")
+                            put("kind", "contains_display_name")
                         })
                     })
                     put("actions", buildJsonArray {
@@ -393,17 +393,19 @@ fun Route.pushRoutes() {
                     })
                 })
             })
-            put("sender", buildJsonObject { })
-            put("room", buildJsonObject { })
-            put("content", buildJsonObject {
-                // .m.rule.is_room_mention - Room mentions (intentional only per MSC4142)
-                put(".m.rule.is_room_mention", buildJsonObject {
+            put("sender", buildJsonArray { })
+            put("room", buildJsonArray { })
+            put("content", buildJsonArray {
+                // .m.rule.is_room_mention - Room mentions
+                add(buildJsonObject {
                     put("rule_id", ".m.rule.is_room_mention")
                     put("default", true)
                     put("enabled", true)
                     put("conditions", buildJsonArray {
                         add(buildJsonObject {
-                            put("kind", "org.matrix.experimental.msc4142.is_room_mention")
+                            put("kind", "event_match")
+                            put("key", "content.body")
+                            put("pattern", "@room")
                         })
                     })
                     put("actions", buildJsonArray {
