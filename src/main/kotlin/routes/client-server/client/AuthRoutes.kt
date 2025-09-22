@@ -30,7 +30,7 @@ fun Route.authRoutes(config: ServerConfig) {
             val requestBody = call.receiveText()
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val password = jsonBody["password"]?.jsonPrimitive?.content
-            val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content ?: "default_device"
+            val deviceId = jsonBody["device_id"]?.jsonPrimitive?.content ?: AuthUtils.generateDeviceId()
 
             // Extract user identifier
             var username: String?
