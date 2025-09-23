@@ -30,7 +30,7 @@ fun Route.adminRoutes(config: ServerConfig) {
             }
 
             call.respond(mutableMapOf(
-                "server_version" to "FerretCannon 1.0",
+                "server_version" to "#YOLO🔥🔥🔥",
                 "python_version" to "Kotlin/JVM"
             ))
 

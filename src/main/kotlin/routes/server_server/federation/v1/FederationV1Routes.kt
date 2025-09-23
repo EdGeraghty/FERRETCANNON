@@ -38,7 +38,7 @@ fun Application.federationV1Routes() {
                         call.respond(buildJsonObject {
                             putJsonObject("server") {
                                 put("name", "FERRETCANNON")
-                                put("version", "1.0.0")
+                                put("version", "#YOLO🔥🔥🔥")
                             }
                             putJsonObject("spec_versions") {
                                 put("federation", "v1.15")
