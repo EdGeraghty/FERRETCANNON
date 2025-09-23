@@ -29,35 +29,13 @@ fun Application.keyV2Routes() {
                     get("/server") {
                         logger.trace("GET /_matrix/key/v2/server request")
                         val serverName = utils.ServerNameResolver.getServerName() // Dynamic server name resolution
-                        val validUntilTs = System.currentTimeMillis() + (24 * 60 * 60 * 1000) // 24 hours
 
-                        // Get the actual server key
-                        val publicKeyBase64 = ServerKeys.getPublicKey()
-                        val keyId = ServerKeys.getKeyId()
+                        logger.debug("Serving server keys for server: $serverName")
 
-                        logger.debug("Serving server keys for server: $serverName, keyId: $keyId")
-                        logger.trace("Server key response: server_name=$serverName, valid_until_ts=$validUntilTs")
+                        // Get the server keys response with proper signing
+                        val serverKeysResponse = ServerKeys.getServerKeys(serverName)
 
-                        // Create response manually to avoid serialization issues
-                        val responseJson = kotlinx.serialization.json.JsonObject(mutableMapOf(
-                            "server_name" to kotlinx.serialization.json.JsonPrimitive(serverName),
-                            "signatures" to kotlinx.serialization.json.JsonObject(mutableMapOf(
-                                serverName to kotlinx.serialization.json.JsonObject(mutableMapOf(
-                                    keyId to kotlinx.serialization.json.JsonPrimitive(ServerKeys.sign("$serverName valid_until_ts:$validUntilTs".toByteArray()))
-                                ))
-                            )),
-                            "valid_until_ts" to kotlinx.serialization.json.JsonPrimitive(validUntilTs),
-                            "verify_keys" to kotlinx.serialization.json.JsonObject(mutableMapOf(
-                                keyId to kotlinx.serialization.json.JsonObject(mutableMapOf(
-                                    "key" to kotlinx.serialization.json.JsonPrimitive(publicKeyBase64)
-                                ))
-                            ))
-                        ))
-
-                        call.respondText(
-                            kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), responseJson),
-                            io.ktor.http.ContentType.Application.Json
-                        )
+                        call.respond(serverKeysResponse)
                     }
                     post("/query") {
                         // Key query endpoint is public - no authentication required per Matrix spec

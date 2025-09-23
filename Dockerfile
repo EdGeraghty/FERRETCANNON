@@ -62,6 +62,6 @@ EXPOSE 8080
 # Set environment variables for production
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
-# Force clean build - version 4
+# Force clean build - version 5
 # Run the application directly
 CMD ["./start.sh"]

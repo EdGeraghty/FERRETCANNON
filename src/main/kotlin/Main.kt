@@ -202,7 +202,7 @@ fun main() {
             logger.trace("Installing ContentNegotiation plugin...")
             install(ContentNegotiation) {
                 json(Json {
-                    prettyPrint = true
+                    prettyPrint = false
                     isLenient = true
                     ignoreUnknownKeys = true
                     allowStructuredMapKeys = true

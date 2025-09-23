@@ -82,8 +82,8 @@ object ServerKeys {
             val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
             publicKey = EdDSAPublicKey(publicKeySpec)
 
-            // Use unpadded Base64 as per Matrix specification appendices
-            publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+            // Use unpadded URL-safe Base64 as per Matrix specification appendices
+            publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
             keyId = "ed25519:0"
 
             logger.info("✅ Generated deterministic server key pair with ID: $keyId")
@@ -221,7 +221,7 @@ object ServerKeys {
     }
 
     fun encodeEd25519PublicKey(publicKey: EdDSAPublicKey): String {
-        return Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
     }
 
     fun generateKeyId(): String {
@@ -253,17 +253,16 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.trace("Signing ${data.size} bytes of data")
         try {
-            // Use EdDSAEngine with SHA-512 (required for Ed25519)
-            val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initSign(privateKey)
-            signatureEngine.update(data)
-            val signatureBytes = signatureEngine.sign()
+            val signature = Signature.getInstance("EdDSA", "I2P")
+            signature.initSign(privateKey)
+            signature.update(data)
+            val signatureBytes = signature.sign()
             // Use unpadded Base64 as per Matrix specification appendices
             val signatureBase64 = Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
             logger.trace("Generated signature: ${signatureBase64.take(32)}...")
             return signatureBase64
         } catch (e: Exception) {
-            logger.error("Failed to sign data with EdDSAEngine", e)
+            logger.error("Failed to sign data with EdDSA", e)
             throw e
         }
     }
@@ -280,11 +279,10 @@ object ServerKeys {
                 Base64.getDecoder().decode(signature)
             }
 
-            // Use EdDSAEngine with SHA-512 (required for Ed25519)
-            val signatureEngine = net.i2p.crypto.eddsa.EdDSAEngine(java.security.MessageDigest.getInstance("SHA-512"))
-            signatureEngine.initVerify(publicKey)
-            signatureEngine.update(data)
-            val result = signatureEngine.verify(signatureBytes)
+            val sig = Signature.getInstance("EdDSA", "I2P")
+            sig.initVerify(publicKey)
+            sig.update(data)
+            val result = sig.verify(signatureBytes)
             logger.trace("Signature verification result: $result")
             result
         } catch (e: Exception) {
@@ -305,7 +303,7 @@ object ServerKeys {
         // Get all valid keys from database
         val verifyKeys = mutableMapOf<String, Map<String, Any>>()
         val oldVerifyKeys = mutableMapOf<String, Map<String, Any>>()
-        var validUntilTs: Long = currentTime + 86400000 // Default fallback
+        val validUntilTs = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Current time + 1 year
 
         transaction {
             ServerKeysTable.select {
@@ -319,7 +317,6 @@ object ServerKeys {
                 if (keyId == currentKeyId) {
                     // Current key goes in verify_keys - use its stored validity time
                     verifyKeys[keyId] = mutableMapOf("key" to publicKey)
-                    validUntilTs = keyValidUntilTs // Use the stored validity time for consistency
                 } else {
                     // Old keys go in old_verify_keys
                     oldVerifyKeys[keyId] = mutableMapOf(
@@ -330,7 +327,7 @@ object ServerKeys {
             }
         }
 
-        // If no keys found in database, use current key with default validity
+        // If no keys found in database, use current key
         if (verifyKeys.isEmpty()) {
             verifyKeys[currentKeyId] = mutableMapOf("key" to currentPublicKeyBase64)
         }
@@ -347,20 +344,40 @@ object ServerKeys {
             )
         )
 
+        // Test signature verification
+        val canonicalJson = getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs)
+        val signaturesMap = serverKeys["signatures"] as Map<String, Map<String, String>>
+        val generatedSignature = signaturesMap[serverName]!![currentKeyId]!!
+        val testVerify = verify(canonicalJson.toByteArray(Charsets.UTF_8), generatedSignature)
+        logger.info("Signature verification test for generated keys: $testVerify")
+        if (!testVerify) {
+            logger.error("Generated signature does not verify against canonical JSON!")
+        }
+
         logger.debug("Server keys generated with ${verifyKeys.size} verify keys and ${oldVerifyKeys.size} old keys")
         logger.trace("Server keys response: ${serverKeys.keys.joinToString()}")
         return serverKeys
     }
 
     private fun getServerKeysCanonicalJson(serverName: String, verifyKeys: Map<String, Map<String, Any>>, oldVerifyKeys: Map<String, Map<String, Any>>, validUntilTs: Long): String {
-        // Create canonical JSON string manually for signing
-        val verifyKeysJson = verifyKeys.entries.joinToString(",") { (keyId, keyData) ->
+        // Create canonical JSON string with top-level keys in lexicographical order, sub-keys sorted
+        val verifyKeysJson = verifyKeys.entries.sortedBy { it.key }.joinToString(",") { (keyId, keyData) ->
             "\"$keyId\":{\"key\":\"${keyData["key"]}\"}"
         }
-        val oldVerifyKeysJson = oldVerifyKeys.entries.joinToString(",") { (keyId, keyData) ->
-            "\"$keyId\":{\"key\":\"${keyData["key"]}\",\"expired_ts\":${keyData["expired_ts"]}}"
+
+        val oldVerifyKeysJson = oldVerifyKeys.entries.sortedBy { it.key }.joinToString(",") { (keyId, keyData) ->
+            "\"$keyId\":{\"expired_ts\":${keyData["expired_ts"]},\"key\":\"${keyData["key"]}\"}"
         }
 
-        return "{\"server_name\":\"$serverName\",\"valid_until_ts\":$validUntilTs,\"verify_keys\":{$verifyKeysJson},\"old_verify_keys\":{$oldVerifyKeysJson}}"
+        // Collect parts in a map to sort keys
+        val parts = mutableMapOf<String, String>()
+        parts["server_name"] = "\"server_name\":\"$serverName\""
+        parts["valid_until_ts"] = "\"valid_until_ts\":$validUntilTs"
+        parts["verify_keys"] = "\"verify_keys\":{$verifyKeysJson}"
+        if (oldVerifyKeys.isNotEmpty()) {
+            parts["old_verify_keys"] = "\"old_verify_keys\":{$oldVerifyKeysJson}"
+        }
+
+        return "{${parts.entries.sortedBy { it.key }.joinToString(",") { it.value }}}"
     }
 }
