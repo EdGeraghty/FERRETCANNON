@@ -66,6 +66,8 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import java.io.File
+import java.security.Security
+import net.i2p.crypto.eddsa.EdDSASecurityProvider
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -80,6 +82,11 @@ private val logger = LoggerFactory.getLogger("Main")
 fun main() {
     logger.info("🚀 Starting FERRETCANNON Matrix Server...")
     logger.debug("Initializing server components...")
+
+    // Register I2P EdDSA security provider for Ed25519 signatures
+    logger.debug("Registering I2P EdDSA security provider...")
+    Security.addProvider(EdDSASecurityProvider())
+    logger.info("✅ I2P EdDSA security provider registered")
 
     // Load configuration
     val config = ConfigLoader.loadConfig()
