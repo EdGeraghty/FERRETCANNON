@@ -22,6 +22,7 @@ class StateResolver {
      * 
      * Optimized to only process state events and use efficient conflict resolution.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun resolveState(events: List<JsonObject>, roomVersion: String = "1"): Map<String, JsonObject> {
         if (events.isEmpty()) return mutableMapOf()
 

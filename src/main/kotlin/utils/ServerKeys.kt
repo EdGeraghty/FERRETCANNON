@@ -358,6 +358,7 @@ object ServerKeys {
 
         // Test signature verification
         val canonicalJson = getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs)
+        @Suppress("UNCHECKED_CAST")
         val signaturesMap = serverKeys["signatures"] as Map<String, Map<String, String>>
         val generatedSignature = signaturesMap[serverName]!![currentKeyId]!!
         val testVerify = verify(canonicalJson.toByteArray(Charsets.UTF_8), generatedSignature)

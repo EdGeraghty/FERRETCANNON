@@ -42,82 +42,41 @@ import config.ServerConfig
 import utils.MatrixPagination
 
 // Import modular route functions
-import routes.client_server.client.authRoutes
-import routes.client_server.client.userRoutes
-import routes.client_server.client.deviceRoutes
-import routes.client_server.client.roomRoutes
-import routes.client_server.client.eventRoutes
-import routes.client_server.client.eventReceiptRoutes
-import routes.client_server.client.eventReadMarkersRoutes
-import routes.client_server.client.eventRedactionRoutes
-import routes.client_server.client.contentRoutes
-import routes.client_server.client.pushRoutes
-import routes.client_server.client.adminRoutes
-import routes.client_server.client.thirdPartyRoutes
-import routes.client_server.client.syncRoutes
-import routes.client_server.client.keysRoutes
-import routes.client_server.client.accountDataRoutes
-import routes.client_server.client.filterRoutes
-import routes.client_server.client.accountRoutes
-import routes.client_server.client.userDirectoryRoutes
-import routes.client_server.client.dehydratedDeviceRoutes
-import routes.client_server.client.deviceKeysRoutes
-import routes.client_server.client.roomKeysRoutes
-import routes.client_server.client.crossSigningRoutes
-
-// Attribute keys for authentication
-val MATRIX_USER_KEY = AttributeKey<UserIdPrincipal>("MatrixUser")
-val MATRIX_TOKEN_KEY = AttributeKey<String>("MatrixToken")
-val MATRIX_USER_ID_KEY = AttributeKey<String>("MatrixUserId")
-val MATRIX_DEVICE_ID_KEY = AttributeKey<String>("MatrixDeviceId")
-val MATRIX_INVALID_TOKEN_KEY = AttributeKey<String>("MatrixInvalidToken")
-val MATRIX_NO_TOKEN_KEY = AttributeKey<Boolean>("MatrixNoToken")
-
-// Helper function for token validation and error responses
-suspend fun ApplicationCall.validateAccessToken(): String? {
-    val accessToken = attributes.getOrNull(MATRIX_TOKEN_KEY)
-    val invalidToken = attributes.getOrNull(MATRIX_INVALID_TOKEN_KEY)
-    val noToken = attributes.getOrNull(MATRIX_NO_TOKEN_KEY)
-
-    return when {
-        noToken == true -> {
-            respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                put("errcode", "M_MISSING_TOKEN")
-                put("error", "Missing access token")
-            })
-            null
-        }
-        invalidToken != null -> {
-            respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                put("errcode", "M_UNKNOWN_TOKEN")
-                put("error", "Unrecognised access token")
-            })
-            null
-        }
-        accessToken != null -> {
-            // Return the user ID, not the access token
-            attributes.getOrNull(MATRIX_USER_ID_KEY)
-        }
-        else -> {
-            respond(HttpStatusCode.Unauthorized, buildJsonObject {
-                put("errcode", "M_MISSING_TOKEN")
-                put("error", "Missing access token")
-            })
-            null
-        }
-    }
-}
-
-// Helper function to get authenticated user information
-fun ApplicationCall.getAuthenticatedUser(): Triple<String, String, String>? {
-    val userId = attributes.getOrNull(MATRIX_USER_ID_KEY)
-    val deviceId = attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
-    val token = attributes.getOrNull(MATRIX_TOKEN_KEY)
-
-    return if (userId != null && deviceId != null && token != null) {
-        Triple(userId, deviceId, token)
-    } else null
-}
+import routes.client_server.client.auth.authRoutes
+import routes.client_server.client.auth.oauthAuthorizationRoutes
+import routes.client_server.client.auth.oauthCallbackRoutes
+import routes.client_server.client.auth.oauthJWKSroutes
+import routes.client_server.client.auth.oauthRoutes
+import routes.client_server.client.auth.oauthTokenRoutes
+import routes.client_server.client.auth.oauthUserInfoRoutes
+import routes.client_server.client.user.accountDataRoutes
+import routes.client_server.client.user.accountRoutes
+import routes.client_server.client.user.profileAvatarRoutes
+import routes.client_server.client.user.profileCustomRoutes
+import routes.client_server.client.user.profileDisplayRoutes
+import routes.client_server.client.user.profileTimezoneRoutes
+import routes.client_server.client.user.userDirectoryRoutes
+import routes.client_server.client.user.userRoutes
+import routes.client_server.client.device.dehydratedDeviceRoutes
+import routes.client_server.client.device.deviceKeysRoutes
+import routes.client_server.client.device.deviceRoutes
+import routes.client_server.client.room.roomCreationRoutes
+import routes.client_server.client.room.roomKeysRoutes
+import routes.client_server.client.room.roomMembershipRoutes
+import routes.client_server.client.room.roomRoutes
+import routes.client_server.client.event.eventReadMarkersRoutes
+import routes.client_server.client.event.eventReceiptRoutes
+import routes.client_server.client.event.eventRedactionRoutes
+import routes.client_server.client.push.pushersRoutes
+import routes.client_server.client.push.pushRulesRoutes
+import routes.client_server.client.keys.crossSigningRoutes
+import routes.client_server.client.keys.keysRoutes
+import routes.client_server.client.content.contentRoutes
+import routes.client_server.client.sync.syncRoutes
+import routes.client_server.client.admin.adminRoutes
+import routes.client_server.client.thirdparty.thirdPartyRoutes
+import routes.client_server.client.filter.filterRoutes
+import routes.client_server.client.common.*
 
 fun Application.clientRoutes(config: ServerConfig) {
     // Request size limiting - simplified version
@@ -186,10 +145,10 @@ fun Application.clientRoutes(config: ServerConfig) {
 
         // OAuth 2.0 endpoints at root level (not under /_matrix/client)
         route("/oauth2") {
-            oauthAuthorizationRoutes(config)
-            oauthTokenRoutes(config)
-            oauthUserInfoRoutes(config)
-            oauthJWKSroutes(config)
+            oauthAuthorizationRoutes()
+            oauthTokenRoutes()
+            oauthUserInfoRoutes()
+            oauthJWKSroutes()
             oauthCallbackRoutes(config)
         }
 
@@ -308,12 +267,12 @@ fun Application.clientRoutes(config: ServerConfig) {
                     filterRoutes()
                     accountRoutes()
                     userDirectoryRoutes()
-                    dehydratedDeviceRoutes(config)
+                    dehydratedDeviceRoutes()
                     userRoutes()
                     deviceRoutes()
                     roomCreationRoutes(config)
                     roomMembershipRoutes(config)
-                    roomRoutes(config)
+                    roomRoutes()
                     eventReceiptRoutes()
                     eventReadMarkersRoutes()
                     eventRedactionRoutes()
@@ -325,9 +284,9 @@ fun Application.clientRoutes(config: ServerConfig) {
                     syncRoutes()
                     keysRoutes(config)
                     deviceKeysRoutes(config)
-                    roomKeysRoutes(config)
-                    dehydratedDeviceRoutes(config)
-                    crossSigningRoutes(config)
+                    roomKeysRoutes()
+                    dehydratedDeviceRoutes()
+                    crossSigningRoutes()
 
                     // VoIP endpoints
                     route("/voip") {
