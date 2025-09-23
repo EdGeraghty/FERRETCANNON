@@ -7,6 +7,8 @@ import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
 import net.i2p.crypto.eddsa.spec.EdDSAPrivateKeySpec
 import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 import java.security.Signature
+import java.security.Security
+import net.i2p.crypto.eddsa.EdDSASecurityProvider
 import java.util.Base64
 import org.slf4j.LoggerFactory
 import org.jetbrains.exposed.sql.*
@@ -14,6 +16,16 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import models.ServerKeys as ServerKeysTable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonPrimitive
+
+// Register I2P provider at class loading time
+private object I2PProviderRegistrar {
+    private val provider = EdDSASecurityProvider()
+    init {
+        Security.addProvider(provider)
+    }
+    
+    fun getProvider(): EdDSASecurityProvider = provider
+}
 
 object ServerKeys {
     private val logger = LoggerFactory.getLogger("utils.ServerKeys")
@@ -164,7 +176,7 @@ object ServerKeys {
     }
 
     private fun signWithKey(data: ByteArray, key: EdDSAPrivateKey): String {
-        val signature = Signature.getInstance("EdDSA", "I2P")
+        val signature = EdDSAEngine()
         signature.initSign(key)
         signature.update(data)
         val signatureBytes = signature.sign()
@@ -253,7 +265,7 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.trace("Signing ${data.size} bytes of data")
         try {
-            val signature = Signature.getInstance("EdDSA", "I2P")
+            val signature = EdDSAEngine()
             signature.initSign(privateKey)
             signature.update(data)
             val signatureBytes = signature.sign()
@@ -279,7 +291,7 @@ object ServerKeys {
                 Base64.getDecoder().decode(signature)
             }
 
-            val sig = Signature.getInstance("EdDSA", "I2P")
+            val sig = EdDSAEngine()
             sig.initVerify(publicKey)
             sig.update(data)
             val result = sig.verify(signatureBytes)

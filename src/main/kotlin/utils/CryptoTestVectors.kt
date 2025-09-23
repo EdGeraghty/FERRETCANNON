@@ -94,7 +94,7 @@ class CryptoTestVectors {
     }
 
     private fun signJson(canonicalJson: String): String {
-        val signature = Signature.getInstance(EdDSAEngine.SIGNATURE_ALGORITHM, "I2P")
+        val signature = EdDSAEngine()
         signature.initSign(privateKey)
         signature.update(canonicalJson.toByteArray(Charsets.UTF_8))
         val sigBytes = signature.sign()

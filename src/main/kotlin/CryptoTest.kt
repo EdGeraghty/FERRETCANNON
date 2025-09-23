@@ -62,7 +62,7 @@ fun main() {
 
 @OptIn(ExperimentalEncodingApi::class)
 fun signJson(canonicalJson: String, privateKey: EdDSAPrivateKey): String {
-    val signature = Signature.getInstance(EdDSAEngine.SIGNATURE_ALGORITHM, "I2P")
+    val signature = EdDSAEngine()
     signature.initSign(privateKey)
     signature.update(canonicalJson.toByteArray(Charsets.UTF_8))
     val sigBytes = signature.sign()

@@ -185,7 +185,7 @@ object MatrixAuth {
 
     private fun verifySignature(data: String, signature: String, publicKey: EdDSAPublicKey): Boolean {
         return try {
-            val sig = Signature.getInstance("Ed25519", "EdDSA")
+            val sig = EdDSAEngine()
             sig.initVerify(publicKey)
             sig.update(data.toByteArray(Charsets.UTF_8))
             // Handle both padded and unpadded Base64 for compatibility
