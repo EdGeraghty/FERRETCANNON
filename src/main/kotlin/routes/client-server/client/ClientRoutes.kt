@@ -47,13 +47,23 @@ import routes.client_server.client.userRoutes
 import routes.client_server.client.deviceRoutes
 import routes.client_server.client.roomRoutes
 import routes.client_server.client.eventRoutes
+import routes.client_server.client.eventReceiptRoutes
+import routes.client_server.client.eventReadMarkersRoutes
+import routes.client_server.client.eventRedactionRoutes
 import routes.client_server.client.contentRoutes
 import routes.client_server.client.pushRoutes
 import routes.client_server.client.adminRoutes
 import routes.client_server.client.thirdPartyRoutes
-import routes.client_server.client.oauthRoutes
 import routes.client_server.client.syncRoutes
 import routes.client_server.client.keysRoutes
+import routes.client_server.client.accountDataRoutes
+import routes.client_server.client.filterRoutes
+import routes.client_server.client.accountRoutes
+import routes.client_server.client.userDirectoryRoutes
+import routes.client_server.client.dehydratedDeviceRoutes
+import routes.client_server.client.deviceKeysRoutes
+import routes.client_server.client.roomKeysRoutes
+import routes.client_server.client.crossSigningRoutes
 
 // Attribute keys for authentication
 val MATRIX_USER_KEY = AttributeKey<UserIdPrincipal>("MatrixUser")
@@ -176,7 +186,11 @@ fun Application.clientRoutes(config: ServerConfig) {
 
         // OAuth 2.0 endpoints at root level (not under /_matrix/client)
         route("/oauth2") {
-            oauthRoutes(config)
+            oauthAuthorizationRoutes(config)
+            oauthTokenRoutes(config)
+            oauthUserInfoRoutes(config)
+            oauthJWKSroutes(config)
+            oauthCallbackRoutes(config)
         }
 
         route("/_matrix") {
@@ -286,16 +300,34 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                     // Include all the modular route files
                     authRoutes(config)
+                    profileDisplayRoutes()
+                    profileAvatarRoutes()
+                    profileTimezoneRoutes()
+                    profileCustomRoutes()
+                    accountDataRoutes()
+                    filterRoutes()
+                    accountRoutes()
+                    userDirectoryRoutes()
+                    dehydratedDeviceRoutes(config)
                     userRoutes()
                     deviceRoutes()
+                    roomCreationRoutes(config)
+                    roomMembershipRoutes(config)
                     roomRoutes(config)
-                    eventRoutes()
-                    pushRoutes()
+                    eventReceiptRoutes()
+                    eventReadMarkersRoutes()
+                    eventRedactionRoutes()
+                    pushRulesRoutes()
+                    pushersRoutes()
                     adminRoutes(config)
                     thirdPartyRoutes()
                     // oauthRoutes(config) - moved to root level
                     syncRoutes()
                     keysRoutes(config)
+                    deviceKeysRoutes(config)
+                    roomKeysRoutes(config)
+                    dehydratedDeviceRoutes(config)
+                    crossSigningRoutes(config)
 
                     // VoIP endpoints
                     route("/voip") {
