@@ -25,17 +25,22 @@ object MatrixAuth {
 
     private val client = HttpClient(CIO)
 
-    fun verifyAuth(call: ApplicationCall, authHeader: String, body: String): Boolean {
-        val method = call.request.httpMethod.value
-        val uri = call.request.uri
-        val destination = ServerNameResolver.getServerName() // This server's name
+    fun verifyAuth(call: ApplicationCall, authHeader: String?, body: String?): Boolean {
+        if (authHeader == null) return false
+        try {
+            val method = call.request.httpMethod.value
+            val uri = call.request.uri
+            val destination = ServerNameResolver.getServerName() // This server's name
 
-        // Parse auth header to get origin
-        val authParams = parseAuthorization(authHeader) ?: return false
-        val origin = authParams["origin"] ?: return false
+            // Parse auth header to get origin
+            val authParams = parseAuthorization(authHeader) ?: return false
+            val origin = authParams["origin"] ?: return false
 
-        return runBlocking {
-            verifyRequest(method, uri, origin, destination, body, authHeader)
+            return runBlocking {
+                verifyRequest(method, uri, origin, destination, body, authHeader)
+            }
+        } catch (e: Exception) {
+            return false
         }
     }
 

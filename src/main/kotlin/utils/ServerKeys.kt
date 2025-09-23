@@ -15,7 +15,11 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import models.ServerKeys as ServerKeysTable
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.put
 
 // Register I2P provider at class loading time
 private object I2PProviderRegistrar {
@@ -303,7 +307,7 @@ object ServerKeys {
         }
     }
 
-    fun getServerKeys(serverName: String): Map<String, Any> {
+    fun getServerKeys(serverName: String): JsonObject {
         ensureKeysLoaded()
         logger.debug("Generating server keys response for server: $serverName")
         val currentTime = System.currentTimeMillis()
@@ -344,23 +348,38 @@ object ServerKeys {
             verifyKeys[currentKeyId] = mutableMapOf("key" to currentPublicKeyBase64)
         }
 
-        val serverKeys = mutableMapOf(
-            "server_name" to serverName,
-            "valid_until_ts" to validUntilTs,
-            "verify_keys" to verifyKeys,
-            "old_verify_keys" to oldVerifyKeys,
-            "signatures" to mutableMapOf(
-                serverName to mutableMapOf(
-                    currentKeyId to sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8))
-                )
-            )
-        )
+        val serverKeys = buildJsonObject {
+            put("server_name", serverName)
+            put("valid_until_ts", validUntilTs)
+            putJsonObject("verify_keys") {
+                verifyKeys.forEach { (keyId, keyData) ->
+                    putJsonObject(keyId) {
+                        put("key", keyData["key"] as String)
+                    }
+                }
+            }
+            if (oldVerifyKeys.isNotEmpty()) {
+                putJsonObject("old_verify_keys") {
+                    oldVerifyKeys.forEach { (keyId, keyData) ->
+                        putJsonObject(keyId) {
+                            put("key", keyData["key"] as String)
+                            put("expired_ts", keyData["expired_ts"] as Long)
+                        }
+                    }
+                }
+            }
+            putJsonObject("signatures") {
+                putJsonObject(serverName) {
+                    put(currentKeyId, sign(getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs).toByteArray(Charsets.UTF_8)))
+                }
+            }
+        }
 
         // Test signature verification
         val canonicalJson = getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs)
-        @Suppress("UNCHECKED_CAST")
-        val signaturesMap = serverKeys["signatures"] as Map<String, Map<String, String>>
-        val generatedSignature = signaturesMap[serverName]!![currentKeyId]!!
+        val signatures = serverKeys["signatures"] as JsonObject
+        val serverSigs = signatures[serverName] as JsonObject
+        val generatedSignature = (serverSigs[currentKeyId] as JsonPrimitive).content
         val testVerify = verify(canonicalJson.toByteArray(Charsets.UTF_8), generatedSignature)
         logger.info("Signature verification test for generated keys: $testVerify")
         if (!testVerify) {
@@ -368,7 +387,7 @@ object ServerKeys {
         }
 
         logger.debug("Server keys generated with ${verifyKeys.size} verify keys and ${oldVerifyKeys.size} old keys")
-        logger.trace("Server keys response: ${serverKeys.keys.joinToString()}")
+        logger.trace("Server keys response: ${serverKeys}")
         return serverKeys
     }
 

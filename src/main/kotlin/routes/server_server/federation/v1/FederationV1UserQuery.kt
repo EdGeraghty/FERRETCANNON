@@ -25,6 +25,21 @@ fun Route.federationV1UserQuery() {
             return@get
         }
 
+        // Authenticate the request
+        val authHeader = call.request.headers["Authorization"]
+        val isAuthValid = try {
+            authHeader != null && MatrixAuth.verifyAuth(call, authHeader, null)
+        } catch (e: Exception) {
+            false
+        }
+        if (!isAuthValid) {
+            call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                put("errcode", "M_UNAUTHORIZED")
+                put("error", "Invalid signature")
+            })
+            return@get
+        }
+
         try {
             // Look up room by alias
             val roomId = findRoomByAlias(roomAlias)
@@ -75,7 +90,12 @@ fun Route.federationV1UserQuery() {
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
-        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+        val isAuthValid = try {
+            authHeader != null && MatrixAuth.verifyAuth(call, authHeader, null)
+        } catch (e: Exception) {
+            false
+        }
+        if (!isAuthValid) {
             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                 put("errcode", "M_UNAUTHORIZED")
                 put("error", "Invalid signature")
@@ -115,7 +135,12 @@ fun Route.federationV1UserQuery() {
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
-        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+        val isAuthValid = try {
+            authHeader != null && MatrixAuth.verifyAuth(call, authHeader, null)
+        } catch (e: Exception) {
+            false
+        }
+        if (!isAuthValid) {
             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                 put("errcode", "M_UNAUTHORIZED")
                 put("error", "Invalid signature")
@@ -157,7 +182,12 @@ fun Route.federationV1UserQuery() {
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
-        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+        val isAuthValid = try {
+            authHeader != null && MatrixAuth.verifyAuth(call, authHeader, null)
+        } catch (e: Exception) {
+            false
+        }
+        if (!isAuthValid) {
             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                 put("errcode", "M_UNAUTHORIZED")
                 put("error", "Invalid signature")
@@ -198,7 +228,12 @@ fun Route.federationV1UserQuery() {
 
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
-        if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, "")) {
+        val isAuthValid = try {
+            authHeader != null && MatrixAuth.verifyAuth(call, authHeader, null)
+        } catch (e: Exception) {
+            false
+        }
+        if (!isAuthValid) {
             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                 put("errcode", "M_UNAUTHORIZED")
                 put("error", "Invalid signature")

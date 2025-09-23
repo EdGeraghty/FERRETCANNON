@@ -29,7 +29,7 @@ WORKDIR /app
 RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
 
 # Copy the built application from the builder stage
-COPY --from=builder /app/build/install/FERRETCANNON /app/
+COPY --from=builder /app/build/install/FERRETCANNON/ /app/
 
 # Copy configuration file (production version)
 COPY config.prod.yml config.yml
