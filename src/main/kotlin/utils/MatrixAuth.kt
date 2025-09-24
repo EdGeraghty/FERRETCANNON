@@ -425,4 +425,63 @@ object MatrixAuth {
         val identifierRegex = "^[a-zA-Z0-9._~-]+\$".toRegex()
         return identifierRegex.matches(identifier)
     }
+
+    /**
+     * Send an invite event to a remote server via federation
+     */
+    suspend fun sendFederationInvite(remoteServer: String, roomId: String, inviteEvent: JsonObject, config: config.ServerConfig) {
+        try {
+            val eventId = inviteEvent["event_id"]?.jsonPrimitive?.content ?: return
+
+            // Build the authorization header
+            val method = "PUT"
+            val uri = "/_matrix/federation/v1/invite/$roomId/$eventId"
+            val destination = remoteServer
+            val origin = config.federation.serverName
+
+            val authHeader = buildAuthHeader(method, uri, origin, destination, Json.encodeToString(JsonObject.serializer(), inviteEvent))
+
+            // Send the request
+            val response = client.put("https://$remoteServer$uri") {
+                header("Authorization", authHeader)
+                header("Content-Type", "application/json")
+                setBody(Json.encodeToString(JsonObject.serializer(), inviteEvent))
+            }
+
+            if (response.status.value != 200) {
+                val responseBody = runBlocking { response.body<String>() }
+                println("Federation invite failed: ${response.status} - $responseBody")
+            } else {
+                println("Federation invite sent successfully to $remoteServer")
+            }
+        } catch (e: Exception) {
+            println("Error sending federation invite: ${e.message}")
+        }
+    }
+
+    /**
+     * Build authorization header for federation requests
+     */
+    private fun buildAuthHeader(method: String, uri: String, origin: String, destination: String, content: String?): String {
+        val keyId = "ed25519:${ServerKeys.getKeyId()}"
+        val timestamp = System.currentTimeMillis() / 1000
+
+        // Build the JSON to sign
+        val jsonMap = mutableMapOf<String, Any>()
+        jsonMap["method"] = method
+        jsonMap["uri"] = uri
+        jsonMap["origin"] = origin
+        jsonMap["destination"] = destination
+        jsonMap["timestamp"] = timestamp
+        if (content != null) {
+            jsonMap["content"] = Json.parseToJsonElement(content)
+        }
+
+        val canonicalJson = canonicalizeJson(jsonMap)
+
+        // Sign the request
+        val signature = ServerKeys.sign(canonicalJson.toByteArray())
+
+        return "X-Matrix origin=\"$origin\",destination=\"$destination\",key=\"$keyId\",sig=\"$signature\",timestamp=\"$timestamp\""
+    }
 }
