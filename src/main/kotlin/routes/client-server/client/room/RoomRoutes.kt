@@ -15,6 +15,7 @@ import models.Events
 import models.Receipts
 import utils.AuthUtils
 import utils.StateResolver
+import utils.MatrixPagination
 import routes.server_server.federation.v1.broadcastEDU
 import utils.typingMap
 import routes.client_server.client.common.*
@@ -652,6 +653,75 @@ fun Route.roomRoutes() {
             }
 
             call.respondText("{}", ContentType.Application.Json)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
+            ))
+        }
+    }
+
+    // GET /rooms/{roomId}/messages - Get room message history
+    get("/rooms/{roomId}/messages") {
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+            val roomId = call.parameters["roomId"]
+
+            if (roomId == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing roomId parameter"
+                ))
+                return@get
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@get
+            }
+
+            // Get recent events (simplified implementation)
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
+            val events = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(limit.coerceAtMost(100))
+                    .map { row ->
+                        buildJsonObject {
+                            put("event_id", row[Events.eventId])
+                            put("type", row[Events.type])
+                            put("sender", row[Events.sender])
+                            put("origin_server_ts", row[Events.originServerTs])
+                            put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                            put("room_id", row[Events.roomId])
+                            row[Events.stateKey]?.let { put("state_key", it) }
+                            put("unsigned", buildJsonObject { })
+                        }
+                    }
+            }
+
+            call.respond(buildJsonObject {
+                putJsonArray("chunk") {
+                    events.forEach { event ->
+                        add(event)
+                    }
+                }
+            })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(

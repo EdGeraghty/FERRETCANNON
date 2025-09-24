@@ -7,6 +7,7 @@ import io.ktor.server.request.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
 import models.AccountData
+import models.Users
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -49,38 +50,13 @@ fun Route.profileAvatarRoutes() {
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val avatarUrl = jsonBody["avatar_url"]?.jsonPrimitive?.content
 
-            // Store avatar URL in account data
+            // Store avatar URL in Users table
             transaction {
-                val existing = AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq "m.direct") and
-                    (AccountData.roomId.isNull())
-                }.singleOrNull()
-
-                val currentContent = if (existing != null) {
-                    Json.parseToJsonElement(existing[AccountData.content]).jsonObject.toMutableMap()
-                } else {
-                    mutableMapOf()
-                }
-
-                run {
+                Users.update({ Users.userId eq userId }) {
                     if (avatarUrl != null) {
-                        currentContent["avatar_url"] = JsonPrimitive(avatarUrl)
+                        it[Users.avatarUrl] = avatarUrl
                     } else {
-                        currentContent.remove("avatar_url")
-                    }
-                }
-
-                if (existing != null) {
-                    AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq "m.direct") and (AccountData.roomId.isNull()) }) {
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(currentContent))
-                    }
-                } else {
-                    AccountData.insert {
-                        it[AccountData.userId] = userId
-                        it[AccountData.type] = "m.direct"
-                        it[AccountData.roomId] = null
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(currentContent))
+                        it[Users.avatarUrl] = null
                     }
                 }
             }

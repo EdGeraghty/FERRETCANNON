@@ -43,33 +43,13 @@ fun Route.profileDisplayRoutes() {
 
             val response = mutableMapOf<String, String>()
 
-            // Get display name from account data
-            val displayName = transaction {
-                AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq "m.direct") and
-                    (AccountData.roomId.isNull())
-                }.singleOrNull()?.let { row ->
-                    Json.parseToJsonElement(row[AccountData.content]).jsonObject["displayname"]?.jsonPrimitive?.content
-                }
-            }
-
-            if (displayName != null) {
+            // Get display name from Users table
+            profile[Users.displayName]?.let { displayName ->
                 response["displayname"] = displayName
             }
 
-            // Get avatar URL from account data
-            val avatarUrl = transaction {
-                AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq "m.direct") and
-                    (AccountData.roomId.isNull())
-                }.singleOrNull()?.let { row ->
-                    Json.parseToJsonElement(row[AccountData.content]).jsonObject["avatar_url"]?.jsonPrimitive?.content
-                }
-            }
-
-            if (avatarUrl != null) {
+            // Get avatar URL from Users table
+            profile[Users.avatarUrl]?.let { avatarUrl ->
                 response["avatar_url"] = avatarUrl
             }
 
@@ -158,38 +138,13 @@ fun Route.profileDisplayRoutes() {
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val displayName = jsonBody["displayname"]?.jsonPrimitive?.content
 
-            // Store display name in account data
+            // Store display name in Users table
             transaction {
-                val existing = AccountData.select {
-                    (AccountData.userId eq userId) and
-                    (AccountData.type eq "m.direct") and
-                    (AccountData.roomId.isNull())
-                }.singleOrNull()
-
-                val currentContent = if (existing != null) {
-                    Json.parseToJsonElement(existing[AccountData.content]).jsonObject.toMutableMap()
-                } else {
-                    mutableMapOf()
-                }
-
-                run {
+                Users.update({ Users.userId eq userId }) {
                     if (displayName != null) {
-                        currentContent["displayname"] = JsonPrimitive(displayName)
+                        it[Users.displayName] = displayName
                     } else {
-                        currentContent.remove("displayname")
-                    }
-                }
-
-                if (existing != null) {
-                    AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq "m.direct") and (AccountData.roomId.isNull()) }) {
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(currentContent))
-                    }
-                } else {
-                    AccountData.insert {
-                        it[AccountData.userId] = userId
-                        it[AccountData.type] = "m.direct"
-                        it[AccountData.roomId] = null
-                        it[AccountData.content] = Json.encodeToString(JsonObject.serializer(), JsonObject(currentContent))
+                        it[Users.displayName] = null
                     }
                 }
             }

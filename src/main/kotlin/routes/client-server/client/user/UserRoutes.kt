@@ -44,5 +44,35 @@ import utils.MatrixPagination
 import routes.client_server.client.common.*
 
 fun Route.userRoutes() {
-    // All routes have been moved to separate files
+    // GET /joined_rooms - Get joined rooms
+    get("/joined_rooms") {
+        try {
+            val userId = call.validateAccessToken() ?: return@get
+
+            // Get all rooms where the user has membership "join"
+            val joinedRoomIds = transaction {
+                Events.select {
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId) and
+                    (Events.content like "%\"membership\":\"join\"%")
+                }.mapNotNull { row ->
+                    row[Events.roomId]
+                }.distinct()
+            }
+
+            call.respond(buildJsonObject {
+                putJsonArray("joined_rooms") {
+                    joinedRoomIds.forEach { roomId ->
+                        add(JsonPrimitive(roomId))
+                    }
+                }
+            })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
+            ))
+        }
+    }
 }
