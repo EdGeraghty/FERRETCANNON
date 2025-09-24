@@ -263,9 +263,20 @@ object OAuthConfig {
     }
 
     /**
-     * Get all enabled clients
+     * Generate client ID
      */
-    fun getEnabledClients(): Map<String, OAuthClient> {
-        return clients.filter { it.value.enabled }
+    fun generateClientId(): String {
+        val bytes = ByteArray(16)
+        random.nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    /**
+     * Generate client secret
+     */
+    fun generateClientSecret(): String {
+        val bytes = ByteArray(32)
+        random.nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 }

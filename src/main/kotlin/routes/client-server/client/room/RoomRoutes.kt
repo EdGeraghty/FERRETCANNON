@@ -13,6 +13,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import models.Rooms
 import models.Events
 import models.Receipts
+import models.AccountData
 import utils.AuthUtils
 import utils.StateResolver
 import utils.MatrixPagination
@@ -695,12 +696,35 @@ fun Route.roomRoutes() {
                 return@get
             }
 
-            // Get recent events (simplified implementation)
-            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
+            // Parse query parameters
+            val from = call.request.queryParameters["from"]
+            val dir = call.request.queryParameters["dir"] ?: "b"
+            val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 10).coerceAtMost(100)
+
+            // Determine order
+            val order = if (dir == "b") SortOrder.DESC else SortOrder.ASC
+
+            // Build query
+            var query = Events.select { Events.roomId eq roomId }
+            if (from != null) {
+                val fromTs = transaction {
+                    Events.select { Events.eventId eq from }
+                        .singleOrNull()
+                        ?.get(Events.originServerTs)
+                }
+                if (fromTs != null) {
+                    query = if (dir == "b") {
+                        query.andWhere { Events.originServerTs less fromTs }
+                    } else {
+                        query.andWhere { Events.originServerTs greater fromTs }
+                    }
+                }
+            }
+
+            // Get events
             val events = transaction {
-                Events.select { Events.roomId eq roomId }
-                    .orderBy(Events.originServerTs, SortOrder.DESC)
-                    .limit(limit.coerceAtMost(100))
+                query.orderBy(Events.originServerTs, order)
+                    .limit(limit)
                     .map { row ->
                         buildJsonObject {
                             put("event_id", row[Events.eventId])
@@ -715,13 +739,123 @@ fun Route.roomRoutes() {
                     }
             }
 
-            call.respond(buildJsonObject {
+            // Build response
+            val response = buildJsonObject {
                 putJsonArray("chunk") {
-                    events.forEach { event ->
-                        add(event)
+                    events.forEach { add(it) }
+                }
+                if (events.isNotEmpty()) {
+                    val start = events.first()["event_id"]!!.jsonPrimitive.content
+                    val end = events.last()["event_id"]!!.jsonPrimitive.content
+                    put("start", start)
+                    put("end", end)
+                } else {
+                    put("start", from ?: "")
+                    put("end", from ?: "")
+                }
+            }
+            call.respond(response)
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
+            ))
+        }
+    }
+
+    // POST /rooms/{roomId}/read_markers - Set read markers
+    post("/rooms/{roomId}/read_markers") {
+        try {
+            val userId = call.validateAccessToken() ?: return@post
+            val roomId = call.parameters["roomId"]
+
+            if (roomId == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing roomId parameter"
+                ))
+                return@post
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@post
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val markers = Json.parseToJsonElement(requestBody).jsonObject
+
+            // Update fully read marker
+            markers["m.fully_read"]?.jsonPrimitive?.content?.let { eventId ->
+                transaction {
+                    val existing = AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq "m.fully_read") and
+                        (AccountData.roomId eq roomId)
+                    }.singleOrNull()
+
+                    val content = """{"event_id":"$eventId"}"""
+
+                    if (existing != null) {
+                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq "m.fully_read") and (AccountData.roomId eq roomId) }) {
+                            it[AccountData.content] = content
+                            it[AccountData.lastModified] = System.currentTimeMillis()
+                        }
+                    } else {
+                        AccountData.insert {
+                            it[AccountData.userId] = userId
+                            it[AccountData.type] = "m.fully_read"
+                            it[AccountData.roomId] = roomId
+                            it[AccountData.content] = content
+                        }
                     }
                 }
-            })
+            }
+
+            // Update read marker
+            markers["m.read"]?.jsonPrimitive?.content?.let { eventId ->
+                transaction {
+                    val existing = AccountData.select {
+                        (AccountData.userId eq userId) and
+                        (AccountData.type eq "m.read") and
+                        (AccountData.roomId eq roomId)
+                    }.singleOrNull()
+
+                    val content = """{"event_id":"$eventId"}"""
+
+                    if (existing != null) {
+                        AccountData.update({ (AccountData.userId eq userId) and (AccountData.type eq "m.read") and (AccountData.roomId eq roomId) }) {
+                            it[AccountData.content] = content
+                            it[AccountData.lastModified] = System.currentTimeMillis()
+                        }
+                    } else {
+                        AccountData.insert {
+                            it[AccountData.userId] = userId
+                            it[AccountData.type] = "m.read"
+                            it[AccountData.roomId] = roomId
+                            it[AccountData.content] = content
+                        }
+                    }
+                }
+            }
+
+            call.respond(mapOf<String, Any>())
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(

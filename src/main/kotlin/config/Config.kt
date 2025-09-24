@@ -11,7 +11,8 @@ data class ServerConfig(
     val federation: FederationSettings = FederationSettings(),
     val security: SecuritySettings = SecuritySettings(),
     val media: MediaSettings = MediaSettings(),
-    val development: DevelopmentSettings = DevelopmentSettings()
+    val development: DevelopmentSettings = DevelopmentSettings(),
+    val voip: VoIPSettings = VoIPSettings()
 )
 
 @Serializable
@@ -81,4 +82,22 @@ data class DevelopmentSettings(
     val enableDebugLogging: Boolean = true,
     val enableWebSocketDebug: Boolean = false,
     val isDebug: Boolean = true
+)
+
+@Serializable
+data class VoIPSettings(
+    val turnServers: List<TurnServer> = emptyList(),
+    val stunServers: List<StunServer> = emptyList()
+)
+
+@Serializable
+data class TurnServer(
+    val uri: String,
+    val username: String? = null,
+    val password: String? = null
+)
+
+@Serializable
+data class StunServer(
+    val uri: String
 )

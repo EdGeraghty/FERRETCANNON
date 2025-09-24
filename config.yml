@@ -67,3 +67,12 @@ development:
   enableDebugLogging: true            # Enable debug logging
   enableWebSocketDebug: false         # Enable WebSocket debug logging
   isDebug: true                       # Enable debug mode (deletes database on startup)
+
+voip:
+  # VoIP/STUN/TURN settings
+  turnServers:                        # List of TURN servers
+    - uri: "turn:turn.example.com:3478"
+      username: "turnuser"
+      password: "turnpass"
+  stunServers:                        # List of STUN servers
+    - uri: "stun:stun.example.com:3478"

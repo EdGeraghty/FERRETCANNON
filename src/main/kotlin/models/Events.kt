@@ -158,6 +158,24 @@ object OAuthStates : Table("oauth_states") {
     override val primaryKey = PrimaryKey(state)
 }
 
+object OAuthClients : Table("oauth_clients") {
+    val clientId = varchar("client_id", 255).uniqueIndex()
+    val clientSecret = varchar("client_secret", 255)
+    val redirectUris = text("redirect_uris") // JSON array of redirect URIs
+    val clientName = varchar("client_name", 255).nullable()
+    val clientUri = varchar("client_uri", 500).nullable()
+    val logoUri = varchar("logo_uri", 500).nullable()
+    val contacts = text("contacts").nullable() // JSON array of contacts
+    val tosUri = varchar("tos_uri", 500).nullable()
+    val policyUri = varchar("policy_uri", 500).nullable()
+    val softwareId = varchar("software_id", 255).nullable()
+    val softwareVersion = varchar("software_version", 50).nullable()
+    val createdAt = long("created_at").default(System.currentTimeMillis())
+    val updatedAt = long("updated_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(clientId)
+}
+
 object Media : Table("media") {
     val mediaId = varchar("media_id", 255).uniqueIndex()
     val userId = varchar("user_id", 255)

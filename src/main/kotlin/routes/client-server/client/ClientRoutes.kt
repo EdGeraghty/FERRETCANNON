@@ -295,13 +295,26 @@ fun Application.clientRoutes(config: ServerConfig) {
                             try {
                                 call.validateAccessToken() ?: return@get
 
-                                // Return TURN server information
-                                // In a real implementation, this would return actual TURN server credentials
-                                // For now, return an empty list indicating no TURN servers available
+                                // Return TURN server information from config
+                                val turnServers = config.voip.turnServers
+                                val stunServers = config.voip.stunServers
+
+                                val uris = buildJsonArray {
+                                    turnServers.forEach { server ->
+                                        add(server.uri)
+                                    }
+                                    stunServers.forEach { server ->
+                                        add(server.uri)
+                                    }
+                                }
+
+                                // Use the first TURN server for credentials if available
+                                val turnServer = turnServers.firstOrNull()
+
                                 call.respond(buildJsonObject {
-                                    put("username", "")
-                                    put("password", "")
-                                    put("uris", buildJsonArray { })
+                                    put("username", turnServer?.username ?: "")
+                                    put("password", turnServer?.password ?: "")
+                                    put("uris", uris)
                                     put("ttl", 86400)
                                 })
 
