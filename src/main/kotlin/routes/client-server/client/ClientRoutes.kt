@@ -246,6 +246,9 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     put("m.3pid_changes", buildJsonObject {
                                         put("enabled", false)
                                     })
+                                    put("m.cross_signing", buildJsonObject {
+                                        put("enabled", true)
+                                    })
                                 })
                             })
 

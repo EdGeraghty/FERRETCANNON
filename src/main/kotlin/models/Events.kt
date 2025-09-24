@@ -331,3 +331,14 @@ object OneTimeKeys : Table("one_time_keys") {
 
     override val primaryKey = PrimaryKey(userId, deviceId, keyId)
 }
+
+object KeySignatures : Table("key_signatures") {
+    val signerUserId = varchar("signer_user_id", 255)
+    val targetUserId = varchar("target_user_id", 255)
+    val targetKeyId = varchar("target_key_id", 255) // device_id or key_id
+    val targetKeyType = varchar("target_key_type", 50) // "device" or "cross_signing"
+    val signatures = text("signatures") // JSON object of signatures
+    val uploadedAt = long("uploaded_at").default(System.currentTimeMillis())
+
+    override val primaryKey = PrimaryKey(signerUserId, targetUserId, targetKeyId, targetKeyType)
+}

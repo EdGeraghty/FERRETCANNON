@@ -241,7 +241,9 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                         }
 
                         val signedEvent = MatrixAuth.hashAndSignEvent(inviteEvent, localServer)
-                        MatrixAuth.sendFederationInvite(inviteeServer, roomId, signedEvent, config)
+                        runBlocking {
+                            MatrixAuth.sendFederationInvite(inviteeServer, roomId, signedEvent, config)
+                        }
                     } catch (e: Exception) {
                         println("Failed to send federation invite: ${e.message}")
                         // Continue anyway - the invite is stored locally

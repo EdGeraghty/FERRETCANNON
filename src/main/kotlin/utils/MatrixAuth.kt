@@ -20,6 +20,7 @@ import javax.net.ssl.*
 import java.security.cert.X509Certificate
 import java.security.KeyStore
 import java.io.FileInputStream
+import io.ktor.client.statement.*
 
 object MatrixAuth {
 
@@ -449,7 +450,7 @@ object MatrixAuth {
             }
 
             if (response.status.value != 200) {
-                val responseBody = runBlocking { response.body<String>() }
+                val responseBody = runBlocking { response.bodyAsText() }
                 println("Federation invite failed: ${response.status} - $responseBody")
             } else {
                 println("Federation invite sent successfully to $remoteServer")

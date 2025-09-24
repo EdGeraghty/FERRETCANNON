@@ -11,15 +11,51 @@ import java.io.File
 println("Starting database migration...")
 
 // Connect to the database
-val dbFile = File("/data/ferretcannon.db")
+val dbFile = File("ferretcannon.db")
 if (!dbFile.exists()) {
     println("Database file does not exist at /data/ferretcannon.db")
     System.exit(1)
 }
 
-Database.connect("jdbc:sqlite:/data/ferretcannon.db", driver = "org.sqlite.JDBC")
+Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
 
 transaction {
+    // Import the models to ensure tables are available
+    import models.*
+
+    // Create any missing tables
+    SchemaUtils.createMissingTablesAndColumns(
+        Events,
+        Rooms,
+        StateGroups,
+        AccountData,
+        Users,
+        AccessTokens,
+        Devices,
+        CrossSigningKeys,
+        DehydratedDevices,
+        OAuthAuthorizationCodes,
+        OAuthAccessTokens,
+        OAuthStates,
+        OAuthClients,
+        Media,
+        Receipts,
+        Presence,
+        PushRules,
+        Pushers,
+        RoomAliases,
+        RegistrationTokens,
+        ServerKeys,
+        Filters,
+        ThirdPartyIdentifiers,
+        RoomKeyVersions,
+        RoomKeys,
+        OneTimeKeys,
+        KeySignatures  // Add the new table
+    )
+
+    println("✅ Ensured all tables exist")
+
     // Check if is_admin column exists, if not add it
     val result = exec("PRAGMA table_info(users)") { rs ->
         var hasIsAdmin = false
