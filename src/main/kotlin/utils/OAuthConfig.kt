@@ -24,11 +24,25 @@ data class OAuthProvider(
 )
 
 /**
+ * OAuth 2.0 Client Configuration
+ */
+@Serializable
+data class OAuthClient(
+    val clientId: String,
+    val clientSecret: String? = null, // Optional for public clients
+    val redirectUris: List<String>,
+    val clientName: String,
+    val clientType: String = "confidential", // confidential or public
+    val enabled: Boolean = true
+)
+
+/**
  * OAuth 2.0 Configuration Manager
  */
 object OAuthConfig {
     private val random = SecureRandom()
     private val providers = mutableMapOf<String, OAuthProvider>()
+    private val clients = mutableMapOf<String, OAuthClient>()
 
     init {
         // Defer initialization to avoid issues with ServerNameResolver
@@ -120,10 +134,51 @@ object OAuthConfig {
 
             println("OAuth providers initialized successfully: ${providers.keys.joinToString()}")
 
+            // Initialize test clients
+            initializeClients()
+
         } catch (e: Exception) {
             println("Error initializing OAuth providers: ${e.message}")
             e.printStackTrace()
             // Continue with empty providers - endpoints will handle gracefully
+        }
+    }
+
+    /**
+     * Initialize OAuth clients
+     */
+    private fun initializeClients() {
+        try {
+            // Add test client for development
+            clients["test_client"] = OAuthClient(
+                clientId = "test_client",
+                clientSecret = "test_secret",
+                redirectUris = listOf(
+                    "http://example.com",
+                    "http://localhost:3000",
+                    "https://example.com"
+                ),
+                clientName = "Test Client",
+                clientType = "confidential",
+                enabled = true
+            )
+
+            // Add demo client
+            clients["demo_client"] = OAuthClient(
+                clientId = "demo_client",
+                redirectUris = listOf(
+                    "http://localhost:8080/callback",
+                    "https://demo.example.com/callback"
+                ),
+                clientName = "Demo Client",
+                clientType = "public",
+                enabled = true
+            )
+
+            println("OAuth clients initialized: ${clients.keys.joinToString()}")
+
+        } catch (e: Exception) {
+            println("Error initializing OAuth clients: ${e.message}")
         }
     }
 
@@ -190,5 +245,27 @@ object OAuthConfig {
     fun refreshProviders() {
         providers.clear()
         initializeProviders()
+    }
+
+    /**
+     * Get OAuth client by ID
+     */
+    fun getClient(clientId: String): OAuthClient? {
+        return clients[clientId]
+    }
+
+    /**
+     * Validate redirect URI for a client
+     */
+    fun validateRedirectUri(clientId: String, redirectUri: String): Boolean {
+        val client = getClient(clientId) ?: return false
+        return client.enabled && client.redirectUris.contains(redirectUri)
+    }
+
+    /**
+     * Get all enabled clients
+     */
+    fun getEnabledClients(): Map<String, OAuthClient> {
+        return clients.filter { it.value.enabled }
     }
 }

@@ -54,8 +54,9 @@ fun Route.oauthAuthorizationRoutes() {
                 return@get
             }
 
-            // Validate client_id matches provider
-            if (clientId != provider.clientId) {
+            // Validate client_id exists and is enabled
+            val client = OAuthConfig.getClient(clientId)
+            if (client == null || !client.enabled) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                     put("error", "invalid_client")
                     put("error_description", "Invalid client_id")
@@ -63,8 +64,8 @@ fun Route.oauthAuthorizationRoutes() {
                 return@get
             }
 
-            // Validate redirect_uri matches provider
-            if (redirectUri != provider.redirectUri) {
+            // Validate redirect_uri is registered for this client
+            if (!OAuthConfig.validateRedirectUri(clientId, redirectUri)) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                     put("error", "invalid_request")
                     put("error_description", "Invalid redirect_uri")
