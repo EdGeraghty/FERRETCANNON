@@ -14,11 +14,14 @@ import routes.client_server.client.common.*
 import org.slf4j.LoggerFactory
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 
-private val logger = LoggerFactory.getLogger("routes.CrossSigningRoutes")
+private val logger = LoggerFactory.getLogger("family.geraghty.ed.yolo.ferretcannon")
 
 fun Route.crossSigningRoutes() {
+    println("CrossSigningRoutes - crossSigningRoutes() function called")
+    logger.debug("CrossSigningRoutes - crossSigningRoutes() function called")
     // GET /keys/device_signing - Get cross-signing keys
     get("/keys/device_signing") {
+        println("CrossSigningRoutes - GET /keys/device_signing called")
         try {
             logger.debug("CrossSigningRoutes - GET /keys/device_signing called")
             val userId = call.validateAccessToken() ?: return@get
@@ -33,9 +36,21 @@ fun Route.crossSigningRoutes() {
                         val publicKey = row[CrossSigningKeys.publicKey]
                         val signatures = row[CrossSigningKeys.signatures]?.let { Json.parseToJsonElement(it) }
 
+                        val usage = when (keyType) {
+                            "master" -> listOf("master")
+                            "self_signing" -> listOf("self_signing")
+                            "user_signing" -> listOf("user_signing")
+                            else -> emptyList()
+                        }
+
                         keyType to buildJsonObject {
-                            put("key_id", keyId)
-                            put("public_key", publicKey)
+                            put("user_id", userId)
+                            putJsonArray("usage") {
+                                usage.forEach { add(it) }
+                            }
+                            putJsonObject("keys") {
+                                put(keyId, publicKey)
+                            }
                             if (signatures != null) {
                                 put("signatures", signatures)
                             }
@@ -72,31 +87,53 @@ fun Route.crossSigningRoutes() {
             // Parse request body
             val requestBody = call.receiveText()
             logger.debug("CrossSigningRoutes - request body length: ${requestBody.length}")
+            logger.debug("CrossSigningRoutes - raw request body: $requestBody")
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
 
             val masterKey = jsonBody["master_key"]?.jsonObject
             val selfSigningKey = jsonBody["self_signing_key"]?.jsonObject
             val userSigningKey = jsonBody["user_signing_key"]?.jsonObject
 
-            logger.debug("CrossSigningRoutes - masterKey: ${masterKey != null}, selfSigning: ${selfSigningKey != null}, userSigning: ${userSigningKey != null}")
+            logger.debug("CrossSigningRoutes - masterKey present: ${masterKey != null}")
+            logger.debug("CrossSigningRoutes - selfSigning: ${selfSigningKey != null}, userSigning: ${userSigningKey != null}")
 
             // Validate keys before storing
             if (masterKey != null) {
-                val keyId = masterKey["key_id"]?.jsonPrimitive?.content
-                val publicKey = masterKey["public_key"]?.jsonPrimitive?.content
-                if (keyId == null || publicKey == null) {
-                    logger.warn("CrossSigningRoutes - missing key_id or public_key for master_key")
+                logger.debug("CrossSigningRoutes - masterKey content: $masterKey")
+                val keys = masterKey["keys"]?.jsonObject
+                if (keys == null || keys.isEmpty()) {
+                    logger.warn("CrossSigningRoutes - missing or empty keys for master_key. masterKey content: $masterKey")
                     call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                         put("errcode", "M_INVALID_PARAM")
-                        put("error", "Missing key_id or public_key for master_key")
+                        put("error", "Missing or empty keys for master_key. Received: $masterKey")
+                    })
+                    return@post
+                }
+                val keyId = keys.keys.first()
+                val publicKey = keys[keyId]?.jsonPrimitive?.content
+                logger.debug("CrossSigningRoutes - masterKey key_id: '$keyId', public_key: '${publicKey?.take(50)}...'")
+                if (keyId == null || publicKey == null) {
+                    logger.warn("CrossSigningRoutes - missing key_id or public_key for master_key. masterKey content: $masterKey")
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_INVALID_PARAM")
+                        put("error", "Missing key_id or public_key for master_key. Received: $masterKey")
                     })
                     return@post
                 }
             }
 
             if (selfSigningKey != null) {
-                val keyId = selfSigningKey["key_id"]?.jsonPrimitive?.content
-                val publicKey = selfSigningKey["public_key"]?.jsonPrimitive?.content
+                val keys = selfSigningKey["keys"]?.jsonObject
+                if (keys == null || keys.isEmpty()) {
+                    logger.warn("CrossSigningRoutes - missing or empty keys for self_signing_key")
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_INVALID_PARAM")
+                        put("error", "Missing or empty keys for self_signing_key")
+                    })
+                    return@post
+                }
+                val keyId = keys.keys.first()
+                val publicKey = keys[keyId]?.jsonPrimitive?.content
                 if (keyId == null || publicKey == null) {
                     logger.warn("CrossSigningRoutes - missing key_id or public_key for self_signing_key")
                     call.respond(HttpStatusCode.BadRequest, buildJsonObject {
@@ -108,8 +145,17 @@ fun Route.crossSigningRoutes() {
             }
 
             if (userSigningKey != null) {
-                val keyId = userSigningKey["key_id"]?.jsonPrimitive?.content
-                val publicKey = userSigningKey["public_key"]?.jsonPrimitive?.content
+                val keys = userSigningKey["keys"]?.jsonObject
+                if (keys == null || keys.isEmpty()) {
+                    logger.warn("CrossSigningRoutes - missing or empty keys for user_signing_key")
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_INVALID_PARAM")
+                        put("error", "Missing or empty keys for user_signing_key")
+                    })
+                    return@post
+                }
+                val keyId = keys.keys.first()
+                val publicKey = keys[keyId]?.jsonPrimitive?.content
                 if (keyId == null || publicKey == null) {
                     logger.warn("CrossSigningRoutes - missing key_id or public_key for user_signing_key")
                     call.respond(HttpStatusCode.BadRequest, buildJsonObject {
@@ -125,8 +171,9 @@ fun Route.crossSigningRoutes() {
                 logger.debug("CrossSigningRoutes - storing keys in transaction")
                 // Store master key
                 if (masterKey != null) {
-                    val keyId = masterKey["key_id"]?.jsonPrimitive?.content!!
-                    val publicKey = masterKey["public_key"]?.jsonPrimitive?.content!!
+                    val keys = masterKey["keys"]?.jsonObject!!
+                    val keyId = keys.keys.first()
+                    val publicKey = keys[keyId]?.jsonPrimitive?.content!!
                     val signatures = masterKey["signatures"]?.toString()
 
                     CrossSigningKeys.replace {
@@ -142,8 +189,9 @@ fun Route.crossSigningRoutes() {
 
                 // Store self-signing key
                 if (selfSigningKey != null) {
-                    val keyId = selfSigningKey["key_id"]?.jsonPrimitive?.content!!
-                    val publicKey = selfSigningKey["public_key"]?.jsonPrimitive?.content!!
+                    val keys = selfSigningKey["keys"]?.jsonObject!!
+                    val keyId = keys.keys.first()
+                    val publicKey = keys[keyId]?.jsonPrimitive?.content!!
                     val signatures = selfSigningKey["signatures"]?.toString()
 
                     CrossSigningKeys.replace {
@@ -159,8 +207,9 @@ fun Route.crossSigningRoutes() {
 
                 // Store user-signing key
                 if (userSigningKey != null) {
-                    val keyId = userSigningKey["key_id"]?.jsonPrimitive?.content!!
-                    val publicKey = userSigningKey["public_key"]?.jsonPrimitive?.content!!
+                    val keys = userSigningKey["keys"]?.jsonObject!!
+                    val keyId = keys.keys.first()
+                    val publicKey = keys[keyId]?.jsonPrimitive?.content!!
                     val signatures = userSigningKey["signatures"]?.toString()
 
                     CrossSigningKeys.replace {

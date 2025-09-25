@@ -62,6 +62,54 @@ fun Route.roomKeysRoutes() {
         }
     }
 
+    // POST /room_keys/version - Create a new room key backup version
+    post("/room_keys/version") {
+        try {
+            val userId = call.validateAccessToken() ?: return@post
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val algorithm = jsonBody["algorithm"]?.jsonPrimitive?.content ?: return@post call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing algorithm")
+            })
+            val authData = jsonBody["auth_data"]?.jsonObject ?: return@post call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing auth_data")
+            })
+
+            val version = transaction {
+                // Generate a new version (simple increment)
+                val latestVersion = RoomKeyVersions.select { RoomKeyVersions.userId eq userId }
+                    .orderBy(RoomKeyVersions.version, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+                val newVersion = (latestVersion?.get(RoomKeyVersions.version)?.toIntOrNull() ?: 0) + 1
+
+                RoomKeyVersions.insert {
+                    it[RoomKeyVersions.userId] = userId
+                    it[RoomKeyVersions.version] = newVersion.toString()
+                    it[RoomKeyVersions.algorithm] = algorithm
+                    it[RoomKeyVersions.authData] = Json.encodeToString(JsonObject.serializer(), authData)
+                    it[RoomKeyVersions.createdAt] = System.currentTimeMillis()
+                }
+
+                newVersion.toString()
+            }
+
+            call.respond(buildJsonObject {
+                put("version", version)
+            })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
     // GET /room_keys/version - Get the current version of the user's room keys
     get("/room_keys/version") {
         try {
@@ -268,6 +316,51 @@ fun Route.roomKeysRoutes() {
             call.respond(buildJsonObject {
                 put("sessions", Json.encodeToJsonElement(sessions))
             })
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
+    // DELETE /room_keys/version/{version} - Delete a room key backup version
+    delete("/room_keys/version/{version}") {
+        try {
+            val userId = call.validateAccessToken() ?: return@delete
+            val version = call.parameters["version"] ?: return@delete call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Missing version")
+            })
+
+            // Check if version exists
+            val versionExists = transaction {
+                RoomKeyVersions.select { (RoomKeyVersions.userId eq userId) and (RoomKeyVersions.version eq version) }.count() > 0
+            }
+
+            if (!versionExists) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Version not found")
+                })
+                return@delete
+            }
+
+            // Delete the version and all associated keys
+            transaction {
+                // Delete all room keys for this version
+                RoomKeys.deleteWhere {
+                    (RoomKeys.userId eq userId) and (RoomKeys.version eq version)
+                }
+
+                // Delete the version itself
+                RoomKeyVersions.deleteWhere {
+                    (RoomKeyVersions.userId eq userId) and (RoomKeyVersions.version eq version)
+                }
+            }
+
+            call.respond(buildJsonObject { })
 
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {

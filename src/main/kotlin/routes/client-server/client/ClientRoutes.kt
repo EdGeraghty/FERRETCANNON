@@ -249,6 +249,9 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     put("m.cross_signing", buildJsonObject {
                                         put("enabled", true)
                                     })
+                                    put("m.room_keys_backup", buildJsonObject {
+                                        put("enabled", true)
+                                    })
                                 })
                             })
 

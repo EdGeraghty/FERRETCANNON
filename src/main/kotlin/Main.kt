@@ -79,6 +79,7 @@ import java.io.File
 private val logger = LoggerFactory.getLogger("Main")
 
 fun main() {
+    println("FERRETCANNON MAIN STARTED - NEW CODE VERSION")
     logger.info("🚀 Starting FERRETCANNON Matrix Server...")
     logger.debug("Initializing server components...")
 
