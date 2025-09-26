@@ -87,11 +87,21 @@ fun main() {
     // Configure logging levels based on config
     val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
     if (config.development.enableDebugLogging) {
-        loggerContext.getLogger("org.jetbrains.exposed").level = Level.DEBUG
+        loggerContext.getLogger("Exposed").level = Level.DEBUG
         logger.info("🔧 Debug logging enabled for Exposed ORM")
     } else {
-        loggerContext.getLogger("org.jetbrains.exposed").level = Level.INFO
+        loggerContext.getLogger("Exposed").level = Level.INFO
         logger.info("🔧 Debug logging disabled for Exposed ORM")
+    }
+
+    // Set root logger level based on config
+    val rootLogger = loggerContext.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)
+    if (config.development.enableDebugLogging) {
+        rootLogger.level = Level.DEBUG
+        logger.info("🔧 Root logging level set to DEBUG")
+    } else {
+        rootLogger.level = Level.INFO
+        logger.info("🔧 Root logging level set to INFO")
     }
 
     // Delete database on debug run

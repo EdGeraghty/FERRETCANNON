@@ -42,7 +42,7 @@
     </logger>
 
     <!-- Database/Exposed logging -->
-    <logger name="org.jetbrains.exposed" level="INFO" additivity="false">
+    <logger name="Exposed" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
@@ -75,7 +75,7 @@
     <logger name="kotlinx" level="DEBUG"/>
 
     <!-- Root logger - catch all -->
-    <root level="DEBUG">
+    <root level="INFO">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </root>
