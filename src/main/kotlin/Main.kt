@@ -67,6 +67,8 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import java.io.File
+import ch.qos.logback.classic.LoggerContext
+import ch.qos.logback.classic.Level
 
 // In-memory storage for EDUs
 // val presenceMap = mutableMapOf<String, String>() // userId to presence
@@ -89,6 +91,16 @@ fun main() {
     logger.debug("Server config: host=${config.server.host}, port=${config.server.port}")
     logger.debug("Database config: ${config.database.url}")
     logger.debug("Media config: maxUploadSize=${config.media.maxUploadSize}")
+
+    // Configure logging levels based on config
+    val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+    if (config.development.enableDebugLogging) {
+        loggerContext.getLogger("org.jetbrains.exposed").level = Level.DEBUG
+        logger.info("🔧 Debug logging enabled for Exposed ORM")
+    } else {
+        loggerContext.getLogger("org.jetbrains.exposed").level = Level.INFO
+        logger.info("🔧 Debug logging disabled for Exposed ORM")
+    }
 
     // Delete database on debug run
     if (config.development.isDebug) {
