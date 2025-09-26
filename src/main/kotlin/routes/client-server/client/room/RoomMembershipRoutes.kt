@@ -23,6 +23,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
 
     // POST /rooms/{roomId}/invite - Invite a user to a room
     post("/rooms/{roomId}/invite") {
+        println("Invite endpoint called")
         try {
             val userId = call.validateAccessToken() ?: return@post
             val roomId = call.parameters["roomId"]
@@ -57,7 +58,54 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // Check if room exists
+            val roomServer = if (roomId.contains(":")) roomId.substringAfter(":") else config.federation.serverName
+            val isLocalRoom = roomServer == config.federation.serverName
+
+            println("Invite attempt: roomId=$roomId, roomServer=$roomServer, isLocalRoom=$isLocalRoom, invitee=$inviteeUserId")
+
+            if (!isLocalRoom) {
+                // Remote room invite
+                val currentTime = System.currentTimeMillis()
+                val inviteEventId = "\$${currentTime}_invite_${inviteeUserId.hashCode()}"
+
+                val inviteContent = JsonObject(mutableMapOf(
+                    "membership" to JsonPrimitive("invite")
+                ))
+
+                val inviteEvent = buildJsonObject {
+                    put("event_id", inviteEventId)
+                    put("type", "m.room.member")
+                    put("room_id", roomId)
+                    put("sender", userId)
+                    put("content", inviteContent)
+                    put("origin_server_ts", currentTime)
+                    put("state_key", inviteeUserId)
+                    put("prev_events", JsonArray(emptyList()))
+                    put("auth_events", JsonArray(emptyList()))
+                    put("depth", 1)
+                    put("hashes", Json.parseToJsonElement("{}"))
+                    put("signatures", Json.parseToJsonElement("{}"))
+                    put("origin", config.federation.serverName)
+                }
+
+                val signedEvent = MatrixAuth.hashAndSignEvent(inviteEvent, config.federation.serverName)
+
+                runBlocking {
+                    try {
+                        MatrixAuth.sendFederationInvite(roomServer, roomId, signedEvent, config)
+                        call.respondText("{}", ContentType.Application.Json)
+                    } catch (e: Exception) {
+                        println("Failed to send remote invite: ${e.message}")
+                        call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                            "errcode" to "M_UNKNOWN",
+                            "error" to "Failed to send invite to remote server"
+                        ))
+                    }
+                }
+                return@post
+            }
+
+            // Local room logic
             val roomExists = transaction {
                 Rooms.select { Rooms.roomId eq roomId }.count() > 0
             }
