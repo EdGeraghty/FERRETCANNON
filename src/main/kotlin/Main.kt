@@ -70,14 +70,6 @@ import java.io.File
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.Level
 
-// In-memory storage for EDUs
-// val presenceMap = mutableMapOf<String, String>() // userId to presence
-// val receiptsMap = mutableMapOf<String, MutableMap<String, Long>>() // roomId to (eventId to ts)
-// val typingMap = mutableMapOf<String, MutableSet<String>>() // roomId to set of typing users
-
-// Connected clients for broadcasting
-// val connectedClients = mutableMapOf<String, MutableList<WebSocketSession>>() // roomId to list of sessions
-
 private val logger = LoggerFactory.getLogger("Main")
 
 fun main() {
@@ -237,18 +229,6 @@ fun main() {
 
             logger.trace("Installing Authentication plugin...")
             install(Authentication) {
-                // Temporarily disable bearer authentication to avoid conflicts with attribute-based auth
-                // bearer("matrix-auth") {
-                //     authenticate { tokenCredential ->
-                //         // Use new database-backed authentication
-                //         val result = AuthUtils.validateAccessToken(tokenCredential.token)
-                //         if (result != null) {
-                //             UserIdPrincipal(result.first)
-                //         } else {
-                //             null
-                //         }
-                //     }
-                // }
             }
             logger.debug("✅ Authentication plugin installed")
             

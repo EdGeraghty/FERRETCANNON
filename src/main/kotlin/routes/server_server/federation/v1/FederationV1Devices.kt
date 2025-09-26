@@ -10,9 +10,10 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import models.AccessTokens
 import utils.MatrixAuth
-import utils.deviceKeys
-import utils.crossSigningKeys
-import utils.deviceListStreamIds
+import utils.AuthUtils
+import config.ServerConfig
+import utils.OneTimeKeysStorage
+import utils.CrossSigningKeysStorage
 
 fun Route.federationV1Devices() {
     get("/openid/userinfo") {
@@ -56,34 +57,36 @@ fun Route.federationV1Devices() {
         }
 
         try {
-            // Get user's devices
-            val userDevices = deviceKeys[userId] ?: mutableMapOf()
+            // Get user's devices from database
+            val config = ServerConfig() // Use default config
+            val allDeviceKeys = AuthUtils.getDeviceKeysForUsers(listOf(userId), config)
+            val userDeviceKeys = allDeviceKeys[userId] ?: mutableMapOf()
 
             // Convert devices to the expected format
-            val devices = userDevices.map { (deviceId, deviceInfo) ->
+            val devices = userDeviceKeys.map { (deviceId, deviceKeyJson) ->
+                val deviceKeyObj = deviceKeyJson as? JsonObject ?: JsonObject(mutableMapOf())
+                val keys = deviceKeyObj["keys"] as? JsonObject ?: JsonObject(mutableMapOf())
                 buildJsonObject {
                     put("device_id", deviceId)
-                    put("device_display_name", Json.encodeToJsonElement(deviceInfo["device_display_name"]))
-                    put("keys", Json.encodeToJsonElement(deviceInfo["keys"]))
+                    put("device_display_name", JsonNull) // Not available in current format
+                    put("keys", keys)
                 }
             }
 
             // Get cross-signing keys
-            val masterKey = crossSigningKeys["${userId}_master"]
-            val selfSigningKey = crossSigningKeys["${userId}_self_signing"]
-
-            // Get stream ID for device list
-            val streamId = deviceListStreamIds.getOrPut(userId) { 0L }
+            val userKeys = CrossSigningKeysStorage.getUserCrossSigningKeys(userId)
+            val masterKeyJson = userKeys["master"]
+            val selfSigningKeyJson = userKeys["self_signing"]
 
             val response = buildJsonObject {
                 put("devices", Json.encodeToJsonElement(devices))
-                put("stream_id", streamId)
+                put("stream_id", 0L) // Placeholder
                 put("user_id", userId)
-                if (masterKey != null) {
-                    put("master_key", Json.encodeToJsonElement(masterKey))
+                if (masterKeyJson != null) {
+                    put("master_key", Json.parseToJsonElement(masterKeyJson))
                 }
-                if (selfSigningKey != null) {
-                    put("self_signing_key", Json.encodeToJsonElement(selfSigningKey))
+                if (selfSigningKeyJson != null) {
+                    put("self_signing_key", Json.parseToJsonElement(selfSigningKeyJson))
                 }
             }
 
@@ -125,23 +128,20 @@ fun Route.federationV1Devices() {
                     if (parts.size != 2) continue
 
                     val algorithm = parts[0]
+                    val keyId = deviceKeyId
 
-                    // Find available one-time key for this user and algorithm
-                    val globalUserOneTimeKeys = utils.oneTimeKeys[userId] ?: mapOf<String, Map<String, Any?>>()
-                    val availableKey = globalUserOneTimeKeys.entries.find { (key, _) ->
-                        key.startsWith("$algorithm:")
-                    }
-
-                    if (availableKey != null) {
-                        val (foundKeyId, keyData) = availableKey
-                        userClaimedKeys[foundKeyId] = buildJsonObject {
-                            put("key", Json.encodeToJsonElement(keyData["key"]))
-                            put("signatures", Json.encodeToJsonElement(keyData["signatures"]))
+                    // Try to claim the specific key
+                    val claimedKeyData = OneTimeKeysStorage.getOneTimeKey(userId, keyId)
+                    if (claimedKeyData != null) {
+                        // Parse the stored JSON
+                        val keyJson = Json.parseToJsonElement(claimedKeyData).jsonObject
+                        userClaimedKeys[keyId] = buildJsonObject {
+                            put("key", keyJson["key"] ?: JsonNull)
+                            put("signatures", keyJson["signatures"] ?: JsonNull)
                         }.jsonObject
 
-                        // Remove the claimed key from available keys
-                        val userKeysMap = utils.oneTimeKeys.getOrPut(userId) { mutableMapOf<String, Map<String, Any?>>() }
-                        userKeysMap.remove(foundKeyId)
+                        // Delete the claimed key
+                        OneTimeKeysStorage.deleteOneTimeKey(userId, keyId)
                     }
                 }
 
@@ -178,34 +178,28 @@ fun Route.federationV1Devices() {
             val deviceKeys = requestBody["device_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
 
             // Process device keys
-            val deviceKeysResponse = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>()
+            val deviceKeysResponse = mutableMapOf<String, MutableMap<String, JsonElement>>()
+            val userIds = deviceKeys.keys.toList()
+            val config = ServerConfig() // Use default config
+            val allDeviceKeys = AuthUtils.getDeviceKeysForUsers(userIds, config)
+
             for (userId in deviceKeys.keys) {
                 val requestedDevicesJson = deviceKeys[userId]
-                val globalUserDevices = utils.deviceKeys[userId] ?: mapOf<String, Map<String, Any?>>()
-                val userDeviceKeys = mutableMapOf<String, Map<String, Any?>>()
+                val userDeviceKeys = allDeviceKeys[userId] ?: mutableMapOf()
 
                 if (requestedDevicesJson is JsonNull) {
                     // Return all devices for this user
-                    for (deviceId in globalUserDevices.keys) {
-                        val deviceInfo = globalUserDevices[deviceId]
-                        if (deviceInfo != null) {
-                            userDeviceKeys[deviceId] = deviceInfo
-                        }
-                    }
+                    deviceKeysResponse[userId] = userDeviceKeys.toMutableMap()
                 } else if (requestedDevicesJson is JsonObject) {
                     val deviceList = requestedDevicesJson["device_ids"]?.jsonArray ?: JsonArray(emptyList())
-                    // Return only requested devices
+                    val filteredKeys = mutableMapOf<String, JsonElement>()
                     for (deviceElement in deviceList) {
                         val deviceId = deviceElement.jsonPrimitive.content
-                        val deviceInfo = globalUserDevices[deviceId]
-                        if (deviceInfo != null) {
-                            userDeviceKeys[deviceId] = deviceInfo
-                        }
+                        userDeviceKeys[deviceId]?.let { filteredKeys[deviceId] = it }
                     }
-                }
-
-                if (userDeviceKeys.isNotEmpty()) {
-                    deviceKeysResponse[userId] = userDeviceKeys
+                    if (filteredKeys.isNotEmpty()) {
+                        deviceKeysResponse[userId] = filteredKeys
+                    }
                 }
             }
 
@@ -215,18 +209,18 @@ fun Route.federationV1Devices() {
                 }
 
                 // Add cross-signing keys if available
-                val masterKeys = mutableMapOf<String, Map<String, Any?>>()
-                val selfSigningKeys = mutableMapOf<String, Map<String, Any?>>()
+                val masterKeys = mutableMapOf<String, JsonElement>()
+                val selfSigningKeys = mutableMapOf<String, JsonElement>()
 
                 for (userId in deviceKeys.keys) {
-                    val masterKey = crossSigningKeys["${userId}_master"]
-                    val selfSigningKey = crossSigningKeys["${userId}_self_signing"]
-
-                    if (masterKey != null) {
-                        masterKeys[userId] = masterKey
+                    val userKeys = CrossSigningKeysStorage.getUserCrossSigningKeys(userId)
+                    userKeys["master"]?.let { masterKeyJson ->
+                        val parsed = Json.parseToJsonElement(masterKeyJson)
+                        masterKeys[userId] = parsed
                     }
-                    if (selfSigningKey != null) {
-                        selfSigningKeys[userId] = selfSigningKey
+                    userKeys["self_signing"]?.let { selfSigningKeyJson ->
+                        val parsed = Json.parseToJsonElement(selfSigningKeyJson)
+                        selfSigningKeys[userId] = parsed
                     }
                 }
 

@@ -20,8 +20,6 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import kotlinx.serialization.json.*
-import utils.users
-import utils.accessTokens
 import routes.server_server.federation.v1.broadcastEDU
 import kotlinx.coroutines.runBlocking
 import kotlin.time.Duration.Companion.minutes

@@ -13,8 +13,9 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.runBlocking
-import utils.ServerKeys
+import utils.ServerKeysStorage
 import utils.MatrixAuth
+import utils.ServerKeys
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("routes.server_server.key.v2.KeyV2Routes")
@@ -33,7 +34,7 @@ fun Application.keyV2Routes() {
                         logger.debug("Serving server keys for server: $serverName")
 
                         // Get the server keys response with proper signing
-                        val serverKeysResponse = ServerKeys.getServerKeys(serverName)
+                        val serverKeysResponse = ServerKeysStorage.getServerKeys(serverName)
 
                         call.respond(serverKeysResponse)
                     }
@@ -53,7 +54,11 @@ fun Application.keyV2Routes() {
                             for (serverName in serverKeys.keys) {
                                 logger.debug("Processing key query for server: $serverName")
                                 val requestedKeysJson = serverKeys[serverName]
-                                val globalServerKeys = utils.serverKeys[serverName] ?: mapOf<String, Map<String, Any?>>()
+                                val globalServerKeys = ServerKeysStorage.getServerKeys(serverName).associate { keyData ->
+                                    // Convert the map to the expected format
+                                    val keyId = keyData["key_id"] as? String ?: ""
+                                    keyId to keyData
+                                }
                                 val serverKeyData = mutableMapOf<String, Map<String, Any?>>()
 
                                 if (requestedKeysJson is JsonNull) {
@@ -110,26 +115,34 @@ fun Application.keyV2Routes() {
 
                         // Key query endpoint is public - no authentication required per Matrix spec
                         try {
-                            // Get server's keys from cache or fetch from remote server
-                            val serverKeyData = utils.serverKeys[serverName]
-                            if (serverKeyData == null) {
-                                // Try to fetch from remote server
-                                logger.debug("Server keys for $serverName not in cache, fetching from remote")
-                                val fetchedKeys = fetchRemoteServerKeys(serverName, client)
-                                if (fetchedKeys != null) {
-                                    utils.serverKeys[serverName] = fetchedKeys
-                                    logger.info("Successfully fetched and cached server keys for $serverName")
-                                    call.respond(fetchedKeys)
-                                } else {
-                                    logger.warn("Failed to fetch server keys for $serverName")
-                                    call.respond(HttpStatusCode.NotFound, buildJsonObject {
-                                        put("errcode", "M_NOT_FOUND")
-                                        put("error", "Server keys not found")
-                                    })
+                            // Get server's keys from database
+                            val serverKeyData = ServerKeysStorage.getServerKeys(serverName)
+                            if (serverKeyData.isNotEmpty()) {
+                                // Convert to the expected response format
+                                val response = buildJsonObject {
+                                    put("server_name", serverName)
+                                    put("valid_until_ts", System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)) // 1 year
+                                    putJsonObject("verify_keys") {
+                                        serverKeyData.forEach { keyData ->
+                                            val keyId = keyData["key_id"] as? String ?: ""
+                                            val publicKey = keyData["public_key"] as? String ?: ""
+                                            putJsonObject(keyId) {
+                                                put("key", publicKey)
+                                            }
+                                        }
+                                    }
+                                    putJsonObject("signatures") {
+                                        putJsonObject(serverName) {
+                                            // Add signature if available
+                                        }
+                                    }
                                 }
+                                call.respond(response)
                             } else {
-                                logger.debug("Serving cached server keys for $serverName")
-                                call.respond(serverKeyData)
+                                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                                    put("errcode", "M_NOT_FOUND")
+                                    put("error", "Server keys not found")
+                                })
                             }
                         } catch (e: Exception) {
                             logger.error("Query server keys error for $serverName", e)
