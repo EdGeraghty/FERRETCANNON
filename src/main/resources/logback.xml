@@ -36,7 +36,7 @@
     </appender>
 
     <!-- Ktor HTTP request logging -->
-    <logger name="io.ktor.server" level="TRACE" additivity="false">
+    <logger name="io.ktor.server" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="HTTP_FILE"/>
     </logger>
@@ -48,23 +48,23 @@
     </logger>
 
     <!-- Application specific logging -->
-    <logger name="family.geraghty.ed.yolo.ferretcannon" level="TRACE" additivity="false">
+    <logger name="family.geraghty.ed.yolo.ferretcannon" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
 
     <!-- Matrix specific components -->
-    <logger name="utils" level="TRACE" additivity="false">
+    <logger name="utils" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
 
-    <logger name="routes" level="TRACE" additivity="false">
+    <logger name="routes" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
 
-    <logger name="models" level="DEBUG" additivity="false">
+    <logger name="models" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
@@ -72,7 +72,7 @@
     <!-- Third-party libraries - reduce noise but keep important -->
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
-    <logger name="kotlinx" level="DEBUG"/>
+    <logger name="kotlinx" level="INFO"/>
 
     <!-- Root logger - catch all -->
     <root level="INFO">

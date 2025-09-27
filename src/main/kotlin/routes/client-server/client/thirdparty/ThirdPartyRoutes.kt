@@ -39,26 +39,29 @@ import config.ServerConfig
 import utils.MatrixPagination
 import io.ktor.util.AttributeKey
 import routes.client_server.client.common.*
+import org.slf4j.LoggerFactory
 
 // Define the attribute key locally
 val LOCAL_MATRIX_USER_ID_KEY = AttributeKey<String>("MatrixUserId")
+
+private val logger = LoggerFactory.getLogger("routes.client_server.client.thirdparty.ThirdPartyRoutes")
 
 fun Route.thirdPartyRoutes() {
     // GET /thirdparty/protocols - Get third-party protocols
     get("/thirdparty/protocols") {
         try {
-            println("DEBUG: ThirdPartyRoutes - /thirdparty/protocols called")
+            logger.debug("ThirdPartyRoutes - /thirdparty/protocols called")
             val accessToken = call.validateAccessToken()
-            println("DEBUG: ThirdPartyRoutes - accessToken: $accessToken")
+            logger.debug("ThirdPartyRoutes - accessToken: $accessToken")
 
             if (accessToken == null) {
-                println("DEBUG: ThirdPartyRoutes - accessToken is null, returning unauthorized")
+                logger.debug("ThirdPartyRoutes - accessToken is null, returning unauthorized")
                 // Response already sent by validateAccessToken
                 return@get
             }
 
             // Return supported third-party protocols (simplified)
-            println("DEBUG: ThirdPartyRoutes - returning protocols response")
+            logger.debug("ThirdPartyRoutes - returning protocols response")
             call.respondText("""{"protocols":{}}""", ContentType.Application.Json)
 
         } catch (e: Exception) {

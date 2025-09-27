@@ -5,6 +5,9 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.util.*
 import kotlin.system.exitProcess
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("utils.ServerNameResolver")
 
 /**
  * Dynamic Server Name Resolution Utility
@@ -87,14 +90,14 @@ object ServerNameResolver {
             val configFile = java.io.File("config.yml")
             if (configFile.exists()) {
                 val configContent = configFile.readText()
-                println("DEBUG: Config file content length: ${configContent.length}")
-                println("DEBUG: Config file content preview: ${configContent.take(500)}")
+                logger.debug("Config file content length: ${configContent.length}")
+                logger.debug("Config file content preview: ${configContent.take(500)}")
                 
                 // First try federation.serverName (production format) - handle YAML indentation
                 val federationServerNamePattern = Regex("federation:\\s*\n\\s*serverName:\\s*[\"']([^\"']+)[\"']", RegexOption.DOT_MATCHES_ALL)
                 federationServerNamePattern.find(configContent)?.let { match ->
                     val configServerName = match.groupValues[1]
-                    println("DEBUG: Found federation server name: $configServerName")
+                    logger.debug("Found federation server name: $configServerName")
                     if (configServerName.isNotBlank()) {
                         println("Using federation server name from config.yml: $configServerName")
                         return configServerName
@@ -105,14 +108,14 @@ object ServerNameResolver {
                 val serverNamePattern = Regex("serverName:\\s*[\"']([^\"']+)[\"']")
                 serverNamePattern.find(configContent)?.let { match ->
                     val configServerName = match.groupValues[1]
-                    println("DEBUG: Found top-level server name: $configServerName")
+                    logger.debug("Found top-level server name: $configServerName")
                     if (configServerName.isNotBlank()) {
                         println("Using server name from config.yml: $configServerName")
                         return configServerName
                     }
                 }
             } else {
-                println("DEBUG: Config file does not exist at: ${configFile.absolutePath}")
+                logger.debug("Config file does not exist at: ${configFile.absolutePath}")
             }
         } catch (e: Exception) {
             println("Warning: Could not read config.yml for server name: ${e.message}")

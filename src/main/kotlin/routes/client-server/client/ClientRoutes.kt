@@ -76,6 +76,10 @@ import routes.client_server.client.thirdparty.thirdPartyRoutes
 import routes.client_server.client.filter.filterRoutes
 import routes.client_server.client.common.*
 
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("routes.client_server.client.ClientRoutes")
+
 fun Application.clientRoutes(config: ServerConfig) {
     // Request size limiting - simplified version
     intercept(ApplicationCallPipeline.Call) {
@@ -110,21 +114,21 @@ fun Application.clientRoutes(config: ServerConfig) {
                     call.attributes.put(MATRIX_TOKEN_KEY, accessToken)
                     call.attributes.put(MATRIX_USER_ID_KEY, userId)
                     call.attributes.put(MATRIX_DEVICE_ID_KEY, deviceId)
-                    println("DEBUG: Authentication successful for user: $userId")
+                    logger.debug("Authentication successful for user: $userId")
                 } else {
                     // Invalid token - will be handled by individual endpoints
                     call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
-                    println("DEBUG: Invalid token")
+                    logger.debug("Invalid token")
                 }
             } else {
                 // No token provided - will be handled by individual endpoints
                 call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
-                println("DEBUG: No token provided")
+                logger.debug("No token provided")
             }
         } catch (e: Exception) {
             // Handle authentication errors gracefully
             call.attributes.put(MATRIX_INVALID_TOKEN_KEY, "auth_error")
-            println("DEBUG: Authentication error: ${e.message}")
+            logger.debug("Authentication error: ${e.message}")
         }
     }
 

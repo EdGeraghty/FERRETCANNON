@@ -84,14 +84,29 @@ fun main() {
     logger.debug("Database config: ${config.database.url}")
     logger.debug("Media config: maxUploadSize=${config.media.maxUploadSize}")
 
+    // Debug: print the enableDebugLogging value
+    println("enableDebugLogging: ${config.development.enableDebugLogging}")
+
     // Configure logging levels based on config
     val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
     if (config.development.enableDebugLogging) {
         loggerContext.getLogger("Exposed").level = Level.DEBUG
-        logger.info("🔧 Debug logging enabled for Exposed ORM")
+        loggerContext.getLogger("routes").level = Level.TRACE
+        loggerContext.getLogger("utils").level = Level.TRACE
+        loggerContext.getLogger("models").level = Level.DEBUG
+        loggerContext.getLogger("family.geraghty.ed.yolo.ferretcannon").level = Level.TRACE
+        loggerContext.getLogger("io.ktor.server").level = Level.TRACE
+        loggerContext.getLogger("kotlinx").level = Level.DEBUG
+        logger.info("🔧 Debug logging enabled for Exposed ORM and application components")
     } else {
         loggerContext.getLogger("Exposed").level = Level.INFO
-        logger.info("🔧 Debug logging disabled for Exposed ORM")
+        loggerContext.getLogger("routes").level = Level.INFO
+        loggerContext.getLogger("utils").level = Level.INFO
+        loggerContext.getLogger("models").level = Level.INFO
+        loggerContext.getLogger("family.geraghty.ed.yolo.ferretcannon").level = Level.INFO
+        loggerContext.getLogger("io.ktor.server").level = Level.INFO
+        loggerContext.getLogger("kotlinx").level = Level.INFO
+        logger.info("🔧 Debug logging disabled for Exposed ORM and application components")
     }
 
     // Set root logger level based on config

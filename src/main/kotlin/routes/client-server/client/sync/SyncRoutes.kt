@@ -11,13 +11,17 @@ import utils.MatrixPagination
 import config.ServerConfig
 import routes.client_server.client.common.*
 
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("routes.client_server.client.sync.SyncRoutes")
+
 fun Route.syncRoutes() {
     // GET /sync - Sync endpoint
     get("/sync") {
         try {
-            println("DEBUG: SyncRoutes - /sync called")
+            logger.debug("SyncRoutes - /sync called")
             val accessToken = call.validateAccessToken()
-            println("DEBUG: SyncRoutes - accessToken: $accessToken")
+            logger.debug("SyncRoutes - accessToken: $accessToken")
 
             if (accessToken == null) {
                 println("DEBUG: SyncRoutes - accessToken is null, returning unauthorized")

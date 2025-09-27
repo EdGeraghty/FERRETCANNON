@@ -13,6 +13,10 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import routes.client_server.client.common.*
 
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("routes.client_server.client.user.AccountDataRoutes")
+
 fun Route.accountDataRoutes() {
     // GET /user/{userId}/account_data/{type} - Get global account data
     get("/user/{userId}/account_data/{type}") {
@@ -21,10 +25,10 @@ fun Route.accountDataRoutes() {
             val accountUserId = call.parameters["userId"]
             val type = call.parameters["type"]
 
-            println("DEBUG: GET account_data - userId: '$userId', accountUserId: '$accountUserId', type: '$type'")
+            logger.debug("GET account_data - userId: '$userId', accountUserId: '$accountUserId', type: '$type'")
 
             if (accountUserId == null || userId != accountUserId) {
-                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
+                logger.debug("Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
                 call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
@@ -43,18 +47,18 @@ fun Route.accountDataRoutes() {
             // Get account data from database
             val accountData = try {
                 transaction {
-                    println("DEBUG: Executing database query")
+                    logger.debug("Executing database query")
                     val result = AccountData.select {
                         (AccountData.userId eq userId) and
                         (AccountData.type eq type) and
                         (AccountData.roomId.isNull())
                     }.singleOrNull()
-                    println("DEBUG: Database query result: $result")
+                    logger.debug("Database query result: $result")
                     result
                 }?.let { row ->
                     try {
                         val content = row[AccountData.content]
-                        println("DEBUG: Found content: '$content'")
+                        logger.debug("Found content: '$content'")
                         if (content.isBlank()) {
                             buildJsonObject { }
                         } else {
@@ -72,7 +76,7 @@ fun Route.accountDataRoutes() {
                 null
             }
 
-            println("DEBUG: accountData result: $accountData")
+            logger.debug("accountData result: $accountData")
 
             if (accountData == null) {
                 call.respond(HttpStatusCode.NotFound, mutableMapOf(
@@ -110,7 +114,7 @@ fun Route.accountDataRoutes() {
             val type = call.parameters["type"]
 
             if (accountUserId == null || userId != accountUserId) {
-                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
+                logger.debug("Access forbidden - userId: '$userId', accountUserId: '$accountUserId'")
                 call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own account data"
@@ -200,7 +204,7 @@ fun Route.accountDataRoutes() {
             val type = call.parameters["type"]
 
             if (accountUserId == null || userId != accountUserId) {
-                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
+                logger.debug("Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
                 call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only access your own account data"
@@ -226,7 +230,7 @@ fun Route.accountDataRoutes() {
                     }.singleOrNull()?.let { row ->
                         try {
                             val content = row[AccountData.content]
-                            println("DEBUG: Found room account data content: '$content'")
+                            logger.debug("Found room account data content: '$content'")
                             if (content.isBlank()) {
                                 buildJsonObject { }
                             } else {
@@ -280,7 +284,7 @@ fun Route.accountDataRoutes() {
             val type = call.parameters["type"]
 
             if (accountUserId == null || userId != accountUserId) {
-                println("DEBUG: Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
+                logger.debug("Access forbidden - userId: '$userId', accountUserId: '$accountUserId' (room account data)")
                 call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Can only set your own account data"
