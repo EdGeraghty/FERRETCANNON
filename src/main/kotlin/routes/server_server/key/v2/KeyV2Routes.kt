@@ -33,7 +33,7 @@ fun Application.keyV2Routes() {
                         logger.debug("Serving server keys for server: $serverName")
 
                         // Get the server keys response with proper signing
-                        val serverKeysResponse = ServerKeysStorage.getServerKeys(serverName)
+                        val serverKeysResponse = ServerKeys.getServerKeys(serverName)
 
                         call.respond(serverKeysResponse)
                     }
@@ -46,52 +46,53 @@ fun Application.keyV2Routes() {
                             val requestBody = Json.parseToJsonElement(body).jsonObject
                             val serverKeys = requestBody["server_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
 
-                            val response = mutableMapOf<String, Any>()
+                            val response = buildJsonObject {
+                                // Process server keys
+                                putJsonObject("server_keys") {
+                                    for (serverName in serverKeys.keys) {
+                                        logger.debug("Processing key query for server: $serverName")
+                                        val requestedKeysJson = serverKeys[serverName]
+                                        val globalServerKeys = ServerKeysStorage.getServerKeys(serverName).associate { keyData ->
+                                            // Convert the map to the expected format
+                                            val keyId = keyData["key_id"] as? String ?: ""
+                                            keyId to keyData
+                                        }
 
-                            // Process server keys
-                            val serverKeysResponse = mutableMapOf<String, MutableMap<String, Map<String, Any?>>>()
-                            for (serverName in serverKeys.keys) {
-                                logger.debug("Processing key query for server: $serverName")
-                                val requestedKeysJson = serverKeys[serverName]
-                                val globalServerKeys = ServerKeysStorage.getServerKeys(serverName).associate { keyData ->
-                                    // Convert the map to the expected format
-                                    val keyId = keyData["key_id"] as? String ?: ""
-                                    keyId to keyData
-                                }
-                                val serverKeyData = mutableMapOf<String, Map<String, Any?>>()
-
-                                if (requestedKeysJson is JsonNull) {
-                                    // Return all keys for this server
-                                    logger.trace("Returning all keys for server: $serverName")
-                                    for (keyId in globalServerKeys.keys) {
-                                        val keyInfo = globalServerKeys[keyId]
-                                        if (keyInfo != null) {
-                                            serverKeyData[keyId] = keyInfo
+                                        if (requestedKeysJson is JsonNull) {
+                                            // Return all keys for this server
+                                            logger.trace("Returning all keys for server: $serverName")
+                                            if (globalServerKeys.isNotEmpty()) {
+                                                putJsonObject(serverName) {
+                                                    globalServerKeys.forEach { (keyId, keyInfo) ->
+                                                        put(keyId, Json.encodeToJsonElement(keyInfo))
+                                                    }
+                                                }
+                                            }
+                                        } else if (requestedKeysJson is JsonObject) {
+                                            val keyList = requestedKeysJson["key_ids"]?.jsonArray ?: JsonArray(emptyList())
+                                            logger.trace("Returning specific keys for server $serverName: ${keyList.map { it.jsonPrimitive.content }}")
+                                            // Return only requested keys
+                                            val serverKeyData = mutableMapOf<String, Map<String, Any?>>()
+                                            for (keyElement in keyList) {
+                                                val keyId = keyElement.jsonPrimitive.content
+                                                val keyInfo = globalServerKeys[keyId]
+                                                if (keyInfo != null) {
+                                                    serverKeyData[keyId] = keyInfo
+                                                }
+                                            }
+                                            if (serverKeyData.isNotEmpty()) {
+                                                putJsonObject(serverName) {
+                                                    serverKeyData.forEach { (keyId, keyInfo) ->
+                                                        put(keyId, Json.encodeToJsonElement(keyInfo))
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
-                                } else if (requestedKeysJson is JsonObject) {
-                                    val keyList = requestedKeysJson["key_ids"]?.jsonArray ?: JsonArray(emptyList())
-                                    logger.trace("Returning specific keys for server $serverName: ${keyList.map { it.jsonPrimitive.content }}")
-                                    // Return only requested keys
-                                    for (keyElement in keyList) {
-                                        val keyId = keyElement.jsonPrimitive.content
-                                        val keyInfo = globalServerKeys[keyId]
-                                        if (keyInfo != null) {
-                                            serverKeyData[keyId] = keyInfo
-                                        }
-                                    }
-                                }
-
-                                if (serverKeyData.isNotEmpty()) {
-                                    serverKeysResponse[serverName] = serverKeyData
                                 }
                             }
 
-                            if (serverKeysResponse.isNotEmpty()) {
-                                response["server_keys"] = serverKeysResponse
-                            }
-
-                            logger.debug("Key query response contains ${serverKeysResponse.size} server keys")
+                            logger.debug("Key query response built successfully")
                             call.respond(response)
                         } catch (e: Exception) {
                             logger.error("Key query error", e)
