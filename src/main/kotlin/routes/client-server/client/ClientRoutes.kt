@@ -101,7 +101,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                              call.request.headers["Authorization"]?.removePrefix("Bearer ") ?:
                              call.request.headers["Authorization"]?.removePrefix("Bearer")?.trim()
 
-            logger.info("Authentication middleware - accessToken: '$accessToken'")
+            logger.debug("Authentication middleware - accessToken: '$accessToken'")
 
             if (accessToken != null) {
                 // Validate token using new authentication system
@@ -114,7 +114,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     call.attributes.put(MATRIX_TOKEN_KEY, accessToken)
                     call.attributes.put(MATRIX_USER_ID_KEY, userId)
                     call.attributes.put(MATRIX_DEVICE_ID_KEY, deviceId)
-                    logger.info("Authentication successful for user: $userId")
+                    logger.debug("Authentication successful for user: $userId")
                 } else {
                     // Invalid token - will be handled by individual endpoints
                     call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
@@ -123,7 +123,7 @@ fun Application.clientRoutes(config: ServerConfig) {
             } else {
                 // No token provided - will be handled by individual endpoints
                 call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
-                logger.info("No token provided")
+                logger.debug("No token provided")
             }
         } catch (e: Exception) {
             // Handle authentication errors gracefully

@@ -296,7 +296,7 @@ fun Route.authRoutes(config: ServerConfig) {
             val accessToken = call.attributes.getOrNull(MATRIX_TOKEN_KEY)
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             
-            logger.info("Logout attempt for user: $userId, token: ${accessToken?.take(10)}...")
+            logger.debug("Logout attempt for user: $userId, token: ${accessToken?.take(10)}...")
             
             if (accessToken != null) {
                 // Invalidate the access token
