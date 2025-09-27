@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("routes.server_server.key.v2.KeyV2Routes")
 
 fun Application.keyV2Routes() {
-    val client = HttpClient(CIO)
 
     routing {
         route("/_matrix") {
@@ -67,8 +66,7 @@ fun Application.keyV2Routes() {
                                     for (keyId in globalServerKeys.keys) {
                                         val keyInfo = globalServerKeys[keyId]
                                         if (keyInfo != null) {
-                                            @Suppress("UNCHECKED_CAST")
-                                            serverKeyData[keyId] = keyInfo as Map<String, Any?>
+                                            serverKeyData[keyId] = keyInfo
                                         }
                                     }
                                 } else if (requestedKeysJson is JsonObject) {
@@ -79,8 +77,7 @@ fun Application.keyV2Routes() {
                                         val keyId = keyElement.jsonPrimitive.content
                                         val keyInfo = globalServerKeys[keyId]
                                         if (keyInfo != null) {
-                                            @Suppress("UNCHECKED_CAST")
-                                            serverKeyData[keyId] = keyInfo as Map<String, Any?>
+                                            serverKeyData[keyId] = keyInfo
                                         }
                                     }
                                 }

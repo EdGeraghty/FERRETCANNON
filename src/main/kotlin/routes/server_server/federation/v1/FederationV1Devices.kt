@@ -127,7 +127,6 @@ fun Route.federationV1Devices() {
                     val parts = deviceKeyId.split(":", limit = 2)
                     if (parts.size != 2) continue
 
-                    val algorithm = parts[0]
                     val keyId = deviceKeyId
 
                     // Try to claim the specific key

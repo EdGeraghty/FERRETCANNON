@@ -112,7 +112,7 @@ fun Route.crossSigningRoutes() {
                 val keyId = keys.keys.first()
                 val publicKey = keys[keyId]?.jsonPrimitive?.content
                 logger.debug("CrossSigningRoutes - masterKey key_id: '$keyId', public_key: '${publicKey?.take(50)}...'")
-                if (keyId == null || publicKey == null) {
+                if (publicKey == null) {
                     logger.warn("CrossSigningRoutes - missing key_id or public_key for master_key. masterKey content: $masterKey")
                     call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                         put("errcode", "M_INVALID_PARAM")
@@ -134,7 +134,7 @@ fun Route.crossSigningRoutes() {
                 }
                 val keyId = keys.keys.first()
                 val publicKey = keys[keyId]?.jsonPrimitive?.content
-                if (keyId == null || publicKey == null) {
+                if (publicKey == null) {
                     logger.warn("CrossSigningRoutes - missing key_id or public_key for self_signing_key")
                     call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                         put("errcode", "M_INVALID_PARAM")
@@ -156,7 +156,7 @@ fun Route.crossSigningRoutes() {
                 }
                 val keyId = keys.keys.first()
                 val publicKey = keys[keyId]?.jsonPrimitive?.content
-                if (keyId == null || publicKey == null) {
+                if (publicKey == null) {
                     logger.warn("CrossSigningRoutes - missing key_id or public_key for user_signing_key")
                     call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                         put("errcode", "M_INVALID_PARAM")
