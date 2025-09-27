@@ -433,6 +433,15 @@ object AuthUtils {
     }
 
     /**
+     * Delete all access tokens for a user (logout all sessions)
+     */
+    fun deleteAllAccessTokensForUser(userId: String) {
+        transaction {
+            AccessTokens.deleteWhere { AccessTokens.userId eq userId }
+        }
+    }
+
+    /**
      * Delete device and all its access tokens
      */
     fun deleteDevice(userId: String, deviceId: String) {

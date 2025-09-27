@@ -10,16 +10,20 @@ import config.ServerConfig
 import utils.AuthUtils
 import routes.client_server.client.common.*
 
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("routes.client_server.client.device.DeviceRoutes")
+
 fun Route.deviceRoutes() {
     // GET /devices - List user's devices
     get("/devices") {
         try {
-            println("DEBUG: DeviceRoutes - /devices called")
+            logger.debug("DeviceRoutes - /devices called")
             val accessToken = call.validateAccessToken()
-            println("DEBUG: DeviceRoutes - accessToken: $accessToken")
+            logger.debug("DeviceRoutes - accessToken: $accessToken")
 
             if (accessToken == null) {
-                println("DEBUG: DeviceRoutes - accessToken is null, returning unauthorized")
+                logger.debug("DeviceRoutes - accessToken is null, returning unauthorized")
                 call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
@@ -30,7 +34,7 @@ fun Route.deviceRoutes() {
             // Get userId from attributes (set by authentication middleware)
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
-                println("DEBUG: DeviceRoutes - userId is null")
+                logger.debug("DeviceRoutes - userId is null")
                 call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
                     "errcode" to "M_MISSING_TOKEN",
                     "error" to "Missing access token"
@@ -40,7 +44,7 @@ fun Route.deviceRoutes() {
 
             // Get devices from AuthUtils
             val devices = AuthUtils.getUserDevices(userId)
-            println("DEBUG: DeviceRoutes - returning devices response")
+            logger.debug("DeviceRoutes - returning devices response")
             // Convert to proper JSON
             val devicesJson = buildJsonArray {
                 devices.forEach { device ->
@@ -59,8 +63,7 @@ fun Route.deviceRoutes() {
                 }
             }
             call.respond(mapOf("devices" to devicesJson))        } catch (e: Exception) {
-            println("ERROR: DeviceRoutes - Exception in /devices: ${e.message}")
-            e.printStackTrace()
+            logger.error("DeviceRoutes - Exception in /devices: ${e.message}", e)
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"

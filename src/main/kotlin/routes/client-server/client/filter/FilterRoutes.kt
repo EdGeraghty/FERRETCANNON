@@ -12,6 +12,10 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import routes.client_server.client.common.*
 
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("routes.client_server.client.filter.FilterRoutes")
+
 fun Route.filterRoutes() {
     // POST /user/{userId}/filter - Create a filter
     post("/user/{userId}/filter") {
@@ -29,7 +33,7 @@ fun Route.filterRoutes() {
 
             // Verify the authenticated user matches the requested user
             if (authenticatedUserId != userId) {
-                println("DEBUG: Filter creation forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
+                logger.debug("Filter creation forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
                 call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Access token does not match user"
@@ -62,8 +66,7 @@ fun Route.filterRoutes() {
             call.respond(mutableMapOf("filter_id" to filterId))
 
         } catch (e: Exception) {
-            println("ERROR: Exception in POST /user/{userId}/filter: ${e.message}")
-            e.printStackTrace()
+            logger.error("Exception in POST /user/{userId}/filter: ${e.message}", e)
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"
@@ -88,7 +91,7 @@ fun Route.filterRoutes() {
 
             // Verify the authenticated user matches the requested user
             if (authenticatedUserId != userId) {
-                println("DEBUG: Filter retrieval forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
+                logger.debug("Filter retrieval forbidden - authenticatedUserId: '$authenticatedUserId', requestedUserId: '$userId'")
                 call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                     "errcode" to "M_FORBIDDEN",
                     "error" to "Access token does not match user"
@@ -115,8 +118,7 @@ fun Route.filterRoutes() {
             call.respond(filterJson)
 
         } catch (e: Exception) {
-            println("ERROR: Exception in GET /user/{userId}/filter/{filterId}: ${e.message}")
-            e.printStackTrace()
+            logger.error("Exception in GET /user/{userId}/filter/{filterId}: ${e.message}", e)
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error"

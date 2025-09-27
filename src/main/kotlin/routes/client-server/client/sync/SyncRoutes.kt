@@ -24,7 +24,7 @@ fun Route.syncRoutes() {
             logger.debug("SyncRoutes - accessToken: $accessToken")
 
             if (accessToken == null) {
-                println("DEBUG: SyncRoutes - accessToken is null, returning unauthorized")
+                logger.debug("SyncRoutes - accessToken is null, returning unauthorized")
                 call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                     put("errcode", "M_MISSING_TOKEN")
                     put("error", "Missing access token")
@@ -35,7 +35,7 @@ fun Route.syncRoutes() {
             // Get userId from attributes (set by authentication middleware)
             val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
             if (userId == null) {
-                println("DEBUG: SyncRoutes - userId is null")
+                logger.debug("SyncRoutes - userId is null")
                 call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                     put("errcode", "M_MISSING_TOKEN")
                     put("error", "Missing access token")
@@ -47,7 +47,7 @@ fun Route.syncRoutes() {
             val since = call.request.queryParameters["since"]
             val useStateAfter = call.request.queryParameters["use_state_after"]?.toBoolean() ?: false
 
-            println("DEBUG: SyncRoutes - performing sync for user: $userId, useStateAfter: $useStateAfter")
+            logger.debug("SyncRoutes - performing sync for user: $userId, useStateAfter: $useStateAfter")
             // Perform sync
             val syncResponse = SyncManager.performSync(
                 userId = userId,
@@ -56,12 +56,11 @@ fun Route.syncRoutes() {
                 useStateAfter = useStateAfter
             )
 
-            println("DEBUG: SyncRoutes - sync completed, responding")
+            logger.debug("SyncRoutes - sync completed, responding")
             call.respond(syncResponse)
 
         } catch (e: Exception) {
-            println("ERROR: SyncRoutes - Exception in /sync: ${e.message}")
-            e.printStackTrace()
+            logger.error("SyncRoutes - Exception in /sync: ${e.message}", e)
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
                 put("error", "Internal server error: ${e.message}")

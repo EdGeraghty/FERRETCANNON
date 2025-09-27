@@ -9,8 +9,11 @@ import kotlinx.serialization.json.*
 import config.ServerConfig
 import utils.AuthUtils
 import routes.client_server.client.common.*
+import org.slf4j.LoggerFactory
 
 fun Route.authRoutes(config: ServerConfig) {
+    val logger = LoggerFactory.getLogger("AuthRoutes")
+    
     // GET /login - Get available login flows
     get("/login") {
         call.respond(buildJsonObject {
@@ -286,19 +289,52 @@ fun Route.authRoutes(config: ServerConfig) {
     // POST /logout - User logout
     post("/logout") {
         try {
+            logger.info("Logout endpoint called")
             call.validateAccessToken() ?: return@post
 
             // Get the access token from the request
             val accessToken = call.attributes.getOrNull(MATRIX_TOKEN_KEY)
+            val userId = call.attributes.getOrNull(MATRIX_USER_ID_KEY)
+            
+            logger.info("Logout attempt for user: $userId, token: ${accessToken?.take(10)}...")
+            
             if (accessToken != null) {
                 // Invalidate the access token
                 AuthUtils.deleteAccessToken(accessToken)
+                logger.info("Access token deleted successfully for user: $userId")
+            } else {
+                logger.warn("No access token found in attributes during logout")
             }
 
             // Return empty response
             call.respond(buildJsonObject { })
 
         } catch (e: Exception) {
+            logger.error("Logout error", e)
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
+    // POST /logout/all - Logout all sessions for user
+    post("/logout/all") {
+        try {
+            logger.info("Logout all endpoint called")
+            val userId = call.validateAccessToken() ?: return@post
+            
+            logger.info("Logout all attempt for user: $userId")
+            
+            // Delete all access tokens for this user
+            AuthUtils.deleteAllAccessTokensForUser(userId)
+            logger.info("All access tokens deleted successfully for user: $userId")
+
+            // Return empty response
+            call.respond(buildJsonObject { })
+
+        } catch (e: Exception) {
+            logger.error("Logout all error", e)
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
                 put("error", "Internal server error")
