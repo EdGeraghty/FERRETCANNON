@@ -206,12 +206,110 @@ fun Route.deviceRoutes() {
                 return@delete
             }
 
+            // Get current device ID
+            val currentDeviceId = call.attributes.getOrNull(MATRIX_DEVICE_ID_KEY)
+            if (currentDeviceId == null) {
+                call.respond(HttpStatusCode.Unauthorized, mutableMapOf(
+                    "errcode" to "M_MISSING_TOKEN",
+                    "error" to "Missing access token"
+                ))
+                return@delete
+            }
+
             if (deviceId == null) {
                 call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing deviceId parameter"
                 ))
                 return@delete
+            }
+
+            // Check if trying to delete a different device
+            val isDeletingOtherDevice = deviceId != currentDeviceId
+
+            if (isDeletingOtherDevice) {
+                // Parse request body for auth
+                val requestBody = try {
+                    call.receiveText()
+                } catch (e: Exception) {
+                    // No body provided
+                    ""
+                }
+                val jsonBody = if (requestBody.isNotBlank()) Json.parseToJsonElement(requestBody).jsonObject else buildJsonObject {}
+                val auth = jsonBody["auth"]?.jsonObject
+
+                if (auth == null) {
+                    // No auth provided - return UIA challenge
+                    call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                        putJsonArray("flows") {
+                            addJsonObject {
+                                putJsonArray("stages") {
+                                    add("m.login.password")
+                                }
+                            }
+                        }
+                        put("session", "delete_device_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
+                        put("errcode", "M_AUTHENTICATION")
+                        put("error", "Authentication required to delete device")
+                    })
+                    return@delete
+                }
+
+                // Validate auth
+                val authType = auth["type"]?.jsonPrimitive?.content
+                if (authType != "m.login.password") {
+                    call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                        put("errcode", "M_UNKNOWN")
+                        put("error", "Unsupported authentication type")
+                        putJsonArray("flows") {
+                            addJsonObject {
+                                putJsonArray("stages") {
+                                    add("m.login.password")
+                                }
+                            }
+                        }
+                        put("session", "delete_device_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
+                    })
+                    return@delete
+                }
+
+                // Validate password
+                val authUser = auth["user"]?.jsonPrimitive?.content
+                val authPassword = auth["password"]?.jsonPrimitive?.content
+
+                if (authUser.isNullOrBlank() || authPassword.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
+                        put("errcode", "M_MISSING_PARAM")
+                        put("error", "Missing username or password")
+                        putJsonArray("flows") {
+                            addJsonObject {
+                                putJsonArray("stages") {
+                                    add("m.login.password")
+                                }
+                            }
+                        }
+                        put("session", "delete_device_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
+                    })
+                    return@delete
+                }
+
+                // Authenticate user
+                val authenticatedUserId = AuthUtils.authenticateUser(authUser, authPassword)
+                if (authenticatedUserId != userId) {
+                    call.respond(HttpStatusCode.Forbidden, buildJsonObject {
+                        put("errcode", "M_FORBIDDEN")
+                        put("error", "Invalid username or password")
+                        putJsonArray("flows") {
+                            addJsonObject {
+                                putJsonArray("stages") {
+                                    add("m.login.password")
+                                }
+                            }
+                        }
+                        put("session", "delete_device_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}")
+                    })
+                    return@delete
+                }
             }
 
             // Delete device from AuthUtils

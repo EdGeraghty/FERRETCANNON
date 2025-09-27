@@ -182,7 +182,8 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 "v1.12",
                                 "v1.13",
                                 "v1.14",
-                                "v1.15"
+                                "v1.15",
+                                "v1.16"
                             ],
                             "unstable_features": {}
                         }
@@ -216,7 +217,8 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     "v1.12",
                                     "v1.13",
                                     "v1.14",
-                                    "v1.15"
+                                    "v1.15",
+                                    "v1.16"
                                 ],
                                 "unstable_features": {}
                             }
