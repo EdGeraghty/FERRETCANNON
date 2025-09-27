@@ -39,10 +39,8 @@ object ServerKeys {
     private lateinit var publicKeyBase64: String
     private lateinit var keyId: String
     private var keysLoaded = false
+    private var privateKeySeed: ByteArray? = null
     private val serverName: String = ServerNameResolver.getServerName()
-
-    // Use a deterministic seed based on server name for consistent key generation
-    private val SERVER_KEY_SEED = "FERRETCANNON_MATRIX_SERVER_SEED_2024"
 
     private fun loadOrGenerateKeyPair() {
         logger.debug("Loading or generating Ed25519 key pair for server: $serverName")
@@ -57,41 +55,56 @@ object ServerKeys {
             if (existingKey != null) {
                 // Load existing key
                 val storedPublicKey = existingKey[ServerKeysTable.publicKey]
+                val storedPrivateKey = existingKey[ServerKeysTable.privateKey]
                 logger.info("✅ Found existing server key pair with ID: ed25519:0")
 
-                // Generate the same key pair using deterministic seed
-                generateDeterministicKeyPair()
+                if (storedPrivateKey != null) {
+                    // Load the private key
+                    val privateKeyBytes = Base64.getDecoder().decode(storedPrivateKey)
+                    privateKeySeed = privateKeyBytes
+                    val privateKeySpec = EdDSAPrivateKeySpec(privateKeyBytes, spec)
+                    privateKey = EdDSAPrivateKey(privateKeySpec)
 
-                // Verify the stored public key matches our generated one
-                if (storedPublicKey != publicKeyBase64) {
-                    logger.warn("⚠️  Stored public key doesn't match generated key - updating database")
-                    updateStoredKey()
+                    // Derive public key from private key
+                    val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
+                    publicKey = EdDSAPublicKey(publicKeySpec)
+                    publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
+                    keyId = "ed25519:0"
+
+                    // Verify the stored public key matches
+                    if (storedPublicKey != publicKeyBase64) {
+                        logger.warn("⚠️  Stored public key doesn't match derived key - updating database")
+                        updateStoredKey()
+                    } else {
+                        logger.info("✅ Stored public key matches derived key")
+                    }
                 } else {
-                    logger.info("✅ Stored public key matches generated key")
+                    // No private key stored, regenerate (for backward compatibility)
+                    generateKeyPair()
+                    // Update the database with the new private key
+                    updateStoredKey()
                 }
             } else {
-                // Generate new deterministic key pair
-                logger.info("🔑 No existing key found - generating new deterministic Ed25519 key pair")
-                generateDeterministicKeyPair()
+                // Generate new key pair
+                logger.info("🔑 No existing key found - generating new Ed25519 key pair")
+                generateKeyPair()
                 storeKeyInDatabase()
             }
         }
         keysLoaded = true
     }
 
-    private fun generateDeterministicKeyPair() {
-        logger.debug("Generating deterministic Ed25519 key pair...")
+    private fun generateKeyPair() {
+        logger.debug("Generating Ed25519 key pair...")
         try {
-            // Create a deterministic seed based on server name and fixed seed
-            val seedString = "$SERVER_KEY_SEED:$serverName"
-            val seedBytes = seedString.toByteArray(Charsets.UTF_8)
+            // Generate a random 32-byte seed for Ed25519
+            val random = java.security.SecureRandom()
+            val seedBytes = ByteArray(32)
+            random.nextBytes(seedBytes)
+            privateKeySeed = seedBytes
 
-            // Use SHA-256 to create a 32-byte seed from our string
-            val sha256 = java.security.MessageDigest.getInstance("SHA-256")
-            val deterministicSeed = sha256.digest(seedBytes).copyOfRange(0, 32) // Ed25519 needs 32 bytes
-
-            // Create private key from deterministic seed
-            val privateKeySpec = EdDSAPrivateKeySpec(deterministicSeed, spec)
+            // Create private key from random seed
+            val privateKeySpec = EdDSAPrivateKeySpec(seedBytes, spec)
             privateKey = EdDSAPrivateKey(privateKeySpec)
 
             // Derive public key from private key
@@ -102,10 +115,10 @@ object ServerKeys {
             publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
             keyId = "ed25519:0"
 
-            logger.info("✅ Generated deterministic server key pair with ID: $keyId")
+            logger.info("✅ Generated server key pair with ID: $keyId")
             logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
         } catch (e: Exception) {
-            logger.error("Failed to generate deterministic key pair", e)
+            logger.error("Failed to generate key pair", e)
             throw e
         }
     }
@@ -114,9 +127,11 @@ object ServerKeys {
         transaction {
             val currentKeyId = keyId
             val currentPublicKeyBase64 = publicKeyBase64
+            val currentPrivateKeyBase64 = Base64.getEncoder().encodeToString(privateKeySeed!!)
             
             ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq currentKeyId) }) {
                 it[ServerKeysTable.publicKey] = currentPublicKeyBase64
+                it[ServerKeysTable.privateKey] = currentPrivateKeyBase64
                 it[ServerKeysTable.keyValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
                 it[ServerKeysTable.tsValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)
             }
@@ -126,12 +141,13 @@ object ServerKeys {
 
     private fun storeKeyInDatabase() {
         transaction {
-            // Store public key in database (we don't store private key for security)
+            // Store public and private keys in database
             val validUntilTs = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
             val currentTime = System.currentTimeMillis()
             
             val currentKeyId = keyId
             val currentPublicKeyBase64 = publicKeyBase64
+            val currentPrivateKeyBase64 = Base64.getEncoder().encodeToString(privateKeySeed!!)
 
             try {
                 // Try to insert first
@@ -139,6 +155,7 @@ object ServerKeys {
                     it[ServerKeysTable.serverName] = serverName
                     it[ServerKeysTable.keyId] = currentKeyId
                     it[ServerKeysTable.publicKey] = currentPublicKeyBase64
+                    it[ServerKeysTable.privateKey] = currentPrivateKeyBase64
                     it[ServerKeysTable.keyValidUntilTs] = validUntilTs
                     it[ServerKeysTable.tsValidUntilTs] = validUntilTs
                     it[ServerKeysTable.tsAddedTs] = currentTime
