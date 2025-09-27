@@ -22,7 +22,10 @@ import java.security.KeyStore
 import java.io.FileInputStream
 import io.ktor.client.statement.*
 
+import org.slf4j.LoggerFactory
+
 object MatrixAuth {
+    private val logger = LoggerFactory.getLogger("utils.MatrixAuth")
 
     private val client = HttpClient(CIO)
 
@@ -104,6 +107,7 @@ object MatrixAuth {
             // Use server discovery to resolve the server name
             val connectionDetails = ServerDiscovery.resolveServerName(serverName)
             if (connectionDetails == null) {
+                logger.warn("Failed to resolve server name: $serverName")
                 return null
             }
 
@@ -117,6 +121,12 @@ object MatrixAuth {
                 header("Host", connectionDetails.hostHeader)
                 // Note: In a production implementation, you would configure the HTTP client
                 // with proper SSL context and certificate validation
+            }
+
+            // Check if the response is successful
+            if (!response.status.isSuccess()) {
+                logger.warn("Failed to fetch keys from $serverName (${connectionDetails.host}:${connectionDetails.port}): HTTP ${response.status}")
+                return null
             }
 
             val json = response.body<String>()
@@ -133,7 +143,7 @@ object MatrixAuth {
             val spec = X509EncodedKeySpec(keyBytes)
             EdDSAPublicKey(spec)
         } catch (e: Exception) {
-            println("Error fetching public key from $serverName: ${e.message}")
+            logger.error("Error fetching public key from $serverName", e)
             null
         }
     }
@@ -165,7 +175,7 @@ object MatrixAuth {
 
             false
         } catch (e: Exception) {
-            println("Certificate validation error for $serverName: ${e.message}")
+            logger.error("Certificate validation error for $serverName", e)
             false
         }
     }
@@ -451,12 +461,12 @@ object MatrixAuth {
 
             if (response.status.value != 200) {
                 val responseBody = runBlocking { response.bodyAsText() }
-                println("Federation invite failed: ${response.status} - $responseBody")
+                logger.error("Federation invite failed: ${response.status} - $responseBody")
             } else {
-                println("Federation invite sent successfully to $remoteServer")
+                logger.info("Federation invite sent successfully to $remoteServer")
             }
         } catch (e: Exception) {
-            println("Error sending federation invite: ${e.message}")
+            logger.error("Error sending federation invite", e)
         }
     }
 

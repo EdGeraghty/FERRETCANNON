@@ -159,6 +159,13 @@ suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<S
     return try {
         logger.debug("Fetching server keys from remote server: $serverName")
         val response = client.get("https://$serverName/_matrix/key/v2/server")
+        
+        // Check if the response is successful
+        if (!response.status.isSuccess()) {
+            logger.warn("Failed to fetch keys from $serverName: HTTP ${response.status}")
+            return null
+        }
+        
         val json = response.body<String>()
         val data = Json.parseToJsonElement(json).jsonObject
 
