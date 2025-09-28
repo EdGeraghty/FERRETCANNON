@@ -401,11 +401,22 @@ fun Application.clientRoutes(config: ServerConfig) {
 
                                 // Store the dehydrated device
                                 transaction {
-                                    DehydratedDevices.insert {
-                                        it[DehydratedDevices.userId] = userId
-                                        it[DehydratedDevices.deviceId] = deviceId
-                                        it[DehydratedDevices.deviceData] = deviceData
-                                        it[DehydratedDevices.lastModified] = System.currentTimeMillis()
+                                    val existing = DehydratedDevices.select { DehydratedDevices.userId eq userId }.singleOrNull()
+                                    if (existing != null) {
+                                        // Update existing dehydrated device
+                                        DehydratedDevices.update({ DehydratedDevices.userId eq userId }) {
+                                            it[DehydratedDevices.deviceId] = deviceId
+                                            it[DehydratedDevices.deviceData] = deviceData
+                                            it[DehydratedDevices.lastModified] = System.currentTimeMillis()
+                                        }
+                                    } else {
+                                        // Insert new dehydrated device
+                                        DehydratedDevices.insert {
+                                            it[DehydratedDevices.userId] = userId
+                                            it[DehydratedDevices.deviceId] = deviceId
+                                            it[DehydratedDevices.deviceData] = deviceData
+                                            it[DehydratedDevices.lastModified] = System.currentTimeMillis()
+                                        }
                                     }
                                 }
 
