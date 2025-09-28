@@ -219,8 +219,16 @@ object AuthUtils {
      */
     fun authenticateUser(username: String, password: String): String? {
         return try {
+            // Handle both full user IDs (@user:domain) and local usernames
+            val lookupUsername = if (username.startsWith("@") && username.contains(":")) {
+                // Extract localpart from full user ID
+                username.substring(1, username.indexOf(":"))
+            } else {
+                username
+            }
+
             transaction {
-                val userRow = Users.select { Users.username eq username }.singleOrNull()
+                val userRow = Users.select { Users.username eq lookupUsername }.singleOrNull()
                     ?: return@transaction null
 
                 if (userRow[Users.deactivated]) return@transaction null
