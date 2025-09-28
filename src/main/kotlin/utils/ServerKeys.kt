@@ -290,8 +290,8 @@ object ServerKeys {
             signature.initSign(privateKey)
             signature.update(data)
             val signatureBytes = signature.sign()
-            // Use unpadded Base64 as per Matrix specification appendices
-            val signatureBase64 = Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
+            // Use unpadded base64url as per Matrix specification
+            val signatureBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(signatureBytes)
             logger.trace("Generated signature: ${signatureBase64.take(32)}...")
             return signatureBase64
         } catch (e: Exception) {
@@ -304,13 +304,8 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.trace("Verifying signature for ${data.size} bytes of data")
         return try {
-            // Handle both padded and unpadded Base64 for compatibility
-            val signatureBytes = try {
-                Base64.getDecoder().decode(signature)
-            } catch (e: IllegalArgumentException) {
-                // Try with padding if unpadded decoding fails
-                Base64.getDecoder().decode(signature)
-            }
+            // Use base64url decoding as per Matrix specification
+            val signatureBytes = Base64.getUrlDecoder().decode(signature)
 
             val sig = EdDSAEngine()
             sig.initVerify(publicKey)

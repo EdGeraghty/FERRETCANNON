@@ -107,7 +107,11 @@ fun Route.federationV1UserQuery() {
             // Get user profile information
             val profile = getUserProfile(userId, field)
             if (profile != null) {
-                call.respond(profile)
+                call.respond(buildJsonObject {
+                    profile.forEach { (key, value) ->
+                        put(key, JsonPrimitive(value as String))
+                    }
+                })
             } else {
                 call.respond(HttpStatusCode.NotFound, buildJsonObject {
                     put("errcode", "M_NOT_FOUND")

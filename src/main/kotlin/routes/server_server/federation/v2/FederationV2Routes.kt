@@ -159,16 +159,21 @@ fun Application.federationV2Routes() {
                         val roomId = call.parameters["roomId"] ?: return@put call.respond(HttpStatusCode.BadRequest)
                         val eventId = call.parameters["eventId"] ?: return@put call.respond(HttpStatusCode.BadRequest)
 
+                        println("Federation invite received: roomId=$roomId, eventId=$eventId")
+
                         // Authenticate the request
                         val body = call.receiveText()
                         val authHeader = call.request.headers["Authorization"]
                         if (authHeader == null || !MatrixAuth.verifyAuth(call, authHeader, body)) {
+                            println("Federation invite auth failed")
                             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
                                 put("errcode", "M_UNAUTHORIZED")
                                 put("error", "Invalid signature")
                             })
                             return@put
                         }
+
+                        println("Federation invite auth succeeded")
 
                         // Check Server ACL
                         val serverName = extractServerNameFromAuth(authHeader)
@@ -211,9 +216,12 @@ fun Application.federationV2Routes() {
                             // Process the invite event as a PDU
                             val result = processPDU(Json.parseToJsonElement(body))
                             if (result != null) {
+                                println("Federation invite processPDU failed: $result")
                                 call.respond(HttpStatusCode.BadRequest, result)
                                 return@put
                             }
+
+                            println("Federation invite processPDU succeeded")
 
                             // Get the processed event from database
                             val processedEvent = transaction {

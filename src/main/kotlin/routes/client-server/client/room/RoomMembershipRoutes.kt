@@ -289,6 +289,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                         }
 
                         val signedEvent = MatrixAuth.hashAndSignEvent(inviteEvent, localServer)
+                        println("Sending federation invite to $inviteeServer for room $roomId")
                         runBlocking {
                             MatrixAuth.sendFederationInvite(inviteeServer, roomId, signedEvent, config)
                         }

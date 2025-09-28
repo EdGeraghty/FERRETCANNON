@@ -2,14 +2,18 @@ package utils
 
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
+import io.ktor.client.engine.okhttp.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.security.cert.X509Certificate
+import javax.net.ssl.*
 import org.xbill.DNS.*
+
+import org.slf4j.LoggerFactory
 
 /**
  * Server Discovery utilities for Matrix federation
@@ -17,13 +21,34 @@ import org.xbill.DNS.*
  */
 object ServerDiscovery {
 
-    private val client = HttpClient(CIO)
+    private val logger = LoggerFactory.getLogger("utils.ServerDiscovery")
+
+    private val trustManager = object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+    }
+
+    private val sslContext = SSLContext.getInstance("TLS").apply {
+        init(null, arrayOf(trustManager), null)
+    }
+
+    private val client = HttpClient(OkHttp) {
+        engine {
+            config {
+                sslSocketFactory(sslContext.socketFactory, trustManager)
+                hostnameVerifier { _, _ -> true }
+            }
+        }
+    }
 
     /**
      * Resolve a server name to connection details
      * Follows the algorithm from https://spec.matrix.org/v1.15/server-server-api/#resolving-server-names
      */
     fun resolveServerName(serverName: String): ServerConnectionDetails? {
+        println("DEBUG: resolveServerName called for $serverName")
+        logger.info("resolveServerName called for $serverName")
         return try {
             // Step 1: If hostname is an IP literal
             if (isIpLiteral(serverName)) {
@@ -37,6 +62,8 @@ object ServerDiscovery {
 
             // Step 2: If hostname is not IP literal and server name includes explicit port
             val (hostname, port) = parseServerName(serverName)
+            println("DEBUG: Parsed serverName '$serverName' to hostname='$hostname', port=$port")
+            logger.info("Parsed serverName '$serverName' to hostname='$hostname', port=$port")
             if (port != null) {
                 return ServerConnectionDetails(
                     host = hostname,
@@ -47,6 +74,8 @@ object ServerDiscovery {
             }
 
             // Step 3: Try .well-known
+            println("DEBUG: About to call fetchWellKnown for $hostname")
+            logger.info("About to call fetchWellKnown for $hostname")
             val wellKnownResult = fetchWellKnown(hostname)
             if (wellKnownResult != null) {
                 return wellKnownResult
@@ -80,9 +109,10 @@ object ServerDiscovery {
 
     private fun isIpLiteral(hostname: String): Boolean {
         return try {
+            // Check if it's a valid IP address (IPv4 or IPv6)
             InetAddress.getByName(hostname)
-            true
-        } catch (e: UnknownHostException) {
+            hostname.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$")) || hostname.contains(":")
+        } catch (e: Exception) {
             false
         }
     }
@@ -98,13 +128,17 @@ object ServerDiscovery {
     }
 
     private fun fetchWellKnown(hostname: String): ServerConnectionDetails? {
+        logger.info("fetchWellKnown called for $hostname")
+        logger.info("Attempting to fetch https://$hostname/.well-known/matrix/server")
         return try {
             val response = runBlocking {
                 client.get("https://$hostname/.well-known/matrix/server")
             }
 
+            logger.info("fetchWellKnown: got response for $hostname, status: ${response.status}")
             if (response.status == HttpStatusCode.OK) {
                 val json = runBlocking { response.body<String>() }
+                logger.info("fetchWellKnown: json for $hostname: $json")
                 val data = Json.parseToJsonElement(json).jsonObject
                 val server = data["m.server"]?.jsonPrimitive?.content ?: return null
 
@@ -144,7 +178,7 @@ object ServerDiscovery {
                 null
             }
         } catch (e: Exception) {
-            println("Error fetching .well-known for $hostname: ${e.message}")
+            logger.error("Error fetching .well-known for $hostname: ${e.message}")
             null
         }
     }
@@ -198,7 +232,7 @@ object ServerDiscovery {
                 hostHeader = target
             )
         } catch (e: Exception) {
-            println("Error looking up SRV record for $srvName: ${e.message}")
+            logger.error("Error looking up SRV record for $srvName: ${e.message}")
             null
         }
     }

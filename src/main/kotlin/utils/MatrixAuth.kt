@@ -2,7 +2,7 @@ package utils
 
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
+import io.ktor.client.engine.okhttp.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -11,7 +11,8 @@ import kotlinx.serialization.json.*
 import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPublicKey
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
-import java.security.spec.X509EncodedKeySpec
+import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
+import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
 import java.security.MessageDigest
 import java.security.Signature
 import java.util.*
@@ -27,7 +28,24 @@ import org.slf4j.LoggerFactory
 object MatrixAuth {
     private val logger = LoggerFactory.getLogger("utils.MatrixAuth")
 
-    private val client = HttpClient(CIO)
+    private val trustManager = object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+    }
+
+    private val sslContext = SSLContext.getInstance("TLS").apply {
+        init(null, arrayOf(trustManager), null)
+    }
+
+    private val client = HttpClient(OkHttp) {
+        engine {
+            config {
+                sslSocketFactory(sslContext.socketFactory, trustManager)
+                hostnameVerifier { _, _ -> true }
+            }
+        }
+    }
 
     fun verifyAuth(call: ApplicationCall, authHeader: String?, body: String?): Boolean {
         if (authHeader == null) return false
@@ -72,25 +90,36 @@ object MatrixAuth {
         val authOrigin = authParams["origin"] ?: return false
         val authDestination = authParams["destination"] ?: return false
 
+        println("verifyRequest: origin=$origin, destination=$destination, keyId=$keyId")
+
         if (authOrigin != origin || authDestination != destination) return false
 
         // Fetch public key
         val publicKey = fetchPublicKey(origin, keyId) ?: return false
 
+        println("verifyRequest: public key fetched successfully")
+
         // Build JSON with sorted keys for canonical form
         val jsonMap = mutableMapOf<String, Any>()
         jsonMap["method"] = method
-        jsonMap["uri"] = uri
+        jsonMap["uri"] = java.net.URLDecoder.decode(uri, "UTF-8")
         jsonMap["origin"] = origin
         jsonMap["destination"] = destination
         if (content != null) {
             jsonMap["content"] = Json.parseToJsonElement(content)
         }
 
+        println("verifyRequest: jsonMap: $jsonMap")
+
         val canonicalJson = canonicalizeJson(jsonMap)
 
+        println("verifyRequest: canonical JSON: $canonicalJson")
+        println("verifyRequest: signature to verify: $sig")
+
         // Verify signature
-        return verifySignature(canonicalJson, sig, publicKey)
+        val sigVerified = verifySignature(canonicalJson, sig, publicKey)
+        println("verifyRequest: signature verification result: $sigVerified")
+        return sigVerified
     }
 
     internal fun parseAuthorization(auth: String): Map<String, String>? {
@@ -104,6 +133,7 @@ object MatrixAuth {
 
     private suspend fun fetchPublicKey(serverName: String, keyId: String): EdDSAPublicKey? {
         return try {
+            println("fetchPublicKey: fetching key $keyId from $serverName")
             // Use server discovery to resolve the server name
             val connectionDetails = ServerDiscovery.resolveServerName(serverName)
             if (connectionDetails == null) {
@@ -134,14 +164,13 @@ object MatrixAuth {
             val verifyKeys = data["verify_keys"]?.jsonObject ?: return null
             val keyData = verifyKeys[keyId]?.jsonObject ?: return null
             val keyBase64 = keyData["key"]?.jsonPrimitive?.content ?: return null
-            // Handle both padded and unpadded Base64 for compatibility
-            val keyBytes = try {
-                Base64.getDecoder().decode(keyBase64)
-            } catch (e: IllegalArgumentException) {
-                Base64.getDecoder().decode(keyBase64)
-            }
-            val spec = X509EncodedKeySpec(keyBytes)
-            EdDSAPublicKey(spec)
+            // Matrix uses base64url encoding for keys
+            val keyBytes = Base64.getUrlDecoder().decode(keyBase64)
+            // Create EdDSA public key from raw bytes
+            val spec = net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec(keyBytes, net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable.getByName("Ed25519"))
+            val publicKey = net.i2p.crypto.eddsa.EdDSAPublicKey(spec)
+            println("fetchPublicKey: successfully fetched and parsed key $keyId from $serverName")
+            publicKey
         } catch (e: Exception) {
             logger.error("Error fetching public key from $serverName", e)
             null
@@ -204,12 +233,8 @@ object MatrixAuth {
             val sig = EdDSAEngine()
             sig.initVerify(publicKey)
             sig.update(data.toByteArray(Charsets.UTF_8))
-            // Handle both padded and unpadded Base64 for compatibility
-            val sigBytes = try {
-                Base64.getDecoder().decode(signature)
-            } catch (e: IllegalArgumentException) {
-                Base64.getDecoder().decode(signature)
-            }
+            // Matrix uses base64url encoding for signatures
+            val sigBytes = Base64.getUrlDecoder().decode(signature)
             sig.verify(sigBytes)
         } catch (e: Exception) {
             false
@@ -441,6 +466,7 @@ object MatrixAuth {
      * Send an invite event to a remote server via federation
      */
     suspend fun sendFederationInvite(remoteServer: String, roomId: String, inviteEvent: JsonObject, config: config.ServerConfig) {
+        println("sendFederationInvite called: remoteServer=$remoteServer, roomId=$roomId")
         try {
             val eventId = inviteEvent["event_id"]?.jsonPrimitive?.content ?: return
 
