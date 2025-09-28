@@ -72,15 +72,20 @@ fun Route.authRoutes(config: ServerConfig) {
                 return@post
             }
 
+            logger.info("Login attempt for user: $username")
+
             // Authenticate user
             val authenticatedUserId = AuthUtils.authenticateUser(username, password)
             if (authenticatedUserId == null) {
+                logger.warn("Authentication failed for user: $username")
                 call.respond(HttpStatusCode.Forbidden, buildJsonObject {
                     put("errcode", "M_FORBIDDEN")
                     put("error", "Invalid username or password")
                 })
                 return@post
             }
+
+            logger.info("Authentication successful for user: $authenticatedUserId")
 
             // Create access token
             val accessToken = AuthUtils.createAccessToken(
@@ -89,6 +94,8 @@ fun Route.authRoutes(config: ServerConfig) {
                 userAgent = call.request.headers["User-Agent"],
                 ipAddress = call.request.headers["X-Forwarded-For"] ?: call.request.headers["X-Real-IP"]
             )
+
+            logger.info("Access token created for user: $authenticatedUserId")
 
             // Return successful login response
             call.respond(buildJsonObject {
@@ -99,6 +106,7 @@ fun Route.authRoutes(config: ServerConfig) {
             })
 
         } catch (e: Exception) {
+            logger.error("Login error", e)
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
                 put("error", "Internal server error")

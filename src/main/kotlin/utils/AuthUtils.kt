@@ -218,22 +218,28 @@ object AuthUtils {
      * Authenticate user with password
      */
     fun authenticateUser(username: String, password: String): String? {
-        return transaction {
-            val userRow = Users.select { Users.username eq username }.singleOrNull()
-                ?: return@transaction null
+        return try {
+            transaction {
+                val userRow = Users.select { Users.username eq username }.singleOrNull()
+                    ?: return@transaction null
 
-            if (userRow[Users.deactivated]) return@transaction null
+                if (userRow[Users.deactivated]) return@transaction null
 
-            if (userRow[Users.isGuest]) return@transaction userRow[Users.userId]
+                if (userRow[Users.isGuest]) return@transaction userRow[Users.userId]
 
-            if (verifyPassword(password, userRow[Users.passwordHash])) {
-                // Update last seen
-                Users.update({ Users.userId eq userRow[Users.userId] }) {
-                    it[lastSeen] = System.currentTimeMillis()
+                if (verifyPassword(password, userRow[Users.passwordHash])) {
+                    // Update last seen
+                    Users.update({ Users.userId eq userRow[Users.userId] }) {
+                        it[lastSeen] = System.currentTimeMillis()
+                    }
+                    return@transaction userRow[Users.userId]
                 }
-                return@transaction userRow[Users.userId]
-            }
 
+                null
+            }
+        } catch (e: Exception) {
+            println("Error in authenticateUser: ${e.message}")
+            e.printStackTrace()
             null
         }
     }

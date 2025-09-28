@@ -43,12 +43,20 @@ RUN mkdir -p /data && \
 # Install sqlite for migration
 RUN apk add --no-cache sqlite
 
+# Copy migration script
+COPY migrate_db.kts migrate_db.kts
+
+# Generate a funny build version
+RUN echo "Ferret Cannon Build $(date +%s | sha256sum | head -c 8)-$(shuf -n 1 -e 'Banana' 'Rocket' 'Ninja' 'Disco' 'Zombie' 'Unicorn' 'Pirate' 'Laser')" > /app/version.txt
+
 # Create a wrapper script that includes migration
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo './check_debug.sh' >> /app/start.sh && \
+    echo 'echo "🚀 $(cat /app/version.txt)"' >> /app/start.sh && \
     echo 'echo "Starting database migration..."' >> /app/start.sh && \
     echo 'if [ -f "/data/ferretcannon.db" ]; then' >> /app/start.sh && \
     echo '  sqlite3 /data/ferretcannon.db "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;" 2>/dev/null || echo "is_admin column may already exist"' >> /app/start.sh && \
+    echo '  sqlite3 /data/ferretcannon.db "ALTER TABLE server_keys ADD COLUMN private_key TEXT;" 2>/dev/null || echo "private_key column may already exist"' >> /app/start.sh && \
     echo '  echo "Migration completed."' >> /app/start.sh && \
     echo 'else' >> /app/start.sh && \
     echo '  echo "Database not found, skipping migration."' >> /app/start.sh && \

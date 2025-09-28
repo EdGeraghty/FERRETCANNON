@@ -158,6 +158,11 @@ fun Application.clientRoutes(config: ServerConfig) {
             route("/client") {
                 // Server versions endpoint (for backward compatibility)
                 get("/versions") {
+                    val buildVersion = try {
+                        java.io.File("/app/version.txt").readText().trim()
+                    } catch (e: Exception) {
+                        "Ferret Cannon Build Unknown"
+                    }
                     call.respondText("""
                         {
                             "versions": [
@@ -185,7 +190,8 @@ fun Application.clientRoutes(config: ServerConfig) {
                                 "v1.15",
                                 "v1.16"
                             ],
-                            "unstable_features": {}
+                            "unstable_features": {},
+                            "server_version": "$buildVersion"
                         }
                     """.trimIndent(), ContentType.Application.Json)
                 }
@@ -193,6 +199,11 @@ fun Application.clientRoutes(config: ServerConfig) {
                 route("/v3") {
                     // Server versions endpoint
                     get("/versions") {
+                        val buildVersion = try {
+                            java.io.File("/app/version.txt").readText().trim()
+                        } catch (e: Exception) {
+                            "Ferret Cannon Build Unknown"
+                        }
                         call.respondText("""
                             {
                                 "versions": [
@@ -220,7 +231,8 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     "v1.15",
                                     "v1.16"
                                 ],
-                                "unstable_features": {}
+                                "unstable_features": {},
+                                "server_version": "$buildVersion"
                             }
                         """.trimIndent(), ContentType.Application.Json)
                     }

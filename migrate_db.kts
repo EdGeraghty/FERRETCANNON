@@ -10,14 +10,24 @@ import java.io.File
 
 println("Starting database migration...")
 
-// Connect to the database
-val dbFile = File("ferretcannon.db")
-if (!dbFile.exists()) {
-    println("Database file does not exist at /data/ferretcannon.db")
+// Connect to the database - check both locations
+val dbPaths = listOf("/data/ferretcannon.db", "ferretcannon.db")
+var dbFile: File? = null
+for (path in dbPaths) {
+    val file = File(path)
+    if (file.exists()) {
+        dbFile = file
+        break
+    }
+}
+
+if (dbFile == null) {
+    println("Database file not found at any of: ${dbPaths.joinToString(", ")}")
     System.exit(1)
 }
 
-Database.connect("jdbc:sqlite:ferretcannon.db", driver = "org.sqlite.JDBC")
+println("Using database at: ${dbFile.absolutePath}")
+Database.connect("jdbc:sqlite:${dbFile.absolutePath}", driver = "org.sqlite.JDBC")
 
 transaction {
     // Import the models to ensure tables are available
@@ -75,6 +85,27 @@ transaction {
         println("✅ Added is_admin column")
     } else {
         println("✅ is_admin column already exists")
+    }
+
+    // Check if private_key column exists in server_keys table
+    val serverKeysResult = exec("PRAGMA table_info(server_keys)") { rs ->
+        var hasPrivateKey = false
+        while (rs.next()) {
+            val columnName = rs.getString("name")
+            if (columnName == "private_key") {
+                hasPrivateKey = true
+                break
+            }
+        }
+        hasPrivateKey
+    }
+
+    if (serverKeysResult == false) {
+        println("Adding private_key column to server_keys table...")
+        exec("ALTER TABLE server_keys ADD COLUMN private_key TEXT")
+        println("✅ Added private_key column")
+    } else {
+        println("✅ private_key column already exists")
     }
 
     // Check for other potentially missing columns

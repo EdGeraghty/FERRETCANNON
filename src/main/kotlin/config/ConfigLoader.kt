@@ -12,8 +12,10 @@ object ConfigLoader {
     }
 
     fun loadConfig(configPath: String = "config.yml"): ServerConfig {
+        // Check for environment variable CONFIG_FILE
+        val envConfigPath = System.getenv("CONFIG_FILE") ?: configPath
         return try {
-            val configFile = File(configPath)
+            val configFile = File(envConfigPath)
             if (configFile.exists()) {
                 println("Loading configuration from: ${configFile.absolutePath}")
                 configFile.inputStream().use { loadFromStream(it) }
