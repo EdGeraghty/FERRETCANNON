@@ -164,8 +164,13 @@ object MatrixAuth {
             val verifyKeys = data["verify_keys"]?.jsonObject ?: return null
             val keyData = verifyKeys[keyId]?.jsonObject ?: return null
             val keyBase64 = keyData["key"]?.jsonPrimitive?.content ?: return null
-            // Matrix uses base64url encoding for keys
-            val keyBytes = Base64.getUrlDecoder().decode(keyBase64)
+            // Matrix uses base64url encoding for keys, but some servers may use standard base64
+            val keyBytes = try {
+                Base64.getUrlDecoder().decode(keyBase64)
+            } catch (e: IllegalArgumentException) {
+                // Fallback to standard base64 decoding
+                Base64.getDecoder().decode(keyBase64)
+            }
             // Create EdDSA public key from raw bytes
             val spec = net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec(keyBytes, net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable.getByName("Ed25519"))
             val publicKey = net.i2p.crypto.eddsa.EdDSAPublicKey(spec)

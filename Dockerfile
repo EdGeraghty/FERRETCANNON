@@ -7,17 +7,20 @@ FROM eclipse-temurin:17-jdk-alpine as builder
 WORKDIR /app
 
 # Copy the Gradle wrapper and build files
-COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties* ./
+# Force rebuild - v8
+COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties* timestamp.txt ./
 COPY gradle/ gradle/
 
 # Copy the source code
+# Force rebuild - v9
 COPY src/ src/
 
 # Make the Gradle wrapper executable
 RUN chmod +x gradlew
 
 # Build the application
-RUN ./gradlew installDist --no-daemon -x test --no-configuration-cache
+# Force rebuild - v10
+RUN ./gradlew installDist --no-daemon -x test --no-configuration-cache --refresh-dependencies
 
 # Stage 2: Runtime stage
 FROM eclipse-temurin:17-jdk-alpine
@@ -70,6 +73,6 @@ EXPOSE 8080
 # Set environment variables for production
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
-# Force clean build - version 5
+# Force clean build - version 7 - 1727600000
 # Run the application directly
 CMD ["./start.sh"]
