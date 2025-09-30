@@ -106,6 +106,7 @@ fun Route.federationV1UserQuery() {
         try {
             // Get user profile information
             val profile = getUserProfile(userId, field)
+            println("DEBUG: query/profile for userId=$userId, field=$field, profile=$profile")
             if (profile != null) {
                 call.respond(buildJsonObject {
                     profile.forEach { (key, value) ->

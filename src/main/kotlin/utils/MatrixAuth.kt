@@ -13,6 +13,7 @@ import net.i2p.crypto.eddsa.EdDSAPublicKey
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
+import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.Signature
 import java.util.*
@@ -102,9 +103,10 @@ object MatrixAuth {
         // Build JSON with sorted keys for canonical form
         val jsonMap = mutableMapOf<String, Any>()
         jsonMap["method"] = method
-        jsonMap["uri"] = java.net.URLDecoder.decode(uri, "UTF-8")
+        jsonMap["uri"] = uri
         jsonMap["origin"] = origin
         jsonMap["destination"] = destination
+        authParams["timestamp"]?.let { jsonMap["timestamp"] = it.toLong() }
         if (content != null) {
             jsonMap["content"] = Json.parseToJsonElement(content)
         }
@@ -238,8 +240,13 @@ object MatrixAuth {
             val sig = EdDSAEngine()
             sig.initVerify(publicKey)
             sig.update(data.toByteArray(Charsets.UTF_8))
-            // Matrix uses base64url encoding for signatures
-            val sigBytes = Base64.getUrlDecoder().decode(signature)
+            // Matrix uses base64url encoding for signatures, but some servers may use standard base64
+            val sigBytes = try {
+                Base64.getUrlDecoder().decode(signature)
+            } catch (e: IllegalArgumentException) {
+                // Fallback to standard base64 decoding
+                Base64.getDecoder().decode(signature)
+            }
             sig.verify(sigBytes)
         } catch (e: Exception) {
             false

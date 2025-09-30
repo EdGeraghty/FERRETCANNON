@@ -22,8 +22,10 @@ import utils.MatrixAuth
 import utils.ServerKeys
 import models.Events
 import models.Rooms
+import org.slf4j.LoggerFactory
 
 val stateResolver = StateResolver()
+private val logger = LoggerFactory.getLogger("routes.server_server.federation.v1.FederationV1Utils")
 
 // Server ACL checking function
 fun checkServerACL(roomId: String, serverName: String): Boolean {
@@ -43,7 +45,7 @@ fun checkServerACL(roomId: String, serverName: String): Boolean {
 
         // Validate server name format
         if (!MatrixAuth.isValidServerName(serverName)) {
-            println("Invalid server name format: $serverName")
+            logger.warn("Invalid server name format: $serverName")
             return false
         }
 
@@ -80,7 +82,7 @@ fun checkServerACL(roomId: String, serverName: String): Boolean {
         // Not in allow list
         return false
     } catch (e: Exception) {
-        println("Error checking server ACL for room $roomId and server $serverName: ${e.message}")
+        logger.error("Error checking server ACL for room $roomId and server $serverName: ${e.message}")
         // On error, deny access for security
         false
     }
@@ -274,7 +276,7 @@ fun getRoomInfo(roomId: String): Map<String, Any?>? {
             "room_type" to roomType
         ).filterValues { it != null }
     } catch (e: Exception) {
-        println("Error getting room info for $roomId: ${e.message}")
+        logger.error("Error getting room info for $roomId: ${e.message}")
         null
     }
 }
@@ -308,7 +310,7 @@ fun findRoomByAlias(roomAlias: String): String? {
 
         null // Alias not found
     } catch (e: Exception) {
-        println("Error finding room by alias $roomAlias: ${e.message}")
+        logger.error("Error finding room by alias $roomAlias: ${e.message}")
         null
     }
 }
@@ -320,8 +322,11 @@ fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
             Users.select { Users.userId eq userId }.singleOrNull()
         }
 
+        logger.trace("getUserProfile for userId=$userId, field=$field, userRow found=${userRow != null}")
+
         if (userRow == null) {
             // User doesn't exist in our database, try to find profile info from room state
+            logger.debug("User $userId not found in Users table, checking room state")
             return getUserProfileFromRoomState(userId, field)
         }
 
@@ -347,18 +352,22 @@ fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
             }
             else -> {
                 // Unknown field
+                logger.debug("Unknown field requested: $field")
                 return null
             }
         }
 
+        logger.debug("getUserProfile returning profile from Users table: $profile")
+
         if (profile.isEmpty()) {
             // If no profile data in Users table, try room state as fallback
+            logger.debug("No profile data in Users table for $userId, checking room state")
             return getUserProfileFromRoomState(userId, field)
         }
 
         profile
     } catch (e: Exception) {
-        println("Error getting user profile for $userId: ${e.message}")
+        logger.error("Error getting user profile for $userId: ${e.message}")
         null
     }
 }
@@ -420,7 +429,7 @@ fun getUserProfileFromRoomState(userId: String, field: String?): Map<String, Any
 
         if (profile.isEmpty()) null else profile
     } catch (e: Exception) {
-        println("Error getting user profile from room state for $userId: ${e.message}")
+        logger.error("Error getting user profile from room state for $userId: ${e.message}")
         null
     }
 }

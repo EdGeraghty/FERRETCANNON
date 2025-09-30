@@ -40,7 +40,7 @@
     </logger>
 
     <!-- Database/Exposed logging -->
-    <logger name="Exposed" level="INFO" additivity="false">
+    <logger name="Exposed" level="TRACE" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </logger>
