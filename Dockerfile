@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Copy the Gradle wrapper and build files
 # Force rebuild - v8
-COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties* timestamp.txt ./
+COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties* ./
 COPY gradle/ gradle/
 
 # Copy the source code
@@ -45,9 +45,6 @@ RUN mkdir -p /data && \
 
 # Install sqlite for migration
 RUN apk add --no-cache sqlite
-
-# Copy migration script
-COPY migrate_db.kts migrate_db.kts
 
 # Generate a funny build version
 RUN echo "Ferret Cannon Build $(date +%s | sha256sum | head -c 8)-$(shuf -n 1 -e 'Banana' 'Rocket' 'Ninja' 'Disco' 'Zombie' 'Unicorn' 'Pirate' 'Laser')" > /app/version.txt
