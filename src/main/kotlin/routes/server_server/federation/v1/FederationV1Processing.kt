@@ -26,9 +26,10 @@ import utils.ServerKeys
 import models.Events
 import models.Rooms
 
-fun processPDU(pdu: JsonElement): JsonElement? {
+fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? {
     return try {
-        val event = pdu.jsonObject
+        println("processPDU: Starting PDU processing")
+        var event = pdu.jsonObject
 
         // 1. Check validity: has room_id
         if (event["room_id"] == null) return buildJsonObject {
@@ -41,8 +42,10 @@ fun processPDU(pdu: JsonElement): JsonElement? {
             put("error", "Missing room_id")
         }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
-        // Validate room_id format
-        if (!roomId.startsWith("!") || !roomId.contains(":")) {
+        // Validate room_id format (Matrix spec allows both opaque and legacy formats)
+        println("processPDU: room_id value: '$roomId'")
+        if (!roomId.startsWith("!")) {
+            println("processPDU: room_id validation failed - must start with '!'")
             return buildJsonObject {
                 put("errcode", "M_INVALID_EVENT")
                 put("error", "Invalid room_id format")
@@ -68,22 +71,24 @@ fun processPDU(pdu: JsonElement): JsonElement? {
             }.toString().let { Json.parseToJsonElement(it).jsonObject }
         }
 
-        // 3. Check validity: has event_id
-        if (event["event_id"] == null) return buildJsonObject {
-            put("errcode", "M_INVALID_EVENT")
-            put("error", "Missing event_id")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-        val eventId = event["event_id"]?.jsonPrimitive?.content ?: return buildJsonObject {
-            put("errcode", "M_INVALID_EVENT")
-            put("error", "Missing event_id")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-        // Validate event_id format
-        if (!eventId.startsWith("$")) {
+        // 3. Check validity: has event_id (or will have one added)
+        var eventId: String? = null
+        if (event["event_id"] != null) {
+            eventId = event["event_id"]?.jsonPrimitive?.content
+            // Validate event_id format if present
+            if (eventId != null && !eventId.startsWith("$")) {
+                return buildJsonObject {
+                    put("errcode", "M_INVALID_EVENT")
+                    put("error", "Invalid event_id format")
+                }.toString().let { Json.parseToJsonElement(it).jsonObject }
+            }
+        } else if (providedEventId != null) {
+            // Will be added after hash verification
+            eventId = providedEventId
+        } else {
             return buildJsonObject {
                 put("errcode", "M_INVALID_EVENT")
-                put("error", "Invalid event_id format")
+                put("error", "Missing event_id")
             }.toString().let { Json.parseToJsonElement(it).jsonObject }
         }
 
@@ -93,23 +98,33 @@ fun processPDU(pdu: JsonElement): JsonElement? {
             put("error", "Missing type")
         }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
-        // 5. Check hash
-        if (!MatrixAuth.verifyEventHash(event)) return buildJsonObject {
-            put("errcode", "M_INVALID_EVENT")
-            put("error", "Invalid hash")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-        // 6. Check signatures
+        // 5. Check signatures FIRST (signatures are computed without event_id)
         val sigValid = runBlocking { MatrixAuth.verifyEventSignatures(event) }
         if (!sigValid) return buildJsonObject {
             put("errcode", "M_INVALID_EVENT")
             put("error", "Invalid signature")
         }.toString().let { Json.parseToJsonElement(it).jsonObject }
 
-        // 7. Get auth state from auth_events
+        // 6. Check hash
+        if (!MatrixAuth.verifyEventHash(event)) return buildJsonObject {
+            put("errcode", "M_INVALID_EVENT")
+            put("error", "Invalid hash")
+        }.toString().let { Json.parseToJsonElement(it).jsonObject }
+
+        // 7. Add event_id if provided (after signature and hash verification)
+        if (providedEventId != null && !event.containsKey("event_id")) {
+            event = buildJsonObject {
+                event.forEach { (key, value) -> put(key, value) }
+                put("event_id", providedEventId)
+            }
+            eventId = providedEventId // Update the variable too
+            println("processPDU: Added event_id $providedEventId after signature and hash verification")
+        }
+
+        // 8. Get auth state from auth_events
         val authState = getAuthState(event)
 
-        // 8. Check auth based on auth_events
+        // 9. Check auth based on auth_events
         if (!stateResolver.checkAuthRules(event, authState)) return buildJsonObject {
             put("errcode", "M_INVALID_EVENT")
             put("error", "Auth check failed")
@@ -118,20 +133,71 @@ fun processPDU(pdu: JsonElement): JsonElement? {
         // 9. Get current state
         val currentState = stateResolver.getResolvedState(roomId)
 
-        // 10. Check auth based on current state
-        val softFail = !stateResolver.checkAuthRules(event, currentState)
+        // 10. Special handling for invites to unknown rooms (federation)
+        val isInviteToUnknownRoom = event["type"]?.jsonPrimitive?.content == "m.room.member" &&
+                event["content"]?.jsonObject?.get("membership")?.jsonPrimitive?.content == "invite" &&
+                currentState.isEmpty()
 
-        // 11. If state event, update current state
+        println("processPDU: Room $roomId state check - currentState.isEmpty(): ${currentState.isEmpty()}, isInviteToUnknownRoom: $isInviteToUnknownRoom")
+
+        val softFail = if (isInviteToUnknownRoom) {
+            // For invites to unknown rooms, we need to create the room first
+            // This will be handled by the federation invite logic
+            println("Processing invite to unknown room $roomId - allowing")
+            false // Don't soft fail invites to unknown rooms
+        } else {
+            val authResult = stateResolver.checkAuthRules(event, currentState)
+            println("processPDU: Auth check result for existing room: $authResult")
+            !authResult
+        }
+
+        // 11. Handle room creation for invites to unknown rooms
+        if (isInviteToUnknownRoom) {
+            println("Creating room $roomId for federation invite")
+            // Create the room with minimal state
+            transaction {
+                // Check if room already exists (race condition protection)
+                val existingRoom = Rooms.select { Rooms.roomId eq roomId }.singleOrNull()
+                if (existingRoom == null) {
+                    Rooms.insert {
+                        it[Rooms.roomId] = roomId
+                        it[Rooms.creator] = ""  // Will be set from m.room.create event
+                        it[Rooms.name] = null
+                        it[Rooms.topic] = null
+                        it[Rooms.visibility] = "private"
+                        it[Rooms.roomVersion] = "12"  // Default room version
+                        it[Rooms.isDirect] = false
+                        it[Rooms.currentState] = "{}"  // Will be updated as events are processed
+                        it[Rooms.stateGroups] = "{}"
+                        it[Rooms.published] = false
+                    }
+                    println("Created room $roomId for federation invite")
+                }
+            }
+        }
+
+        // 12. If state event, update current state
         if (event["state_key"] != null) {
-            val newState = currentState.toMutableMap()
+            val stateForUpdate = if (isInviteToUnknownRoom) {
+                mutableMapOf<String, JsonObject>()
+            } else {
+                currentState.toMutableMap()
+            }
             val type = event["type"]?.jsonPrimitive?.content ?: ""
             val stateKey = event["state_key"]?.jsonPrimitive?.content ?: ""
             val key = "$type:$stateKey"
-            newState[key] = event["content"]?.jsonObject ?: JsonObject(mutableMapOf())
-            stateResolver.updateResolvedState(roomId, newState)
+            stateForUpdate[key] = event["content"]?.jsonObject ?: JsonObject(mutableMapOf())
+            stateResolver.updateResolvedState(roomId, stateForUpdate)
         }
 
-        // 12. Store the event
+        // 13. Store the event
+        if (eventId == null) {
+            return buildJsonObject {
+                put("errcode", "M_INVALID_EVENT")
+                put("error", "Event ID not available")
+            }.toString().let { Json.parseToJsonElement(it).jsonObject }
+        }
+        
         transaction {
             Events.insert {
                 it[Events.eventId] = eventId
@@ -163,11 +229,14 @@ fun processPDU(pdu: JsonElement): JsonElement? {
         } else {
             println("PDU stored: $eventId")
         }
+        println("processPDU: Successfully completed processing for $eventId")
         null // Success
     } catch (e: Exception) {
+        println("processPDU: Exception occurred: ${e.message}")
+        e.printStackTrace()
         buildJsonObject {
             put("errcode", "M_BAD_JSON")
-            put("error", "Invalid PDU JSON")
+            put("error", "Invalid PDU JSON: ${e.message}")
         }.toString().let { Json.parseToJsonElement(it).jsonObject }
     }
 }

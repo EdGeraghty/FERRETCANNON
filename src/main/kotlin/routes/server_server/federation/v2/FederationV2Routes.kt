@@ -177,44 +177,67 @@ fun Application.federationV2Routes() {
 
                         // Check Server ACL
                         val serverName = extractServerNameFromAuth(authHeader)
+                        println("Federation invite: checking ACL for server $serverName in room $roomId")
                         if (serverName != null && !checkServerACL(roomId, serverName)) {
+                            println("Federation invite: ACL denied for server $serverName")
                             call.respond(HttpStatusCode.Forbidden, buildJsonObject {
                                 put("errcode", "M_FORBIDDEN")
                                 put("error", "Server access denied by ACL")
                             })
                             return@put
                         }
+                        println("Federation invite: ACL check passed for server $serverName")
 
                         try {
+                            println("Federation invite: about to parse body JSON")
                             val inviteEvent = Json.parseToJsonElement(body).jsonObject
+                            println("Federation invite: parsed body JSON successfully")
 
                             // Validate the event
-                            if (inviteEvent["event_id"]?.jsonPrimitive?.content != eventId) {
+                            println("Federation invite: validating event structure")
+                            val nestedEvent = inviteEvent["event"]?.jsonObject
+                            if (nestedEvent == null) {
+                                println("Federation invite: Missing nested event structure")
                                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                                     put("errcode", "M_INVALID_PARAM")
-                                    put("error", "Event ID mismatch")
+                                    put("error", "Missing event structure")
                                 })
                                 return@put
                             }
+                            println("Federation invite: event structure validation passed")
 
-                            if (inviteEvent["room_id"]?.jsonPrimitive?.content != roomId) {
+                            println("Federation invite: validating room_id")
+                            val roomIdFromEvent = nestedEvent["room_id"]?.jsonPrimitive?.content
+                            if (roomIdFromEvent != roomId) {
+                                println("Federation invite: Room ID mismatch - expected: $roomId, got: $roomIdFromEvent")
                                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                                     put("errcode", "M_INVALID_PARAM")
                                     put("error", "Room ID mismatch")
                                 })
                                 return@put
                             }
+                            println("Federation invite: room_id validation passed")
 
-                            if (inviteEvent["type"]?.jsonPrimitive?.content != "m.room.member") {
+                            println("Federation invite: validating event type")
+                            val eventType = nestedEvent["type"]?.jsonPrimitive?.content
+                            if (eventType != "m.room.member") {
+                                println("Federation invite: Invalid event type - expected: m.room.member, got: $eventType")
                                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                                     put("errcode", "M_INVALID_PARAM")
                                     put("error", "Invalid event type")
                                 })
                                 return@put
                             }
+                            println("Federation invite: event type validation passed")
 
-                            // Process the invite event as a PDU
-                            val result = processPDU(Json.parseToJsonElement(body))
+                            println("Federation invite: event validation passed, calling processPDU for $eventId")
+                            // Process the invite event as a PDU - extract the nested event and add event_id
+                            println("Federation invite: original nested event structure: ${nestedEvent.keys}")
+                            println("Federation invite: original nested event has event_id: ${nestedEvent.containsKey("event_id")}")
+                            
+                            // Pass the original event without adding event_id for proper hash verification
+                            println("Federation invite: calling processPDU with original event structure: ${nestedEvent.keys}")
+                            val result = processPDU(nestedEvent, eventId)
                             if (result != null) {
                                 println("Federation invite processPDU failed: $result")
                                 call.respond(HttpStatusCode.BadRequest, result)

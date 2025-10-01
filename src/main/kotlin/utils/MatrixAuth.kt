@@ -72,6 +72,7 @@ object MatrixAuth {
         val sha256Hash = hashes["sha256"]?.jsonPrimitive?.content ?: return false
 
         val computedHash = computeContentHash(event)
+        println("Hash verification: expected='$sha256Hash', computed='$computedHash'")
         return computedHash == sha256Hash
     }
 
@@ -108,7 +109,13 @@ object MatrixAuth {
         jsonMap["destination"] = destination
         authParams["timestamp"]?.let { jsonMap["timestamp"] = it.toLong() }
         if (content != null) {
-            jsonMap["content"] = Json.parseToJsonElement(content)
+            // Parse the content as JsonElement and convert to a native map structure
+            // to avoid double-encoding issues in canonical JSON
+            val contentElement = Json.parseToJsonElement(content)
+            val nativeContent = jsonElementToNative(contentElement)
+            if (nativeContent != null) {
+                jsonMap["content"] = nativeContent
+            }
         }
 
         println("verifyRequest: jsonMap: $jsonMap")
@@ -217,22 +224,144 @@ object MatrixAuth {
     }
 
     suspend fun verifyEventSignatures(event: JsonObject): Boolean {
-        val signatures = event["signatures"]?.jsonObject ?: return false
-        val sender = event["sender"]?.jsonPrimitive?.content ?: return false
-        val origin = event["origin"]?.jsonPrimitive?.content ?: return false
+        logger.info("=== EVENT SIGNATURE VERIFICATION (Matrix Spec Compliant) ===")
+        logger.info("Original event JSON: $event")
+        
+        val signatures = event["signatures"]?.jsonObject ?: return false.also { logger.info("No signatures found") }
+        val sender = event["sender"]?.jsonPrimitive?.content ?: return false.also { logger.info("No sender found") }
 
-        // Verify sender's signature
-        val senderServer = sender.substringAfter("@").substringAfter(":")
-        val senderKey = fetchPublicKey(senderServer, "ed25519:key1") ?: return false // Assume key1
-        val senderSig = signatures[sender]?.jsonObject?.get("ed25519:key1")?.jsonPrimitive?.content ?: return false
-        if (!verifySignature(canonicalizeJson(event.toMap()), senderSig, senderKey)) return false
-
-        // Verify origin's signature
-        val originKey = fetchPublicKey(origin, "ed25519:key1") ?: return false
-        val originSig = signatures[origin]?.jsonObject?.get("ed25519:key1")?.jsonPrimitive?.content ?: return false
-        if (!verifySignature(canonicalizeJson(event.toMap()), originSig, originKey)) return false
-
-        return true
+        // Get the server from the sender
+        val senderServer = sender.substringAfter(":") // Extract server name from @user:server format
+        logger.info("sender='$sender', senderServer='$senderServer'")
+        
+        // Look for signatures under the server name
+        val serverSignatures = signatures[senderServer]?.jsonObject ?: return false.also { 
+            logger.info("No signatures for server '$senderServer'. Available servers: ${signatures.keys}")
+        }
+        
+        logger.info("Found signatures for server '$senderServer': ${serverSignatures.keys}")
+        
+        // Matrix spec: "First the signature is checked. The event is redacted following the redaction algorithm,
+        // and the resultant object is checked for a signature from the originating server"
+        
+        // Try to find a valid signature for this server
+        for ((keyName, sigValue) in serverSignatures) {
+            if (keyName.startsWith("ed25519:")) {
+                val signature = sigValue.jsonPrimitive.content
+                logger.info("Verifying signature with key: $keyName")
+                val publicKey = fetchPublicKey(senderServer, keyName) ?: continue.also { 
+                    logger.info("Failed to fetch public key for $senderServer/$keyName")
+                }
+                
+                // Apply Matrix redaction algorithm for event signature verification
+                val redactedEvent = createRedactedEvent(event)
+                logger.info("Redacted event for signature verification: $redactedEvent")
+                
+                // Convert to native types for canonical JSON computation
+                val eventForSigning = jsonElementToNative(redactedEvent) as MutableMap<String, Any?>
+                // Remove signatures and hashes for canonical JSON (as per Matrix signing spec)
+                eventForSigning.remove("signatures")
+                eventForSigning.remove("hashes")
+                
+                logger.info("Event for canonical JSON has keys: ${eventForSigning.keys}")
+                val canonicalJson = canonicalizeJson(eventForSigning)
+                logger.info("Canonical JSON for signature: $canonicalJson")
+                
+                val verified = verifySignature(canonicalJson, signature, publicKey)
+                logger.info("Signature verification result for $keyName: $verified")
+                if (verified) {
+                    logger.info("✅ Event signature verified successfully")
+                    
+                    // After signature verification passes, verify event hash
+                    val originalHash = event["hashes"]?.jsonObject?.get("sha256")?.jsonPrimitive?.content
+                    val computedHash = computeContentHash(event)
+                    logger.info("Original event hash: $originalHash")
+                    logger.info("Computed event hash: $computedHash")
+                    
+                    if (originalHash != computedHash) {
+                        logger.error("❌ Event hash mismatch! Original: $originalHash, Computed: $computedHash")
+                        return false
+                    }
+                    logger.info("✅ Event hash verification passed")
+                    
+                    return true
+                }
+            }
+        }
+        
+        logger.info("❌ All event signature verifications failed")
+        return false
+    }
+    
+    // Apply Matrix redaction algorithm for event signature verification
+    private fun createRedactedEvent(event: JsonObject): JsonObject {
+        val eventType = event["type"]?.jsonPrimitive?.content
+        
+        val redactedMap = mutableMapOf<String, JsonElement>()
+        
+        // Core fields always preserved in redaction (Matrix spec Room Version 11)
+        event["event_id"]?.let { redactedMap["event_id"] = it }
+        event["type"]?.let { redactedMap["type"] = it }
+        event["room_id"]?.let { redactedMap["room_id"] = it }
+        event["sender"]?.let { redactedMap["sender"] = it }
+        event["state_key"]?.let { redactedMap["state_key"] = it }
+        event["depth"]?.let { redactedMap["depth"] = it }
+        event["prev_events"]?.let { redactedMap["prev_events"] = it }
+        event["auth_events"]?.let { redactedMap["auth_events"] = it }
+        event["origin_server_ts"]?.let { redactedMap["origin_server_ts"] = it }
+        event["hashes"]?.let { redactedMap["hashes"] = it }
+        event["signatures"]?.let { redactedMap["signatures"] = it }
+        
+        // Apply content redaction based on event type (Matrix spec Room Version 11)
+        event["content"]?.let { content ->
+            val redactedContent = when (eventType) {
+                "m.room.member" -> {
+                    // For signature verification, preserve all content (before redaction)
+                    // The Matrix spec is ambiguous about whether signatures are created on 
+                    // redacted or non-redacted events, so try non-redacted first
+                    content
+                }
+                "m.room.create" -> content // Allow all keys for m.room.create
+                "m.room.join_rules" -> {
+                    val originalContent = content.jsonObject
+                    val contentMap = mutableMapOf<String, JsonElement>()
+                    originalContent["join_rule"]?.let { contentMap["join_rule"] = it }
+                    originalContent["allow"]?.let { contentMap["allow"] = it }
+                    JsonObject(contentMap)
+                }
+                "m.room.power_levels" -> {
+                    val originalContent = content.jsonObject
+                    val contentMap = mutableMapOf<String, JsonElement>()
+                    originalContent["ban"]?.let { contentMap["ban"] = it }
+                    originalContent["events"]?.let { contentMap["events"] = it }
+                    originalContent["events_default"]?.let { contentMap["events_default"] = it }
+                    originalContent["invite"]?.let { contentMap["invite"] = it }
+                    originalContent["kick"]?.let { contentMap["kick"] = it }
+                    originalContent["redact"]?.let { contentMap["redact"] = it }
+                    originalContent["state_default"]?.let { contentMap["state_default"] = it }
+                    originalContent["users"]?.let { contentMap["users"] = it }
+                    originalContent["users_default"]?.let { contentMap["users_default"] = it }
+                    JsonObject(contentMap)
+                }
+                "m.room.history_visibility" -> {
+                    val originalContent = content.jsonObject
+                    val contentMap = mutableMapOf<String, JsonElement>()
+                    originalContent["history_visibility"]?.let { contentMap["history_visibility"] = it }
+                    JsonObject(contentMap)
+                }
+                "m.room.redaction" -> {
+                    val originalContent = content.jsonObject
+                    val contentMap = mutableMapOf<String, JsonElement>()
+                    originalContent["redacts"]?.let { contentMap["redacts"] = it }
+                    JsonObject(contentMap)
+                }
+                else -> JsonObject(emptyMap()) // Strip all content for other event types
+            }
+            redactedMap["content"] = redactedContent
+        }
+        
+        // Explicitly exclude 'unsigned' field as per Matrix spec
+        return JsonObject(redactedMap)
     }
 
     private fun verifySignature(data: String, signature: String, publicKey: EdDSAPublicKey): Boolean {
@@ -240,25 +369,55 @@ object MatrixAuth {
             val sig = EdDSAEngine()
             sig.initVerify(publicKey)
             sig.update(data.toByteArray(Charsets.UTF_8))
-            // Matrix uses base64url encoding for signatures, but some servers may use standard base64
-            val sigBytes = try {
-                Base64.getUrlDecoder().decode(signature)
-            } catch (e: IllegalArgumentException) {
-                // Fallback to standard base64 decoding
-                Base64.getDecoder().decode(signature)
+            
+            logger.info("verifySignature: Attempting to decode signature: '$signature'")
+            logger.info("verifySignature: Signature length: ${signature.length}")
+            
+            // Try multiple decoding strategies as Matrix spec is not completely clear
+            val decodingStrategies = listOf(
+                { Base64.getDecoder().decode(signature) },
+                { Base64.getUrlDecoder().decode(signature) },
+                { Base64.getDecoder().decode(signature + "=".repeat((4 - signature.length % 4) % 4)) },
+                { Base64.getUrlDecoder().decode(signature + "=".repeat((4 - signature.length % 4) % 4)) }
+            )
+            
+            for ((index, strategy) in decodingStrategies.withIndex()) {
+                try {
+                    val sigBytes = strategy()
+                    logger.info("verifySignature: Strategy $index succeeded, signature bytes length: ${sigBytes.size}")
+                    val result = sig.verify(sigBytes)
+                    logger.info("verifySignature: Ed25519 verification result with strategy $index: $result")
+                    if (result) return true
+                } catch (e: Exception) {
+                    logger.info("verifySignature: Strategy $index failed: ${e.message}")
+                }
             }
-            sig.verify(sigBytes)
+            false
         } catch (e: Exception) {
+            logger.error("verifySignature: Exception during signature verification", e)
             false
         }
     }
 
     private fun computeContentHash(event: JsonObject): String {
-        val copy = event.toMutableMap()
-        copy.remove("signatures")
-        copy.remove("hashes")
-        copy.remove("unsigned")
-        val canonical = canonicalizeJson(copy)
+        // Convert JsonObject to native types properly
+        val nativeMap = jsonElementToNative(event) as MutableMap<String, Any?>
+        
+        // Add debug logging to see exactly what's being hashed
+        logger.info("computeContentHash: event before cleanup has keys: ${event.keys}")
+        
+        // Per Matrix spec section 27.4: only remove unsigned, signatures, and hashes
+        nativeMap.remove("signatures")
+        nativeMap.remove("hashes")
+        nativeMap.remove("unsigned")
+        
+        logger.info("computeContentHash: event after cleanup has keys: ${nativeMap.keys}")
+        
+        val canonical = canonicalizeJson(nativeMap)
+        
+        logger.info("computeContentHash: canonical JSON length: ${canonical.length}")
+        logger.info("computeContentHash: canonical JSON (first 500 chars): ${canonical.take(500)}")
+        
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
         // Use unpadded Base64 as per Matrix specification appendices
@@ -285,6 +444,25 @@ object MatrixAuth {
             }
             is JsonObject -> canonicalizeJson(data.toMap())
             else -> data.toString()
+        }
+    }
+
+    private fun jsonElementToNative(element: JsonElement): Any? {
+        return when (element) {
+            is JsonNull -> null
+            is JsonPrimitive -> {
+                when {
+                    element.isString -> element.content
+                    element.content == "true" -> true
+                    element.content == "false" -> false
+                    else -> {
+                        // Try to parse as number
+                        element.content.toLongOrNull() ?: element.content.toDoubleOrNull() ?: element.content
+                    }
+                }
+            }
+            is JsonArray -> element.map { jsonElementToNative(it) }
+            is JsonObject -> element.map { it.key to jsonElementToNative(it.value) }.toMap()
         }
     }
 

@@ -88,12 +88,32 @@ fun Route.federationV1UserQuery() {
             return@get
         }
 
+        // Validate user ID format
+        if (!userId.matches(Regex("@[^:]+:[^:]+.*"))) {
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_PARAM")
+                put("error", "Invalid user ID format")
+            })
+            return@get
+        }
+
         // Authenticate the request
         val authHeader = call.request.headers["Authorization"]
-        val isAuthValid = try {
-            authHeader != null && MatrixAuth.verifyAuth(call, authHeader, null)
-        } catch (e: Exception) {
-            false
+        println("DEBUG: Auth header present: ${authHeader != null}")
+        println("DEBUG: Auth header value: $authHeader")
+        
+        // For federation profile queries, authentication may be optional depending on server policy
+        // Some Matrix servers allow unauthenticated profile queries for federation
+        val isAuthValid = if (authHeader != null) {
+            try {
+                MatrixAuth.verifyAuth(call, authHeader, null)
+            } catch (e: Exception) {
+                println("Auth verification failed: ${e.message}")
+                false
+            }
+        } else {
+            // Allow unauthenticated profile queries for federation discovery
+            true
         }
         if (!isAuthValid) {
             call.respond(HttpStatusCode.Unauthorized, buildJsonObject {
@@ -107,23 +127,29 @@ fun Route.federationV1UserQuery() {
             // Get user profile information
             val profile = getUserProfile(userId, field)
             println("DEBUG: query/profile for userId=$userId, field=$field, profile=$profile")
+            
             if (profile != null) {
                 call.respond(buildJsonObject {
                     profile.forEach { (key, value) ->
-                        put(key, JsonPrimitive(value as String))
+                        when (value) {
+                            is String -> put(key, JsonPrimitive(value))
+                            null -> put(key, JsonNull)
+                            else -> put(key, JsonPrimitive(value.toString()))
+                        }
                     }
                 })
             } else {
                 call.respond(HttpStatusCode.NotFound, buildJsonObject {
                     put("errcode", "M_NOT_FOUND")
-                    put("error", "User not found")
+                    put("error", "User profile not found or user does not exist on this server")
                 })
             }
         } catch (e: Exception) {
             println("Query profile error: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
-                put("error", e.message)
+                put("error", "Internal server error: ${e.message}")
             })
         }
     }

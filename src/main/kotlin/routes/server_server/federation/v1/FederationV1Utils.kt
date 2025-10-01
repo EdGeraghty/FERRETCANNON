@@ -20,6 +20,7 @@ import models.AccessTokens
 import utils.StateResolver
 import utils.MatrixAuth
 import utils.ServerKeys
+import utils.ServerNameResolver
 import models.Events
 import models.Rooms
 import org.slf4j.LoggerFactory
@@ -317,12 +318,31 @@ fun findRoomByAlias(roomAlias: String): String? {
 
 fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
     return try {
+        logger.debug("getUserProfile called for userId=$userId, field=$field")
+        
+        // Check if this is a local user (matches our server name)
+        val localServerName = try {
+            ServerNameResolver.getServerName()
+        } catch (e: Exception) {
+            logger.warn("Could not determine server name from resolver, trying fallbacks", e)
+            System.getProperty("matrix.server.name") 
+                ?: System.getenv("MATRIX_SERVER_NAME") 
+                ?: "localhost" // fallback for local development
+        }
+        
+        logger.debug("Local server name determined as: $localServerName")
+        
+        if (!userId.endsWith(":$localServerName")) {
+            logger.debug("User $userId is not local to this server ($localServerName)")
+            return null
+        }
+
         // First check if user exists in the Users table
         val userRow = transaction {
             Users.select { Users.userId eq userId }.singleOrNull()
         }
 
-        logger.trace("getUserProfile for userId=$userId, field=$field, userRow found=${userRow != null}")
+        logger.debug("getUserProfile for userId=$userId, field=$field, userRow found=${userRow != null}")
 
         if (userRow == null) {
             // User doesn't exist in our database, try to find profile info from room state
@@ -335,20 +355,24 @@ fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
 
         when (field) {
             null -> {
-                // Return all fields
+                // Return all fields - always include displayname and avatar_url even if null for Matrix spec compliance
                 val displayName = userRow[Users.displayName]
                 val avatarUrl = userRow[Users.avatarUrl]
 
-                if (displayName != null) profile["displayname"] = displayName
-                if (avatarUrl != null) profile["avatar_url"] = avatarUrl
+                // Matrix spec: always return displayname and avatar_url fields for profile queries
+                profile["displayname"] = displayName ?: userId.substringAfter("@").substringBefore(":") // fallback to username
+                if (avatarUrl != null) {
+                    profile["avatar_url"] = avatarUrl
+                }
             }
             "displayname" -> {
                 val displayName = userRow[Users.displayName]
-                if (displayName != null) profile["displayname"] = displayName
+                profile["displayname"] = displayName ?: userId.substringAfter("@").substringBefore(":") // fallback to username
             }
             "avatar_url" -> {
                 val avatarUrl = userRow[Users.avatarUrl]
-                if (avatarUrl != null) profile["avatar_url"] = avatarUrl
+                // Always include avatar_url field, even if null, when specifically requested
+                profile["avatar_url"] = avatarUrl
             }
             else -> {
                 // Unknown field
@@ -359,15 +383,10 @@ fun getUserProfile(userId: String, field: String?): Map<String, Any?>? {
 
         logger.debug("getUserProfile returning profile from Users table: $profile")
 
-        if (profile.isEmpty()) {
-            // If no profile data in Users table, try room state as fallback
-            logger.debug("No profile data in Users table for $userId, checking room state")
-            return getUserProfileFromRoomState(userId, field)
-        }
-
+        // Always return the profile even if some fields are empty
         profile
     } catch (e: Exception) {
-        logger.error("Error getting user profile for $userId: ${e.message}")
+        logger.error("Error getting user profile for $userId: ${e.message}", e)
         null
     }
 }
