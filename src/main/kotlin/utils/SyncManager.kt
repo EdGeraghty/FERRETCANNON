@@ -82,7 +82,7 @@ object SyncManager {
         }
 
         for (roomId in invitedRoomIds) {
-            val strippedState = getStrippedState(roomId)
+            val strippedState = getStrippedState(roomId, userId)
             inviteRooms[roomId] = buildJsonObject {
                 put("invite_state", buildJsonObject {
                     put("events", JsonArray(strippedState))
@@ -203,43 +203,78 @@ object SyncManager {
 
     /**
      * Get stripped state for a room (for invites)
+     * Per Matrix spec, this should include the invite event itself plus invite_room_state context
      */
-    private fun getStrippedState(roomId: String): List<JsonElement> {
+    private fun getStrippedState(roomId: String, userId: String): List<JsonElement> {
         return transaction {
             val strippedEvents = mutableListOf<JsonElement>()
 
-            // Always include m.room.create
-            val createEvent = Events.select {
+            // First, add the actual invite event for this user
+            val inviteEvent = Events.select {
                 (Events.roomId eq roomId) and
-                (Events.type eq "m.room.create")
-            }.singleOrNull()
-            if (createEvent != null) {
+                (Events.type eq "m.room.member") and
+                (Events.stateKey eq userId) and
+                (Events.content.like("%\"membership\":\"invite\"%"))
+            }.orderBy(Events.originServerTs, SortOrder.DESC).limit(1).singleOrNull()
+            
+            if (inviteEvent != null) {
                 strippedEvents.add(buildJsonObject {
-                    put("event_id", createEvent[Events.eventId])
-                    put("type", createEvent[Events.type])
-                    put("sender", createEvent[Events.sender])
-                    put("origin_server_ts", createEvent[Events.originServerTs])
-                    put("content", Json.parseToJsonElement(createEvent[Events.content]).jsonObject)
-                    put("state_key", createEvent[Events.stateKey])
+                    put("type", inviteEvent[Events.type])
+                    put("sender", inviteEvent[Events.sender])
+                    put("origin_server_ts", inviteEvent[Events.originServerTs])
+                    put("content", Json.parseToJsonElement(inviteEvent[Events.content]).jsonObject)
+                    inviteEvent[Events.stateKey]?.let { put("state_key", it) }
                 })
             }
 
-            // Include other state events that are typically in stripped state
-            val otherEvents = Events.select {
+            // Then get ALL outlier events for this room (these are the invite_room_state events)
+            val outlierEvents = Events.select {
                 (Events.roomId eq roomId) and
-                (Events.stateKey.isNotNull()) and
-                (Events.type inList listOf("m.room.name", "m.room.topic", "m.room.avatar", "m.room.join_rules", "m.room.canonical_alias"))
+                (Events.outlier eq true)
             }.map { row ->
                 buildJsonObject {
-                    put("event_id", row[Events.eventId])
                     put("type", row[Events.type])
                     put("sender", row[Events.sender])
                     put("origin_server_ts", row[Events.originServerTs])
                     put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
-                    put("state_key", row[Events.stateKey])
+                    row[Events.stateKey]?.let { put("state_key", it) }
                 }
             }
-            strippedEvents.addAll(otherEvents)
+            strippedEvents.addAll(outlierEvents)
+
+            // If no outliers exist, fall back to basic state (shouldn't happen with proper federation)
+            if (strippedEvents.isEmpty()) {
+                // Always include m.room.create
+                val createEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()
+                if (createEvent != null) {
+                    strippedEvents.add(buildJsonObject {
+                        put("type", createEvent[Events.type])
+                        put("sender", createEvent[Events.sender])
+                        put("origin_server_ts", createEvent[Events.originServerTs])
+                        put("content", Json.parseToJsonElement(createEvent[Events.content]).jsonObject)
+                        put("state_key", createEvent[Events.stateKey])
+                    })
+                }
+
+                // Include other state events
+                val otherEvents = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.stateKey.isNotNull()) and
+                    (Events.type inList listOf("m.room.name", "m.room.topic", "m.room.avatar", "m.room.join_rules", "m.room.canonical_alias", "m.room.member"))
+                }.map { row ->
+                    buildJsonObject {
+                        put("type", row[Events.type])
+                        put("sender", row[Events.sender])
+                        put("origin_server_ts", row[Events.originServerTs])
+                        put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                        put("state_key", row[Events.stateKey])
+                    }
+                }
+                strippedEvents.addAll(otherEvents)
+            }
 
             strippedEvents
         }

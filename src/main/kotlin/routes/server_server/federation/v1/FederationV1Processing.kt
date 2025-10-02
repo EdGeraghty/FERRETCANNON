@@ -72,7 +72,7 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
         }
 
         // 3. Check validity: has event_id (or will have one added)
-        var eventId: String? = null
+        var eventId: String?
         if (event["event_id"] != null) {
             eventId = event["event_id"]?.jsonPrimitive?.content
             // Validate event_id format if present
@@ -121,26 +121,37 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
             println("processPDU: Added event_id $providedEventId after signature and hash verification")
         }
 
-        // 8. Get auth state from auth_events
-        val authState = getAuthState(event)
-
-        // 9. Check auth based on auth_events
-        if (!stateResolver.checkAuthRules(event, authState)) return buildJsonObject {
-            put("errcode", "M_INVALID_EVENT")
-            put("error", "Auth check failed")
-        }.toString().let { Json.parseToJsonElement(it).jsonObject }
-
-        // 9. Get current state
+        // 8. Get current state first to check if this is an invite to unknown room
         val currentState = stateResolver.getResolvedState(roomId)
 
-        // 10. Special handling for invites to unknown rooms (federation)
-        val isInviteToUnknownRoom = event["type"]?.jsonPrimitive?.content == "m.room.member" &&
-                event["content"]?.jsonObject?.get("membership")?.jsonPrimitive?.content == "invite" &&
-                currentState.isEmpty()
+        // 9. Special handling for federation invites (Matrix spec: invites are accepted on trust from remote servers)
+        // For federation invites, we skip auth_events check as we don't have the full auth chain from the remote server
+        val isInvite = event["type"]?.jsonPrimitive?.content == "m.room.member" &&
+                event["content"]?.jsonObject?.get("membership")?.jsonPrimitive?.content == "invite"
+        
+        val isInviteToUnknownRoom = isInvite && currentState.isEmpty()
 
-        println("processPDU: Room $roomId state check - currentState.isEmpty(): ${currentState.isEmpty()}, isInviteToUnknownRoom: $isInviteToUnknownRoom")
+        println("processPDU: Room $roomId - isInvite: $isInvite, isInviteToUnknownRoom: $isInviteToUnknownRoom")
 
-        val softFail = if (isInviteToUnknownRoom) {
+        // 10. Check auth based on auth_events (skip for ALL federation invites)
+        // Per Matrix spec, invites via federation are accepted on signature verification alone
+        if (!isInvite) {
+            val authState = getAuthState(event)
+            println("processPDU: Checking auth rules with authState size: ${authState.size}")
+            if (!stateResolver.checkAuthRules(event, authState)) return buildJsonObject {
+                put("errcode", "M_INVALID_EVENT")
+                put("error", "Auth check failed")
+            }.toString().let { Json.parseToJsonElement(it).jsonObject }
+        } else {
+            println("processPDU: Skipping auth_events check for federation invite (accepted on signature verification)")
+        }
+
+        // 11. Determine if event should be soft-failed
+        // Per Matrix spec, federation invites are accepted on signature verification alone
+        val softFail = if (isInvite) {
+            println("processPDU: Federation invite - not soft-failing")
+            false // Never soft-fail federation invites
+        } else if (isInviteToUnknownRoom) {
             // For invites to unknown rooms, we need to create the room first
             // This will be handled by the federation invite logic
             println("Processing invite to unknown room $roomId - allowing")
@@ -151,7 +162,7 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
             !authResult
         }
 
-        // 11. Handle room creation for invites to unknown rooms
+        // 12. Handle room creation for invites to unknown rooms
         if (isInviteToUnknownRoom) {
             println("Creating room $roomId for federation invite")
             // Create the room with minimal state
@@ -176,7 +187,7 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
             }
         }
 
-        // 12. If state event, update current state
+        // 13. If state event, update current state
         if (event["state_key"] != null) {
             val stateForUpdate = if (isInviteToUnknownRoom) {
                 mutableMapOf<String, JsonObject>()
@@ -190,7 +201,7 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
             stateResolver.updateResolvedState(roomId, stateForUpdate)
         }
 
-        // 13. Store the event
+        // 14. Store the event
         if (eventId == null) {
             return buildJsonObject {
                 put("errcode", "M_INVALID_EVENT")

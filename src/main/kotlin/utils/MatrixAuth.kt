@@ -249,8 +249,10 @@ object MatrixAuth {
             if (keyName.startsWith("ed25519:")) {
                 val signature = sigValue.jsonPrimitive.content
                 logger.info("Verifying signature with key: $keyName")
-                val publicKey = fetchPublicKey(senderServer, keyName) ?: continue.also { 
+                val publicKey = fetchPublicKey(senderServer, keyName)
+                if (publicKey == null) {
                     logger.info("Failed to fetch public key for $senderServer/$keyName")
+                    continue
                 }
                 
                 // Apply Matrix redaction algorithm for event signature verification
@@ -258,10 +260,17 @@ object MatrixAuth {
                 logger.info("Redacted event for signature verification: $redactedEvent")
                 
                 // Convert to native types for canonical JSON computation
-                val eventForSigning = jsonElementToNative(redactedEvent) as MutableMap<String, Any?>
-                // Remove signatures and hashes for canonical JSON (as per Matrix signing spec)
+                val nativeEvent = jsonElementToNative(redactedEvent)
+                if (nativeEvent !is MutableMap<*, *>) {
+                    logger.error("Failed to convert event to mutable map")
+                    continue
+                }
+                @Suppress("UNCHECKED_CAST")
+                val eventForSigning = nativeEvent as MutableMap<String, Any?>
+                // Remove signatures and unsigned for canonical JSON (as per Matrix signing spec)
+                // IMPORTANT: Keep hashes - they are included when verifying signatures
                 eventForSigning.remove("signatures")
-                eventForSigning.remove("hashes")
+                eventForSigning.remove("unsigned")
                 
                 logger.info("Event for canonical JSON has keys: ${eventForSigning.keys}")
                 val canonicalJson = canonicalizeJson(eventForSigning)
@@ -316,10 +325,14 @@ object MatrixAuth {
         event["content"]?.let { content ->
             val redactedContent = when (eventType) {
                 "m.room.member" -> {
-                    // For signature verification, preserve all content (before redaction)
-                    // The Matrix spec is ambiguous about whether signatures are created on 
-                    // redacted or non-redacted events, so try non-redacted first
-                    content
+                    // Per Matrix spec, m.room.member events preserve membership in content
+                    val originalContent = content.jsonObject
+                    val contentMap = mutableMapOf<String, JsonElement>()
+                    originalContent["membership"]?.let { contentMap["membership"] = it }
+                    originalContent["join_authorised_via_users_server"]?.let { 
+                        contentMap["join_authorised_via_users_server"] = it 
+                    }
+                    JsonObject(contentMap)
                 }
                 "m.room.create" -> content // Allow all keys for m.room.create
                 "m.room.join_rules" -> {
@@ -401,7 +414,12 @@ object MatrixAuth {
 
     private fun computeContentHash(event: JsonObject): String {
         // Convert JsonObject to native types properly
-        val nativeMap = jsonElementToNative(event) as MutableMap<String, Any?>
+        val native = jsonElementToNative(event)
+        if (native !is MutableMap<*, *>) {
+            throw IllegalArgumentException("Event must be a JSON object")
+        }
+        @Suppress("UNCHECKED_CAST")
+        val nativeMap = native as MutableMap<String, Any?>
         
         // Add debug logging to see exactly what's being hashed
         logger.info("computeContentHash: event before cleanup has keys: ${event.keys}")
