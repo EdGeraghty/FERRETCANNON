@@ -705,28 +705,39 @@ object MatrixAuth {
     }
 
     /**
-     * Build authorization header for federation requests
+     * Build authorization header for federation requests according to Matrix spec
+     * https://spec.matrix.org/v1.16/server-server-api/#request-authentication
      */
-    private fun buildAuthHeader(method: String, uri: String, origin: String, destination: String, content: String?): String {
-        val keyId = "ed25519:${ServerKeys.getKeyId()}"
-        val timestamp = System.currentTimeMillis() / 1000
+    fun buildAuthHeader(method: String, uri: String, origin: String, destination: String, content: String?): String {
+        val keyId = ServerKeys.getKeyId()
 
-        // Build the JSON to sign
+        // Build the JSON to sign according to Matrix spec
         val jsonMap = mutableMapOf<String, Any>()
         jsonMap["method"] = method
         jsonMap["uri"] = uri
         jsonMap["origin"] = origin
         jsonMap["destination"] = destination
-        jsonMap["timestamp"] = timestamp
-        if (content != null) {
-            jsonMap["content"] = Json.parseToJsonElement(content)
+        
+        // Content must be parsed JSON, not a string
+        if (content != null && content.isNotEmpty()) {
+            val contentElement = Json.parseToJsonElement(content)
+            val nativeContent = jsonElementToNative(contentElement)
+            if (nativeContent != null) {
+                jsonMap["content"] = nativeContent
+            }
         }
 
+        // Compute canonical JSON
         val canonicalJson = canonicalizeJson(jsonMap)
+        
+        logger.info("buildAuthHeader: canonical JSON for signing: $canonicalJson")
+        
+        // Sign the canonical JSON
+        val signature = ServerKeys.sign(canonicalJson.toByteArray(Charsets.UTF_8))
+        
+        logger.info("buildAuthHeader: signature (base64): $signature")
 
-        // Sign the request
-        val signature = ServerKeys.sign(canonicalJson.toByteArray())
-
-        return "X-Matrix origin=\"$origin\",destination=\"$destination\",key=\"$keyId\",sig=\"$signature\",timestamp=\"$timestamp\""
+        // Build authorization header (keyId already includes "ed25519:" prefix)
+        return "X-Matrix origin=\"$origin\",destination=\"$destination\",key=\"$keyId\",sig=\"$signature\""
     }
 }

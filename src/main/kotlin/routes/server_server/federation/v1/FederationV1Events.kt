@@ -41,12 +41,72 @@ fun Route.federationV1Events() {
                 })
                 return@get
             }
-            // Placeholder: return auth chain
-            val authChain = listOf<Map<String, Any>>() // Empty for now
+            
+            // Get the auth chain for the specified event
+            val authChain = transaction {
+                val authEvents = mutableListOf<JsonObject>()
+                val event = Events.select { Events.eventId eq eventId }.singleOrNull()
+                
+                if (event != null) {
+                    // Get auth_events from the event
+                    val authEventsJson = event[Events.authEvents]
+                    val authEventIds = try {
+                        Json.parseToJsonElement(authEventsJson).jsonArray.mapNotNull {
+                            it.jsonArray.getOrNull(0)?.jsonPrimitive?.content
+                        }
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    
+                    // Fetch all auth events recursively
+                    val visited = mutableSetOf<String>()
+                    val queue = ArrayDeque(authEventIds)
+                    
+                    while (queue.isNotEmpty()) {
+                        val currentEventId = queue.removeFirst()
+                        if (currentEventId in visited) continue
+                        visited.add(currentEventId)
+                        
+                        val authEvent = Events.select { Events.eventId eq currentEventId }.singleOrNull()
+                        if (authEvent != null) {
+                            // Build the event JSON
+                            val eventJson = buildJsonObject {
+                                put("event_id", authEvent[Events.eventId])
+                                put("room_id", authEvent[Events.roomId])
+                                put("type", authEvent[Events.type])
+                                put("sender", authEvent[Events.sender])
+                                put("content", Json.parseToJsonElement(authEvent[Events.content]))
+                                put("origin_server_ts", authEvent[Events.originServerTs])
+                                authEvent[Events.stateKey]?.let { put("state_key", it) }
+                                put("prev_events", Json.parseToJsonElement(authEvent[Events.prevEvents]))
+                                put("auth_events", Json.parseToJsonElement(authEvent[Events.authEvents]))
+                                put("depth", authEvent[Events.depth])
+                                put("hashes", Json.parseToJsonElement(authEvent[Events.hashes]))
+                                put("signatures", Json.parseToJsonElement(authEvent[Events.signatures]))
+                            }
+                            authEvents.add(eventJson)
+                            
+                            // Add this event's auth events to queue
+                            try {
+                                val nestedAuthEventIds = Json.parseToJsonElement(authEvent[Events.authEvents]).jsonArray.mapNotNull {
+                                    it.jsonArray.getOrNull(0)?.jsonPrimitive?.content
+                                }
+                                queue.addAll(nestedAuthEventIds)
+                            } catch (e: Exception) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                }
+                authEvents
+            }
+            
             call.respond(buildJsonObject {
                 put("origin", utils.ServerNameResolver.getServerName())
                 put("origin_server_ts", System.currentTimeMillis())
-                put("pdus", Json.encodeToJsonElement(authChain))
+                putJsonArray("auth_chain") {
+                    authChain.forEach { add(it) }
+                }
             })
         }
     }
