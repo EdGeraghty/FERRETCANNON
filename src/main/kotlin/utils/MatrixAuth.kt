@@ -25,6 +25,8 @@ import java.io.FileInputStream
 import io.ktor.client.statement.*
 
 import org.slf4j.LoggerFactory
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.transactions.transaction
 
 object MatrixAuth {
     private val logger = LoggerFactory.getLogger("utils.MatrixAuth")
@@ -678,19 +680,78 @@ object MatrixAuth {
         try {
             val eventId = inviteEvent["event_id"]?.jsonPrimitive?.content ?: return
 
+            // Fetch invite_room_state - stripped state events for context
+            val inviteRoomState = buildJsonArray {
+                transaction {
+                    // Get essential room state events for the invitee
+                    val stateTypes = listOf(
+                        "m.room.create",
+                        "m.room.join_rules",
+                        "m.room.name",
+                        "m.room.avatar",
+                        "m.room.canonical_alias",
+                        "m.room.encryption",
+                        "m.room.topic"
+                    )
+                    
+                    stateTypes.forEach { type ->
+                        val event = models.Events.select {
+                            (models.Events.roomId eq roomId) and
+                            (models.Events.type eq type)
+                        }.orderBy(models.Events.originServerTs, SortOrder.DESC)
+                        .limit(1)
+                        .singleOrNull()
+                        
+                        if (event != null) {
+                            add(buildJsonObject {
+                                put("type", event[models.Events.type])
+                                put("sender", event[models.Events.sender])
+                                put("state_key", event[models.Events.stateKey] ?: "")
+                                put("content", Json.parseToJsonElement(event[models.Events.content]))
+                            })
+                        }
+                    }
+                }
+            }
+
+            // Get room version
+            val roomVersion = transaction {
+                models.Rooms.select { models.Rooms.roomId eq roomId }
+                    .singleOrNull()
+                    ?.get(models.Rooms.roomVersion) ?: "10"
+            }
+
+            // Build v2 invite request body
+            val inviteRequestBody = buildJsonObject {
+                put("event", inviteEvent)
+                put("invite_room_state", inviteRoomState)
+                put("room_version", roomVersion)
+            }
+
+            // Resolve server via .well-known
+            val serverDetails = ServerDiscovery.resolveServerName(remoteServer)
+            if (serverDetails == null) {
+                logger.error("Failed to resolve server: $remoteServer")
+                return
+            }
+
             // Build the authorization header
             val method = "PUT"
-            val uri = "/_matrix/federation/v1/invite/$roomId/$eventId"
+            val uri = "/_matrix/federation/v2/invite/$roomId/$eventId"
             val destination = remoteServer
             val origin = config.federation.serverName
 
-            val authHeader = buildAuthHeader(method, uri, origin, destination, Json.encodeToString(JsonObject.serializer(), inviteEvent))
+            val requestBodyString = Json.encodeToString(JsonObject.serializer(), inviteRequestBody)
+            val authHeader = buildAuthHeader(method, uri, origin, destination, requestBodyString)
 
-            // Send the request
-            val response = client.put("https://$remoteServer$uri") {
+            // Send the request using resolved server details
+            val fullUrl = "https://${serverDetails.host}:${serverDetails.port}$uri"
+            logger.info("Sending federation invite to: $fullUrl")
+            
+            val response = client.put(fullUrl) {
                 header("Authorization", authHeader)
                 header("Content-Type", "application/json")
-                setBody(Json.encodeToString(JsonObject.serializer(), inviteEvent))
+                setBody(requestBodyString)
             }
 
             if (response.status.value != 200) {

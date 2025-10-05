@@ -103,6 +103,9 @@ fun Application.clientRoutes(config: ServerConfig) {
 
             logger.debug("Authentication middleware - accessToken: '$accessToken'")
 
+            // Check if this is a federation request (has X-Matrix header)
+            val isFederationRequest = call.request.headers["Authorization"]?.startsWith("X-Matrix ") == true
+
             if (accessToken != null) {
                 // Validate token using new authentication system
                 val result = AuthUtils.validateAccessToken(accessToken)
@@ -118,12 +121,18 @@ fun Application.clientRoutes(config: ServerConfig) {
                 } else {
                     // Invalid token - will be handled by individual endpoints
                     call.attributes.put(MATRIX_INVALID_TOKEN_KEY, accessToken)
-                    logger.info("Invalid token")
+                    // Don't log error for federation requests - they use X-Matrix auth, not tokens
+                    if (!isFederationRequest) {
+                        logger.info("Invalid token")
+                    }
                 }
             } else {
                 // No token provided - will be handled by individual endpoints
                 call.attributes.put(MATRIX_NO_TOKEN_KEY, true)
-                logger.debug("No token provided")
+                // Don't log for federation requests
+                if (!isFederationRequest) {
+                    logger.debug("No token provided")
+                }
             }
         } catch (e: Exception) {
             // Handle authentication errors gracefully

@@ -376,263 +376,17 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                 return@post
             }
             
-            // If user has a pending invite, handle federated join
+            // If user has a pending invite, redirect to make_join flow
+            // Per Matrix Spec v1.16: ALL federation joins (including invite acceptance) must use make_join
             println("JOIN: Checking federation join conditions - currentMembership=$currentMembership, inviteSender=$inviteSender")
-            if (currentMembership == "invite" && inviteSender != null) {
-                println("JOIN: FEDERATION PATH - User $userId has invite from $inviteSender, performing federated join")
-                
-                // Extract the server name from the inviter's user ID
+            val effectiveServerNames = if (currentMembership == "invite" && inviteSender != null) {
                 val inviterServer = inviteSender.substringAfter(":")
-                println("Attempting federated join via server: $inviterServer")
-                
-                // Get the invite event to extract necessary information
-                val inviteEvent = transaction {
-                    Events.select {
-                        (Events.roomId eq roomId) and
-                        (Events.type eq "m.room.member") and
-                        (Events.stateKey eq userId) and
-                        (Events.sender eq inviteSender)
-                    }.orderBy(Events.originServerTs, SortOrder.DESC).limit(1).singleOrNull()
-                }
-                
-                if (inviteEvent == null) {
-                    call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Invite event not found"
-                    ))
-                    return@post
-                }
-                
-                // Create the join event
-                val currentTime = System.currentTimeMillis()
-                val eventId = "\$${java.util.UUID.randomUUID()}"
-                
-                // Get auth_events and prev_events from the invite
-                val inviteEventId = inviteEvent[Events.eventId]
-                val authEventsJson = inviteEvent[Events.authEvents]
-                val depth = inviteEvent[Events.depth] + 1
-                
-                val joinEventContent = buildJsonObject {
-                    put("membership", "join")
-                }
-                
-                val joinEvent = buildJsonObject {
-                    put("type", "m.room.member")
-                    put("state_key", userId)
-                    put("sender", userId)
-                    put("room_id", roomId)
-                    put("content", joinEventContent)
-                    put("origin_server_ts", currentTime)
-                    put("auth_events", Json.parseToJsonElement(authEventsJson))
-                    put("prev_events", buildJsonArray { add(buildJsonArray { add(inviteEventId); add(buildJsonObject {}) }) })
-                    put("depth", depth)
-                }
-                
-                // Hash and sign the event
-                val signedJoinEvent = MatrixAuth.hashAndSignEvent(joinEvent, config.federation.serverName)
-                
-                // Add event_id
-                val finalJoinEvent = signedJoinEvent.toMutableMap()
-                finalJoinEvent["event_id"] = JsonPrimitive(eventId)
-                val finalJoinEventObj = JsonObject(finalJoinEvent)
-                
-                // Send to remote server via federation
-                val httpClient = HttpClient(OkHttp) {
-                    engine {
-                        config {
-                            // Disable HTTP/2 to avoid stream reset issues
-                            protocols(listOf(okhttp3.Protocol.HTTP_1_1))
-                        }
-                    }
-                    install(ContentNegotiation) {
-                        json(Json { 
-                            ignoreUnknownKeys = true 
-                        })
-                    }
-                    expectSuccess = false
-                }
-                
-                try {
-                    // Resolve the inviter server using .well-known delegation
-                    val serverDetails = utils.ServerDiscovery.resolveServerName(inviterServer)
-                    if (serverDetails == null) {
-                        println("Failed to resolve server: $inviterServer")
-                        httpClient.close()
-                        call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                            "errcode" to "M_UNKNOWN",
-                            "error" to "Failed to resolve federation server: $inviterServer"
-                        ))
-                        return@post
-                    }
-                    
-                    val federationUrl = "https://${serverDetails.host}:${serverDetails.port}/_matrix/federation/v2/send_join/$roomId/$eventId"
-                    println("Resolved $inviterServer to ${serverDetails.host}:${serverDetails.port}")
-                    println("Sending federation join to: $federationUrl")
-                    
-                    // Create authorization header for federation request according to Matrix spec
-                    val requestBodyJson = finalJoinEventObj.toString()
-                    val authHeader = utils.MatrixAuth.buildAuthHeader(
-                        method = "PUT",
-                        uri = "/_matrix/federation/v2/send_join/$roomId/$eventId",
-                        origin = config.federation.serverName,
-                        destination = inviterServer,
-                        content = requestBodyJson
-                    )
-                    println("Authorization header: $authHeader")
-                    
-                    val response = httpClient.put(federationUrl) {
-                        header("Authorization", authHeader)
-                        contentType(ContentType.Application.Json)
-                        setBody(requestBodyJson)
-                    }
-                    
-                    if (!response.status.isSuccess()) {
-                        val errorBody = response.bodyAsText()
-                        println("Federation join failed: ${response.status} - $errorBody")
-                        httpClient.close()
-                        call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                            "errcode" to "M_UNKNOWN",
-                            "error" to "Federation join failed: ${response.status}"
-                        ))
-                        return@post
-                    }
-                    
-                    val responseBody = response.bodyAsText()
-                    println("Federation join response: $responseBody")
-                    val responseJson = Json.parseToJsonElement(responseBody).jsonObject
-                    
-                    // Extract state and auth_chain from response
-                    val stateEvents = responseJson["state"]?.jsonArray ?: JsonArray(emptyList())
-                    val authChain = responseJson["auth_chain"]?.jsonArray ?: JsonArray(emptyList())
-                    
-                    // Store all state events in database
-                    transaction {
-                        // First, create the room entry
-                        Rooms.insertIgnore {
-                            it[Rooms.roomId] = roomId
-                            it[Rooms.creator] = "" // Will be updated from m.room.create event
-                            it[Rooms.name] = null
-                            it[Rooms.topic] = null
-                            it[Rooms.visibility] = "private"
-                            it[Rooms.roomVersion] = "11"
-                            it[Rooms.isDirect] = false
-                            it[Rooms.currentState] = "{}"
-                            it[Rooms.stateGroups] = "{}"
-                            it[Rooms.published] = false
-                        }
-                        
-                        // Store our join event
-                        val joinHashes = finalJoinEventObj["hashes"]?.toString() ?: "{}"
-                        val joinSignatures = finalJoinEventObj["signatures"]?.toString() ?: "{}"
-                        
-                        Events.insertIgnore {
-                            it[Events.eventId] = eventId
-                            it[Events.roomId] = roomId
-                            it[Events.type] = "m.room.member"
-                            it[Events.sender] = userId
-                            it[Events.content] = joinEventContent.toString()
-                            it[Events.authEvents] = authEventsJson
-                            it[Events.prevEvents] = buildJsonArray { add(buildJsonArray { add(inviteEventId); add(buildJsonObject {}) }) }.toString()
-                            it[Events.depth] = depth.toInt()
-                            it[Events.hashes] = joinHashes
-                            it[Events.signatures] = joinSignatures
-                            it[Events.originServerTs] = currentTime
-                            it[Events.stateKey] = userId
-                            it[Events.unsigned] = "{}"
-                            it[Events.softFailed] = false
-                            it[Events.outlier] = false
-                        }
-                        
-                        // Store state events
-                        for (stateEventElement in stateEvents) {
-                            val stateEvent = stateEventElement.jsonObject
-                            val evId = stateEvent["event_id"]?.jsonPrimitive?.content ?: continue
-                            
-                            val stateType = stateEvent["type"]?.jsonPrimitive?.content ?: ""
-                            val stateSender = stateEvent["sender"]?.jsonPrimitive?.content ?: ""
-                            val stateContent = stateEvent["content"]?.toString() ?: "{}"
-                            val stateAuthEvents = stateEvent["auth_events"]?.toString() ?: "[]"
-                            val statePrevEvents = stateEvent["prev_events"]?.toString() ?: "[]"
-                            val stateDepth = (stateEvent["depth"]?.jsonPrimitive?.long ?: 0).toInt()
-                            val stateHashes = stateEvent["hashes"]?.toString() ?: "{}"
-                            val stateSignatures = stateEvent["signatures"]?.toString() ?: "{}"
-                            val stateOriginTs = stateEvent["origin_server_ts"]?.jsonPrimitive?.long ?: currentTime
-                            val stateKey = stateEvent["state_key"]?.jsonPrimitive?.content
-                            val stateUnsigned = stateEvent["unsigned"]?.toString() ?: "{}"
-                            
-                            Events.insertIgnore {
-                                it[Events.eventId] = evId
-                                it[Events.roomId] = roomId
-                                it[Events.type] = stateType
-                                it[Events.sender] = stateSender
-                                it[Events.content] = stateContent
-                                it[Events.authEvents] = stateAuthEvents
-                                it[Events.prevEvents] = statePrevEvents
-                                it[Events.depth] = stateDepth
-                                it[Events.hashes] = stateHashes
-                                it[Events.signatures] = stateSignatures
-                                it[Events.originServerTs] = stateOriginTs
-                                it[Events.stateKey] = stateKey
-                                it[Events.unsigned] = stateUnsigned
-                                it[Events.softFailed] = false
-                                it[Events.outlier] = false
-                            }
-                        }
-                        
-                        // Store auth chain events
-                        for (authEventElement in authChain) {
-                            val authEvent = authEventElement.jsonObject
-                            val evId = authEvent["event_id"]?.jsonPrimitive?.content ?: continue
-                            
-                            val authType = authEvent["type"]?.jsonPrimitive?.content ?: ""
-                            val authSender = authEvent["sender"]?.jsonPrimitive?.content ?: ""
-                            val authContent = authEvent["content"]?.toString() ?: "{}"
-                            val authAuthEvents = authEvent["auth_events"]?.toString() ?: "[]"
-                            val authPrevEvents = authEvent["prev_events"]?.toString() ?: "[]"
-                            val authDepth = (authEvent["depth"]?.jsonPrimitive?.long ?: 0).toInt()
-                            val authHashes = authEvent["hashes"]?.toString() ?: "{}"
-                            val authSignatures = authEvent["signatures"]?.toString() ?: "{}"
-                            val authOriginTs = authEvent["origin_server_ts"]?.jsonPrimitive?.long ?: currentTime
-                            val authStateKey = authEvent["state_key"]?.jsonPrimitive?.content
-                            val authUnsigned = authEvent["unsigned"]?.toString() ?: "{}"
-                            
-                            Events.insertIgnore {
-                                it[Events.eventId] = evId
-                                it[Events.roomId] = roomId
-                                it[Events.type] = authType
-                                it[Events.sender] = authSender
-                                it[Events.content] = authContent
-                                it[Events.authEvents] = authAuthEvents
-                                it[Events.prevEvents] = authPrevEvents
-                                it[Events.depth] = authDepth
-                                it[Events.hashes] = authHashes
-                                it[Events.signatures] = authSignatures
-                                it[Events.originServerTs] = authOriginTs
-                                it[Events.stateKey] = authStateKey
-                                it[Events.unsigned] = authUnsigned
-                                it[Events.softFailed] = false
-                                it[Events.outlier] = false
-                            }
-                        }
-                    }
-                    
-                    println("Successfully joined federated room $roomId")
-                    httpClient.close()
-                    call.respond(mutableMapOf("room_id" to roomId))
-                    return@post
-                    
-                } catch (e: Exception) {
-                    println("Federation join error: ${e.message}")
-                    e.printStackTrace()
-                    httpClient.close()
-                    call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                        "errcode" to "M_UNKNOWN",
-                        "error" to "Federation join failed: ${e.message}"
-                    ))
-                    return@post
-                }
+                println("JOIN: User has invite from $inviteSender - will use make_join via $inviterServer")
+                listOf(inviterServer)
+            } else {
+                serverNames
             }
-
+            
             // For local joins (no invite), check if room exists
             println("JOIN: LOCAL PATH - Checking if room exists locally")
             val roomExists = transaction {
@@ -640,10 +394,11 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             }
             println("JOIN: Room exists locally: $roomExists")
 
-            if (!roomExists) {
-                // If server_name parameters provided, attempt federation join
-                if (serverNames.isNotEmpty()) {
-                    println("JOIN: Room $roomId not found locally, but server_name provided. Attempting federation join via: $serverNames")
+            // If user has invite OR room doesn't exist locally, use federation
+            if (!roomExists || effectiveServerNames.isNotEmpty()) {
+                // If server_name parameters provided (or invite redirect), attempt federation join
+                if (effectiveServerNames.isNotEmpty()) {
+                    println("JOIN: Room $roomId not found locally, but server_name provided. Attempting federation join via: $effectiveServerNames")
                     
                     // Implement federation join without invite using make_join/send_join
                     val httpClient = HttpClient(OkHttp) {
@@ -660,7 +415,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                     }
                     
                     try {
-                        val targetServer = serverNames.first()
+                        val targetServer = effectiveServerNames.first()
                         val serverDetails = utils.ServerDiscovery.resolveServerName(targetServer)
                         if (serverDetails == null) {
                             println("Failed to resolve server: $targetServer")

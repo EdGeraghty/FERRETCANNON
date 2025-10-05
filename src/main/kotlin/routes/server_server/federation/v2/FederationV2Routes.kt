@@ -298,11 +298,13 @@ fun Application.federationV2Routes() {
                             println("Federation invite processPDU succeeded")
 
                             // Get the processed event from database
+                            println("Federation invite: fetching processed event from database")
                             val processedEvent = transaction {
                                 Events.select { Events.eventId eq eventId }.singleOrNull()
                             }
 
                             if (processedEvent == null) {
+                                println("Federation invite: ERROR - event not found in database after processPDU!")
                                 call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                                     put("errcode", "M_UNKNOWN")
                                     put("error", "Failed to store event")
@@ -310,8 +312,9 @@ fun Application.federationV2Routes() {
                                 return@put
                             }
 
-                            // Return the v2 response format: [200, {"event": ...}]
-                            // Matrix spec 7.4.3.1: response is a tuple [http_code, response_body]
+                            println("Federation invite: building response event object")
+                            // Return the v2 response format: {"event": ...}
+                            // Note: v2 returns just the object, NOT a tuple like v1
                             val eventObject = buildJsonObject {
                                 put("event_id", processedEvent[Events.eventId])
                                 put("type", processedEvent[Events.type])
@@ -328,19 +331,20 @@ fun Application.federationV2Routes() {
                                 if (processedEvent[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
                             }
                             
-                            val response = buildJsonArray {
-                                add(200)
-                                add(buildJsonObject {
-                                    put("event", eventObject)
-                                })
+                            println("Federation invite: building final response wrapper")
+                            val response = buildJsonObject {
+                                put("event", eventObject)
                             }
 
+                            println("Federation invite: sending 200 OK response")
                             call.respond(HttpStatusCode.OK, response)
+                            println("Federation invite: response sent successfully")
                         } catch (e: Exception) {
                             println("Invite v2 error: ${e.message}")
+                            println("Invite v2 stack trace: ${e.stackTraceToString()}")
                             call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                                 put("errcode", "M_BAD_JSON")
-                                put("error", "Invalid JSON")
+                                put("error", "Invalid JSON: ${e.message}")
                             })
                         }
                     }
