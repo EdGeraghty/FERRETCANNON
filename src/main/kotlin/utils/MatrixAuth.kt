@@ -414,7 +414,7 @@ object MatrixAuth {
         }
     }
 
-    private fun computeContentHash(event: JsonObject): String {
+    internal fun computeContentHash(event: JsonObject): String {
         // Convert JsonObject to native types properly
         val native = jsonElementToNative(event)
         if (native !is MutableMap<*, *>) {
@@ -425,6 +425,12 @@ object MatrixAuth {
         
         // Add debug logging to see exactly what's being hashed
         logger.info("computeContentHash: event before cleanup has keys: ${event.keys}")
+        logger.info("computeContentHash: depth type: ${nativeMap["depth"]?.javaClass?.simpleName}, value: ${nativeMap["depth"]}")
+        logger.info("computeContentHash: origin_server_ts type: ${nativeMap["origin_server_ts"]?.javaClass?.simpleName}, value: ${nativeMap["origin_server_ts"]}")
+        logger.info("computeContentHash: content type: ${nativeMap["content"]?.javaClass?.simpleName}, value: ${nativeMap["content"]}")
+        
+        // Log the EXACT structure before any modifications
+        logger.info("computeContentHash: BEFORE CLEANUP - Full native map: ${nativeMap.entries.joinToString(", ") { "${it.key}=${it.value}" }}")
         
         // Per Matrix spec section 27.4: only remove unsigned, signatures, and hashes
         nativeMap.remove("signatures")
@@ -436,13 +442,22 @@ object MatrixAuth {
         val canonical = canonicalizeJson(nativeMap)
         
         logger.info("computeContentHash: canonical JSON length: ${canonical.length}")
-        logger.info("computeContentHash: canonical JSON (first 500 chars): ${canonical.take(500)}")
+        logger.info("computeContentHash: FULL canonical JSON: $canonical")
         
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
-        // Use unpadded Base64 as per Matrix specification appendices
-        return Base64.getEncoder().withoutPadding().encodeToString(hash)
+        // Use unpadded URL-safe Base64 as per Matrix specification for event IDs
+        val hashResult = Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
+        logger.info("computeContentHash: computed hash: $hashResult")
+        
+        // Let's also log the exact bytes being hashed for deep debugging
+        logger.info("computeContentHash: SHA-256 input bytes (first 100): ${canonical.toByteArray(Charsets.UTF_8).take(100).joinToString(",")}")
+        
+        return hashResult
     }
+    
+    // Public wrapper for testing
+    fun computeContentHashPublic(event: JsonObject): String = computeContentHash(event)
 
     fun canonicalizeJson(data: Any): String {
         return when (data) {
@@ -467,22 +482,23 @@ object MatrixAuth {
         }
     }
 
-    private fun jsonElementToNative(element: JsonElement): Any? {
+    internal fun jsonElementToNative(element: JsonElement): Any? {
         return when (element) {
             is JsonNull -> null
             is JsonPrimitive -> {
+                // IMPORTANT: Check isString first! 
+                // In Matrix canonical JSON, a JSON string like "123" must stay a string,
+                // not be converted to a number. Only actual JSON numbers should become numeric types.
                 when {
-                    element.isString -> element.content
-                    element.content == "true" -> true
-                    element.content == "false" -> false
-                    else -> {
-                        // Try to parse as number
-                        element.content.toLongOrNull() ?: element.content.toDoubleOrNull() ?: element.content
-                    }
+                    element.isString -> element.content  // String must be checked FIRST
+                    element.booleanOrNull != null -> element.boolean
+                    element.longOrNull != null -> element.long
+                    element.doubleOrNull != null -> element.double
+                    else -> element.content
                 }
             }
             is JsonArray -> element.map { jsonElementToNative(it) }
-            is JsonObject -> element.map { it.key to jsonElementToNative(it.value) }.toMap()
+            is JsonObject -> element.mapValues { jsonElementToNative(it.value) }
         }
     }
 
@@ -525,19 +541,60 @@ object MatrixAuth {
     }
 
     fun hashAndSignEvent(event: JsonObject, serverName: String): JsonObject {
+        // First, compute hash from the original event (no modifications)
         val contentHash = computeContentHash(event)
+        logger.info("hashAndSignEvent: Computed content hash: $contentHash")
 
-        val eventWithHashes = event.toMutableMap()
-        eventWithHashes["hashes"] = JsonObject(mutableMapOf("sha256" to JsonPrimitive(contentHash)))
-        eventWithHashes["signatures"] = JsonObject(mutableMapOf(serverName to JsonObject(mutableMapOf(ServerKeys.getKeyId() to JsonPrimitive("")))))
+        // Convert event to native types ONCE at the start
+        val eventNativeRaw = jsonElementToNative(event)
+        if (eventNativeRaw !is Map<*, *>) {
+            throw IllegalArgumentException("Event must be a JSON object")
+        }
+        @Suppress("UNCHECKED_CAST")
+        val eventNative = eventNativeRaw.toMutableMap() as MutableMap<String, Any?>
+        
+        // Add hashes to native map
+        eventNative["hashes"] = mapOf("sha256" to contentHash)
+        
+        // For signing: create a version WITHOUT hashes but WITH empty signatures placeholder
+        val eventForSigning = eventNative.toMutableMap()
+        eventForSigning.remove("hashes")
+        eventForSigning["signatures"] = mapOf(serverName to mapOf(ServerKeys.getKeyId() to ""))
 
-        val canonicalJson = canonicalizeJson(eventWithHashes)
+        val canonicalJson = canonicalizeJson(eventForSigning)
+        logger.info("hashAndSignEvent: Signing canonical JSON (no hashes): $canonicalJson")
         val signature = ServerKeys.sign(canonicalJson.toByteArray(Charsets.UTF_8))
+        logger.info("hashAndSignEvent: Generated signature: $signature")
 
-        val signatures = JsonObject(mutableMapOf(serverName to JsonObject(mutableMapOf(ServerKeys.getKeyId() to JsonPrimitive(signature)))))
-        eventWithHashes["signatures"] = signatures
-
-        return JsonObject(eventWithHashes)
+        // Add signatures to the event with hashes
+        eventNative["signatures"] = mapOf(serverName to mapOf(ServerKeys.getKeyId() to signature))
+        
+        // Convert back to JsonObject by building manually
+        val resultMap = mutableMapOf<String, JsonElement>()
+        for ((key, value) in eventNative) {
+            resultMap[key] = nativeToJsonElement(value)
+        }
+        return JsonObject(resultMap)
+    }
+    
+    private fun nativeToJsonElement(value: Any?): JsonElement {
+        return when (value) {
+            null -> JsonNull
+            is Boolean -> JsonPrimitive(value)
+            is Number -> JsonPrimitive(value)
+            is String -> JsonPrimitive(value)
+            is Map<*, *> -> {
+                val map = mutableMapOf<String, JsonElement>()
+                for ((k, v) in value) {
+                    map[k.toString()] = nativeToJsonElement(v)
+                }
+                JsonObject(map)
+            }
+            is List<*> -> {
+                JsonArray(value.map { nativeToJsonElement(it) })
+            }
+            else -> JsonPrimitive(value.toString())
+        }
     }
 
     private fun computeReferenceHash(event: JsonObject, contentHash: String): String {

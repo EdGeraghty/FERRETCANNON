@@ -269,8 +269,8 @@ object RegistrationTokens : Table("registration_tokens") {
 object ServerKeys : Table("server_keys") {
     val serverName = varchar("server_name", 255)
     val keyId = varchar("key_id", 255)
-    val publicKey = text("public_key") // PEM format
-    val privateKey = text("private_key").nullable() // Base64 encoded private key (for persistence)
+    val publicKey = text("public_key")
+    val privateKey = text("private_key").nullable()
     val keyValidUntilTs = long("key_valid_until_ts")
     val tsAddedTs = long("ts_added_ts").default(System.currentTimeMillis())
     val tsValidUntilTs = long("ts_valid_until_ts")

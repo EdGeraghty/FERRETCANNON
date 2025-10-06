@@ -66,7 +66,7 @@ development:
   testDisplayName: "Test User"        # Test user display name
   enableDebugLogging: true            # Enable debug logging
   enableWebSocketDebug: false         # Enable WebSocket debug logging
-  isDebug: true                       # Enable debug mode (deletes database on startup)
+  isDebug: false                      # Enable debug mode (deletes database on startup)
 
 voip:
   # VoIP/STUN/TURN settings

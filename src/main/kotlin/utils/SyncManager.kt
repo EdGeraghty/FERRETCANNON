@@ -83,11 +83,6 @@ object SyncManager {
 
         for (roomId in invitedRoomIds) {
             val strippedState = getStrippedState(roomId, userId)
-            println("SYNC: Building invite for room $roomId with ${strippedState.size} stripped state events")
-            strippedState.forEachIndexed { idx, event ->
-                val eventObj = event.jsonObject
-                println("SYNC: Stripped state event $idx: type=${eventObj["type"]}, sender=${eventObj["sender"]}, state_key=${eventObj.get("state_key")}")
-            }
             inviteRooms[roomId] = buildJsonObject {
                 put("invite_state", buildJsonObject {
                     put("events", JsonArray(strippedState))

@@ -256,6 +256,17 @@ fun Application.clientRoutes(config: ServerConfig) {
                                     put("m.room_versions", buildJsonObject {
                                         put("default", "12")
                                         put("available", buildJsonObject {
+                                            put("1", "stable")
+                                            put("2", "stable")
+                                            put("3", "stable")
+                                            put("4", "stable")
+                                            put("5", "stable")
+                                            put("6", "stable")
+                                            put("7", "stable")
+                                            put("8", "stable")
+                                            put("9", "stable")
+                                            put("10", "stable")
+                                            put("11", "stable")
                                             put("12", "stable")
                                         })
                                     })

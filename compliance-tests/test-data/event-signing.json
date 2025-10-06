@@ -1,0 +1,62 @@
+{
+  "description": "Test vectors for Ed25519 signature generation and verification per Matrix Specification v1.16 Section 6.1.4",
+  "tests": [
+    {
+      "name": "Simple event signature verification",
+      "note": "Test case with known key pair and expected signature",
+      "private_key_base64": "4Y9HqfVZNgshKhfZHQIy0+SaAGDG6wZLVsOx3n/6ZG8=",
+      "public_key_base64": "ARMPSUAY3KCLXGx/lxqAMKjVqGHBftqIVEHLqwz5Puc=",
+      "key_id": "ed25519:test1",
+      "server_name": "example.com",
+      "event": {
+        "type": "m.room.message",
+        "room_id": "!test:example.com",
+        "sender": "@user:example.com",
+        "origin": "example.com",
+        "origin_server_ts": 1234567890,
+        "content": {
+          "msgtype": "m.text",
+          "body": "Hello, world!"
+        }
+      },
+      "expected_canonical_json": "{\"content\":{\"body\":\"Hello, world!\",\"msgtype\":\"m.text\"},\"origin\":\"example.com\",\"origin_server_ts\":1234567890,\"room_id\":\"!test:example.com\",\"sender\":\"@user:example.com\",\"type\":\"m.room.message\"}",
+      "expected_signature": "NOT_YET_COMPUTED"
+    },
+    {
+      "name": "Join event signature verification",
+      "note": "Test case for m.room.member join event with depth and auth_events",
+      "private_key_base64": "4Y9HqfVZNgshKhfZHQIy0+SaAGDG6wZLVsOx3n/6ZG8=",
+      "public_key_base64": "ARMPSUAY3KCLXGx/lxqAMKjVqGHBftqIVEHLqwz5Puc=",
+      "key_id": "ed25519:test1",
+      "server_name": "example.com",
+      "event": {
+        "type": "m.room.member",
+        "state_key": "@user:example.com",
+        "room_id": "!test:example.com",
+        "sender": "@user:example.com",
+        "origin": "example.com",
+        "origin_server_ts": 1234567890,
+        "depth": 5,
+        "auth_events": [
+          "$create_event_id",
+          "$join_rules_event_id",
+          "$power_levels_event_id"
+        ],
+        "prev_events": [
+          "$previous_event_id"
+        ],
+        "content": {
+          "membership": "join",
+          "displayname": "Test User"
+        }
+      },
+      "expected_signature": "NOT_YET_COMPUTED"
+    }
+  ],
+  "implementation_notes": [
+    "Signatures are computed over the canonical JSON of the event with hashes added but signatures removed",
+    "The signing string includes the server name, key ID (algorithm), and the canonical JSON",
+    "Ed25519 signatures should be encoded using unpadded Base64 (URL-safe variant)",
+    "Expected signatures will be computed during test suite development using reference implementations"
+  ]
+}

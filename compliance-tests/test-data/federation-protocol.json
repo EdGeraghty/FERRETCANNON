@@ -1,0 +1,115 @@
+{
+  "description": "Test cases for Matrix Federation Protocol per Matrix Specification v1.16",
+  "tests": [
+    {
+      "name": "make_join request format",
+      "endpoint": "GET /_matrix/federation/v1/make_join/{roomId}/{userId}",
+      "request": {
+        "room_id": "!test:example.com",
+        "user_id": "@user:remote.com",
+        "query_params": ["ver=1", "ver=2", "ver=3", "ver=4", "ver=5", "ver=6", "ver=7", "ver=8", "ver=9", "ver=10", "ver=11", "ver=12"]
+      },
+      "expected_response_fields": [
+        "room_version",
+        "event"
+      ],
+      "expected_event_fields": [
+        "type",
+        "room_id",
+        "sender",
+        "state_key",
+        "content",
+        "origin",
+        "origin_server_ts",
+        "auth_events",
+        "prev_events"
+      ],
+      "expected_event_type": "m.room.member",
+      "expected_content_membership": "join"
+    },
+    {
+      "name": "send_join request format for room v12",
+      "endpoint": "PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}",
+      "room_version": "12",
+      "request": {
+        "room_id": "!test:example.com",
+        "event_id": "$hash_derived_event_id",
+        "body": {
+          "type": "m.room.member",
+          "room_id": "!test:example.com",
+          "sender": "@user:remote.com",
+          "state_key": "@user:remote.com",
+          "origin": "remote.com",
+          "origin_server_ts": 1234567890,
+          "depth": 5,
+          "auth_events": ["$auth1", "$auth2"],
+          "prev_events": ["$prev1"],
+          "content": {
+            "membership": "join"
+          },
+          "hashes": {
+            "sha256": "BASE64_HASH_VALUE"
+          },
+          "signatures": {
+            "remote.com": {
+              "ed25519:key1": "BASE64_SIGNATURE_VALUE"
+            }
+          }
+        }
+      },
+      "required_request_headers": [
+        "Authorization: X-Matrix ...",
+        "Content-Type: application/json"
+      ],
+      "expected_response_fields": [
+        "event",
+        "state",
+        "auth_chain"
+      ],
+      "notes": [
+        "Room v12 uses hash-derived event IDs ($BASE64_HASH)",
+        "Event body must NOT contain event_id field",
+        "Event ID in URL must match sha256 hash from hashes field",
+        "Canonical JSON must be used for hash computation",
+        "All fields must be present before signing"
+      ]
+    },
+    {
+      "name": "server key query",
+      "endpoint": "GET /_matrix/key/v2/server",
+      "expected_response_fields": [
+        "server_name",
+        "valid_until_ts",
+        "verify_keys",
+        "old_verify_keys",
+        "signatures"
+      ],
+      "expected_verify_keys_format": {
+        "ed25519:KEY_ID": {
+          "key": "BASE64_PUBLIC_KEY"
+        }
+      }
+    },
+    {
+      "name": "Authorization header format",
+      "description": "X-Matrix Authorization header for federation requests",
+      "header_format": "X-Matrix origin=ORIGIN,destination=DESTINATION,key=\"ed25519:KEY_ID\",sig=\"BASE64_SIGNATURE\"",
+      "example": "X-Matrix origin=remote.com,destination=example.com,key=\"ed25519:key1\",sig=\"BASE64URL_SIGNATURE\"",
+      "signing_input": "{\"method\":\"GET\",\"uri\":\"/_matrix/federation/v1/make_join/!test:example.com/@user:remote.com\",\"origin\":\"remote.com\",\"destination\":\"example.com\",\"content\":{}}",
+      "notes": [
+        "Signature is computed over canonical JSON of request metadata",
+        "Request metadata includes method, uri, origin, destination, and content (empty object for GET)",
+        "Signature is Base64URL encoded (no padding)"
+      ]
+    }
+  ],
+  "compliance_notes": [
+    "All federation endpoints require X-Matrix Authorization headers",
+    "Room versions 4+ use hash-derived event IDs (no event_id in event body)",
+    "Room version 12 is the latest stable version as of Matrix spec v1.16",
+    "Canonical JSON must be used for all cryptographic operations",
+    "Event hashes are computed BEFORE adding signatures",
+    "Events are signed with hashes present but signatures absent (empty placeholder)",
+    "All timestamps should be in milliseconds since Unix epoch"
+  ]
+}

@@ -55,6 +55,7 @@ import routes.client_server.client.clientRoutes
 import routes.server_server.federation.federationRoutes
 import routes.server_server.key.keyRoutes
 import routes.discovery.wellknown.wellKnownRoutes
+import routes.testEndpoints
 import config.ConfigLoader
 import config.ServerConfig
 import utils.ServerNameResolver
@@ -275,6 +276,10 @@ fun main() {
             logger.info("✅ Well-known routes configured")
             
             routing {
+                logger.debug("Setting up test endpoints for compliance testing...")
+                testEndpoints()
+                logger.info("✅ Test endpoints configured")
+                
                 logger.debug("Setting up basic routes...")
                 get("/") {
                     logger.trace("Handling root request")

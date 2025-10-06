@@ -1,0 +1,70 @@
+{
+  "description": "Matrix Event Content Hash Test Cases",
+  "tests": [
+    {
+      "name": "Simple join event hash",
+      "event": {
+        "auth_events": ["$amxREh8Yxdn7Ajg1isWwiE8vThUUrMTMeAn9vK4iANA", "$sQzYfaDpsQJg93gkc-0KBVzcKgBTjuzPUQ31aGFxEj4"],
+        "content": {"membership": "join"},
+        "depth": 1399,
+        "origin_server_ts": 1759753025984,
+        "prev_events": ["$jtmwoL0SodCgNmjPwlPdhUVsAIA-elkCs_FI6VO78dQ"],
+        "room_id": "!ljI2RJQdNNdO7hOrzMPrACPxwQZiKxMJhCTJtMXx-hw",
+        "sender": "@ferretcannon:ferretcannon.roflcopter.wtf",
+        "state_key": "@ferretcannon:ferretcannon.roflcopter.wtf",
+        "type": "m.room.member"
+      },
+      "expected_canonical_json": "{\"auth_events\":[\"$amxREh8Yxdn7Ajg1isWwiE8vThUUrMTMeAn9vK4iANA\",\"$sQzYfaDpsQJg93gkc-0KBVzcKgBTjuzPUQ31aGFxEj4\"],\"content\":{\"membership\":\"join\"},\"depth\":1399,\"origin_server_ts\":1759753025984,\"prev_events\":[\"$jtmwoL0SodCgNmjPwlPdhUVsAIA-elkCs_FI6VO78dQ\"],\"room_id\":\"!ljI2RJQdNNdO7hOrzMPrACPxwQZiKxMJhCTJtMXx-hw\",\"sender\":\"@ferretcannon:ferretcannon.roflcopter.wtf\",\"state_key\":\"@ferretcannon:ferretcannon.roflcopter.wtf\",\"type\":\"m.room.member\"}",
+      "expected_hash": "x8vNFczuKAWlLMO-F7XWzAZRCS0zlplC6l7HcxihZfQ",
+      "room_version": "12"
+    },
+    {
+      "name": "Event with hashes field (should be removed before hashing)",
+      "event": {
+        "auth_events": ["$event1"],
+        "content": {"body": "test"},
+        "depth": 5,
+        "hashes": {"sha256": "this_should_be_removed"},
+        "origin_server_ts": 1234567890,
+        "prev_events": ["$event2"],
+        "room_id": "!room:server.com",
+        "sender": "@user:server.com",
+        "type": "m.room.message"
+      },
+      "note": "Hash field should be excluded before computing canonical JSON",
+      "room_version": "12"
+    },
+    {
+      "name": "Event with signatures field (should be removed before hashing)",
+      "event": {
+        "auth_events": ["$event1"],
+        "content": {"body": "test"},
+        "depth": 5,
+        "origin_server_ts": 1234567890,
+        "prev_events": ["$event2"],
+        "room_id": "!room:server.com",
+        "sender": "@user:server.com",
+        "signatures": {"server.com": {"ed25519:key1": "fake_signature"}},
+        "type": "m.room.message"
+      },
+      "note": "Signatures field should be excluded before computing canonical JSON",
+      "room_version": "12"
+    },
+    {
+      "name": "Event with unsigned field (should be removed before hashing)",
+      "event": {
+        "auth_events": ["$event1"],
+        "content": {"body": "test"},
+        "depth": 5,
+        "origin_server_ts": 1234567890,
+        "prev_events": ["$event2"],
+        "room_id": "!room:server.com",
+        "sender": "@user:server.com",
+        "type": "m.room.message",
+        "unsigned": {"age": 1000}
+      },
+      "note": "Unsigned field should be excluded before computing canonical JSON",
+      "room_version": "12"
+    }
+  ]
+}

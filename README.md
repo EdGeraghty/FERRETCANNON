@@ -233,6 +233,51 @@ This implementation adheres to the Matrix Server-Server API v1.16 specification.
   - Room-specific EDU ACL validation
   - Graceful handling of ACL-denied transactions
 
+## Compliance Testing
+
+FERRETCANNON includes a comprehensive compliance test suite to verify Matrix Specification v1.16 adherence. Big shoutout to the FERRETCANNON massive for making this happen! 🎆
+
+### Quick Start
+
+```powershell
+# Start the server
+.\start-server.ps1 -NoPrompt
+
+# Run compliance tests
+cd compliance-tests
+.\run-compliance-tests.ps1
+```
+
+### Test Coverage
+
+The compliance test suite includes:
+
+- ✅ **Canonical JSON Tests** - Verifies JSON serialisation per Matrix spec (sorted keys, proper number formatting, UTF-8 encoding)
+- ✅ **Event Hashing Tests** - Validates SHA-256 content hash computation with proper field exclusion
+- 🔄 **Event Signing Tests** - Ed25519 signature generation and verification (test vectors in progress)
+- 📋 **Federation Protocol Tests** - make_join, send_join, and other server-server API formats (documented)
+
+### Test Endpoints
+
+For compliance testing, FERRETCANNON exposes internal verification endpoints:
+
+- `POST /_matrix/test/canonical-json` - Canonicalise JSON input
+- `POST /_matrix/test/compute-hash` - Compute event content hash
+- `GET /_matrix/test/server-info` - Server connectivity check
+
+### Documentation
+
+See [`compliance-tests/QUICK_START.md`](compliance-tests/QUICK_START.md) for detailed usage instructions and [`compliance-tests/STATUS.md`](compliance-tests/STATUS.md) for implementation status.
+
+### Why This Matters
+
+Compliance testing helps:
+- ✅ Verify implementation correctness against Matrix specification
+- ✅ Debug federation issues systematically
+- ✅ Prevent regressions with automated testing
+- ✅ Document expected behaviour with executable specifications
+- ✅ Help the Matrix community by sharing reusable test cases
+
 ## License
 
 [#YOLO Public License (YPL) v0.12.34-hunter.2](https://github.com/YOLOSecFW/YoloSec-Framework/blob/master/YOLO%20Public%20License)

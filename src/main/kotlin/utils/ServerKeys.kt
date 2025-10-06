@@ -46,17 +46,17 @@ object ServerKeys {
         logger.debug("Loading or generating Ed25519 key pair for server: $serverName")
 
         transaction {
-            // Try to load existing key from database
+            // Try to load existing key from database (any key for this server)
             val existingKey = ServerKeysTable.select {
-                (ServerKeysTable.serverName eq serverName) and
-                (ServerKeysTable.keyId eq "ed25519:0")
-            }.singleOrNull()
+                ServerKeysTable.serverName eq serverName
+            }.orderBy(ServerKeysTable.tsAddedTs to SortOrder.DESC).limit(1).singleOrNull()
 
             if (existingKey != null) {
                 // Load existing key
+                val storedKeyId = existingKey[ServerKeysTable.keyId]
                 val storedPublicKey = existingKey[ServerKeysTable.publicKey]
                 val storedPrivateKey = existingKey[ServerKeysTable.privateKey]
-                logger.info("✅ Found existing server key pair with ID: ed25519:0")
+                logger.info("✅ Found existing server key pair with ID: $storedKeyId")
 
                 if (storedPrivateKey != null) {
                     // Load the private key
@@ -69,7 +69,7 @@ object ServerKeys {
                     val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
                     publicKey = EdDSAPublicKey(publicKeySpec)
                     publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
-                    keyId = "ed25519:0"
+                    keyId = storedKeyId
 
                     // Verify the stored public key matches
                     if (storedPublicKey != publicKeyBase64) {
@@ -113,7 +113,7 @@ object ServerKeys {
 
             // Use unpadded URL-safe Base64 as per Matrix specification appendices
             publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
-            keyId = "ed25519:0"
+            keyId = "ed25519:YOLO420-${System.currentTimeMillis() / 1000}"
 
             logger.info("✅ Generated server key pair with ID: $keyId")
             logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
@@ -124,51 +124,56 @@ object ServerKeys {
     }
 
     private fun updateStoredKey() {
-        transaction {
-            val currentKeyId = keyId
-            val currentPublicKeyBase64 = publicKeyBase64
-            val currentPrivateKeyBase64 = Base64.getEncoder().encodeToString(privateKeySeed!!)
-            
-            ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq currentKeyId) }) {
-                it[ServerKeysTable.publicKey] = currentPublicKeyBase64
-                it[ServerKeysTable.privateKey] = currentPrivateKeyBase64
-                it[ServerKeysTable.keyValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
-                it[ServerKeysTable.tsValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)
-            }
-            logger.debug("🔒 Updated stored server key in database")
+        // NOTE: Must be called within a transaction block
+        val currentKeyId = keyId
+        val currentPublicKeyBase64 = publicKeyBase64
+        val currentPrivateKeyBase64 = Base64.getEncoder().encodeToString(privateKeySeed!!)
+        
+        ServerKeysTable.update({ (ServerKeysTable.serverName eq serverName) and (ServerKeysTable.keyId eq currentKeyId) }) {
+            it[ServerKeysTable.publicKey] = currentPublicKeyBase64
+            it[ServerKeysTable.privateKey] = currentPrivateKeyBase64
+            it[ServerKeysTable.keyValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
+            it[ServerKeysTable.tsValidUntilTs] = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)
         }
+        logger.debug("🔒 Updated stored server key in database")
     }
 
     private fun storeKeyInDatabase() {
-        transaction {
-            // Store public and private keys in database
-            val validUntilTs = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
-            val currentTime = System.currentTimeMillis()
+        // NOTE: Must be called within a transaction block
+        // Store public and private keys in database
+        val validUntilTs = System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L) // Valid for 1 year
+        val currentTime = System.currentTimeMillis()
+        
+        val currentKeyId = keyId
+        val currentPublicKeyBase64 = publicKeyBase64
+        val currentPrivateKeyBase64 = Base64.getEncoder().encodeToString(privateKeySeed!!)
+
+        logger.info("💾 About to insert key into database: server=$serverName, keyId=$currentKeyId")
+        try {
+            // Use raw SQL to avoid Exposed's quoting issues with composite primary keys
+            val insertSql = """
+                INSERT INTO server_keys (server_name, key_id, public_key, private_key, key_valid_until_ts, ts_added_ts, ts_valid_until_ts)
+                VALUES ('$serverName', '$currentKeyId', '$currentPublicKeyBase64', '$currentPrivateKeyBase64', $validUntilTs, $currentTime, $validUntilTs)
+            """.trimIndent()
             
-            val currentKeyId = keyId
-            val currentPublicKeyBase64 = publicKeyBase64
-            val currentPrivateKeyBase64 = Base64.getEncoder().encodeToString(privateKeySeed!!)
-
-            try {
-                // Try to insert first
-                ServerKeysTable.insert {
-                    it[ServerKeysTable.serverName] = serverName
-                    it[ServerKeysTable.keyId] = currentKeyId
-                    it[ServerKeysTable.publicKey] = currentPublicKeyBase64
-                    it[ServerKeysTable.privateKey] = currentPrivateKeyBase64
-                    it[ServerKeysTable.keyValidUntilTs] = validUntilTs
-                    it[ServerKeysTable.tsValidUntilTs] = validUntilTs
-                    it[ServerKeysTable.tsAddedTs] = currentTime
-                }
-                logger.debug("🔒 Inserted new server key in database")
-            } catch (e: Exception) {
-                // If insert fails (key already exists), try update
-                logger.debug("Key already exists, updating...")
-                updateStoredKey()
-            }
-
-            logger.debug("🔒 Stored server key in database with validity until: $validUntilTs")
+            org.jetbrains.exposed.sql.transactions.TransactionManager.current().exec(insertSql)
+            logger.info("🔒 Raw SQL INSERT executed successfully")
+            
+            // Verify the insert worked by reading it back within the same transaction
+            val verification = ServerKeysTable.select {
+                (ServerKeysTable.serverName eq serverName) and
+                (ServerKeysTable.keyId eq currentKeyId)
+            }.count()
+            logger.info("✅ Verification: Found $verification keys with our serverName+keyId in database")
+        } catch (e: Exception) {
+            // If insert fails (key already exists), try update
+            logger.warn("⚠️  Key insert failed with exception: ${e.message}, attempting update...")
+            logger.warn("Exception type: ${e.javaClass.name}")
+            e.printStackTrace()
+            updateStoredKey()
         }
+
+        logger.info("🔒 Stored server key in database with validity until: $validUntilTs")
     }
 
     // Test function to verify against Matrix specification test vectors
