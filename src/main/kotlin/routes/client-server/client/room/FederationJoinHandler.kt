@@ -212,31 +212,27 @@ object FederationJoinHandler {
         serverDetails: ServerConnectionDetails,
         config: ServerConfig
     ): SendJoinResult {
-        // For room versions 4+, event_id is derived from the content hash
-        val hashes = signedEvent["hashes"]?.jsonObject
-        val sha256Hash = hashes?.get("sha256")?.jsonPrimitive?.content
-        val eventId = if (sha256Hash != null) {
-            "\$$sha256Hash"
-        } else {
-            // Fallback: try to get event_id from the event (for older room versions)
-            signedEvent["event_id"]?.jsonPrimitive?.content ?: return SendJoinResult(
-                success = false,
-                errorCode = "M_UNKNOWN",
-                errorMessage = "Missing event_id and hash in signed event"
-            )
-        }
+        // For room versions 4+, event_id is derived from the full event hash including signatures
+        val eventId = signedEvent["event_id"]?.jsonPrimitive?.content ?: return SendJoinResult(
+            success = false,
+            errorCode = "M_UNKNOWN",
+            errorMessage = "Signed event missing event_id"
+        )
         
         val sendJoinUrl = "https://${serverDetails.host}:${serverDetails.port}/_matrix/federation/v2/send_join/$roomId/$eventId"
         println("Sending /send_join request to: $sendJoinUrl")
         
         // CRITICAL: Send as canonical JSON to match the key ordering we used when computing the hash
-        val signedEventNative = utils.MatrixAuth.jsonElementToNative(signedEvent)
+        // Remove event_id for sending, as per Matrix spec
+        val eventForSending = signedEvent.toMutableMap()
+        // eventForSending.remove("event_id")  // Include event_id in body for compatibility
+        val signedEventNative = utils.MatrixAuth.jsonElementToNative(JsonObject(eventForSending))
             ?: return SendJoinResult(success = false, errorCode = "M_UNKNOWN", errorMessage = "Failed to convert event to native types")
         val sendJoinBodyJson = utils.MatrixAuth.canonicalizeJson(signedEventNative)
         
         println("Event being sent as canonical JSON (FULL): $sendJoinBodyJson")
-        println("Event ID from hash in URL: $eventId")
-        println("Event hash value in body: \$${signedEvent["hashes"]?.jsonObject?.get("sha256")?.jsonPrimitive?.content}")
+        println("Event ID from full hash in URL: $eventId")
+        println("Event content hash in body: \$${signedEvent["hashes"]?.jsonObject?.get("sha256")?.jsonPrimitive?.content}")
         
         val sendJoinAuthHeader = utils.MatrixAuth.buildAuthHeader(
             method = "PUT",

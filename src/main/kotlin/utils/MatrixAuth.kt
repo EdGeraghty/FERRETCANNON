@@ -311,7 +311,7 @@ object MatrixAuth {
         val redactedMap = mutableMapOf<String, JsonElement>()
         
         // Core fields always preserved in redaction (Matrix spec Room Version 11)
-        event["event_id"]?.let { redactedMap["event_id"] = it }
+        // Note: event_id is excluded for signature verification as per implementation
         event["type"]?.let { redactedMap["type"] = it }
         event["room_id"]?.let { redactedMap["room_id"] = it }
         event["sender"]?.let { redactedMap["sender"] = it }
@@ -556,13 +556,12 @@ object MatrixAuth {
         // Add hashes to native map
         eventNative["hashes"] = mapOf("sha256" to contentHash)
         
-        // For signing: create a version WITHOUT hashes but WITH empty signatures placeholder
+        // For signing: create a version WITH hashes but WITH empty signatures placeholder
         val eventForSigning = eventNative.toMutableMap()
-        eventForSigning.remove("hashes")
         eventForSigning["signatures"] = mapOf(serverName to mapOf(ServerKeys.getKeyId() to ""))
 
         val canonicalJson = canonicalizeJson(eventForSigning)
-        logger.info("hashAndSignEvent: Signing canonical JSON (no hashes): $canonicalJson")
+        logger.info("hashAndSignEvent: Signing canonical JSON (with hashes): $canonicalJson")
         val signature = ServerKeys.sign(canonicalJson.toByteArray(Charsets.UTF_8))
         logger.info("hashAndSignEvent: Generated signature: $signature")
 
@@ -574,6 +573,14 @@ object MatrixAuth {
         for ((key, value) in eventNative) {
             resultMap[key] = nativeToJsonElement(value)
         }
+        val signedEvent = JsonObject(resultMap)
+        
+        // Compute the event ID from the fully signed event
+        val eventId = computeEventId(signedEvent)
+        
+        // Add event_id to the result
+        resultMap["event_id"] = JsonPrimitive(eventId)
+        
         return JsonObject(resultMap)
     }
     
@@ -857,5 +864,23 @@ object MatrixAuth {
 
         // Build authorization header (keyId already includes "ed25519:" prefix)
         return "X-Matrix origin=\"$origin\",destination=\"$destination\",key=\"$keyId\",sig=\"$signature\""
+    }
+
+    // Compute event ID from a fully signed event (including signatures and hashes)
+    fun computeEventId(event: JsonObject): String {
+        val native = jsonElementToNative(event)
+        if (native !is Map<*, *>) {
+            throw IllegalArgumentException("Event must be a JSON object")
+        }
+        @Suppress("UNCHECKED_CAST")
+        val nativeMap = native.toMutableMap() as MutableMap<String, Any?>
+        
+        // Exclude event_id from the hash calculation as per Matrix spec
+        nativeMap.remove("event_id")
+        
+        val canonical = canonicalizeJson(nativeMap)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
     }
 }
