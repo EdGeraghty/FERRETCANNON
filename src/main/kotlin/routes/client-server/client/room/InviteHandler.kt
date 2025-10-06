@@ -129,7 +129,7 @@ object InviteHandler {
         // Check if invitee is on a remote server
         val inviteeServer = inviteeUserId.substringAfter(":")
         if (inviteeServer != config.federation.serverName) {
-            sendFederationInvite(roomId, inviterUserId, inviteeUserId, inviteEventId, currentTime, prevEvents, authEvents, depth, config)
+            sendFederationInvite(roomId, inviterUserId, inviteeUserId, currentTime, prevEvents, authEvents, depth, config)
         }
         
         // Broadcast invite event locally
@@ -162,18 +162,12 @@ object InviteHandler {
         ))
         
         val inviteEvent = buildJsonObject {
-            put("event_id", inviteEventId)
             put("type", "m.room.member")
             put("room_id", roomId)
             put("sender", inviterUserId)
             put("content", inviteContent)
             put("origin_server_ts", currentTime)
             put("state_key", inviteeUserId)
-            put("prev_events", JsonArray(emptyList()))
-            put("auth_events", JsonArray(emptyList()))
-            put("depth", 1)
-            put("hashes", Json.parseToJsonElement("{}"))
-            put("signatures", Json.parseToJsonElement("{}"))
             put("origin", config.federation.serverName)
         }
         
@@ -196,7 +190,6 @@ object InviteHandler {
         roomId: String,
         inviterUserId: String,
         inviteeUserId: String,
-        inviteEventId: String,
         currentTime: Long,
         prevEvents: String,
         authEvents: String,
@@ -208,7 +201,6 @@ object InviteHandler {
             val inviteContent = JsonObject(mutableMapOf("membership" to JsonPrimitive("invite")))
             
             val inviteEvent = buildJsonObject {
-                put("event_id", inviteEventId)
                 put("type", "m.room.member")
                 put("room_id", roomId)
                 put("sender", inviterUserId)

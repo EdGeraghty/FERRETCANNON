@@ -446,8 +446,8 @@ object MatrixAuth {
         
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
-        // Use unpadded URL-safe Base64 as per Matrix specification for event IDs
-        val hashResult = Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
+        // Use standard Base64 for content hashes as per Matrix specification
+        val hashResult = Base64.getEncoder().encodeToString(hash)
         logger.info("computeContentHash: computed hash: $hashResult")
         
         // Let's also log the exact bytes being hashed for deep debugging

@@ -93,7 +93,7 @@ object FederationJoinHandler {
             storeRoomState(roomId, userId, signedEvent, sendJoinResult.stateEvents!!, sendJoinResult.authChain!!, makeJoinResult.roomVersion)
             
             // Step 5: Broadcast to other servers
-            broadcastJoinToServers(httpClient, roomId, signedEvent, sendJoinResult.stateEvents, config)
+            broadcastJoinToServers(httpClient, signedEvent, sendJoinResult.stateEvents, config)
             
             return JoinResult(success = true, roomId = roomId)
             
@@ -192,8 +192,10 @@ object FederationJoinHandler {
         
         // For room versions 4+, the event_id is NOT included in the event itself
         // It's derived from the content hash and used only in URLs
-        // Return the signed event WITHOUT adding event_id to it
-        return signedJoinEvent
+        // Remove event_id from the signed event before returning
+        val eventWithoutId = signedJoinEvent.toMutableMap()
+        eventWithoutId.remove("event_id")
+        return JsonObject(eventWithoutId)
     }
     
     private data class SendJoinResult(
@@ -213,19 +215,16 @@ object FederationJoinHandler {
         config: ServerConfig
     ): SendJoinResult {
         // For room versions 4+, event_id is derived from the full event hash including signatures
-        val eventId = signedEvent["event_id"]?.jsonPrimitive?.content ?: return SendJoinResult(
-            success = false,
-            errorCode = "M_UNKNOWN",
-            errorMessage = "Signed event missing event_id"
-        )
+        // Compute it from the signed event
+        val eventId = MatrixAuth.computeEventId(signedEvent)
         
         val sendJoinUrl = "https://${serverDetails.host}:${serverDetails.port}/_matrix/federation/v2/send_join/$roomId/$eventId"
         println("Sending /send_join request to: $sendJoinUrl")
         
         // CRITICAL: Send as canonical JSON to match the key ordering we used when computing the hash
-        // Remove event_id for sending, as per Matrix spec
+        // Include event_id in the event for send_join (some implementations may expect it)
         val eventForSending = signedEvent.toMutableMap()
-        // eventForSending.remove("event_id")  // Include event_id in body for compatibility
+        eventForSending["event_id"] = JsonPrimitive("\$$eventId")
         val signedEventNative = utils.MatrixAuth.jsonElementToNative(JsonObject(eventForSending))
             ?: return SendJoinResult(success = false, errorCode = "M_UNKNOWN", errorMessage = "Failed to convert event to native types")
         val sendJoinBodyJson = utils.MatrixAuth.canonicalizeJson(signedEventNative)
@@ -290,7 +289,8 @@ object FederationJoinHandler {
         roomVersion: String = "12"
     ) {
         val currentTime = System.currentTimeMillis()
-        val eventId = joinEvent["event_id"]?.jsonPrimitive?.content ?: return
+        // Compute event_id from the signed event
+        val eventId = MatrixAuth.computeEventId(joinEvent)
         
         transaction {
             // Create room entry
@@ -361,7 +361,6 @@ object FederationJoinHandler {
     
     private suspend fun broadcastJoinToServers(
         httpClient: HttpClient,
-        roomId: String,
         joinEvent: JsonObject,
         stateEvents: JsonArray,
         config: ServerConfig
@@ -385,7 +384,7 @@ object FederationJoinHandler {
             
             for (remoteServer in serversInRoom) {
                 try {
-                    sendJoinToServer(httpClient, remoteServer, roomId, joinEvent, config)
+                    sendJoinToServer(httpClient, remoteServer, joinEvent, config)
                 } catch (e: Exception) {
                     println("Error notifying $remoteServer: ${e.message}")
                 }
@@ -399,7 +398,6 @@ object FederationJoinHandler {
     private suspend fun sendJoinToServer(
         httpClient: HttpClient,
         remoteServer: String,
-        roomId: String,
         joinEvent: JsonObject,
         config: ServerConfig
     ) {

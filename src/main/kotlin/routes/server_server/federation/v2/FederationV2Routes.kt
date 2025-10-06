@@ -16,6 +16,7 @@ import utils.StateResolver
 import routes.server_server.federation.v1.checkServerACL
 import routes.server_server.federation.v1.extractServerNameFromAuth
 import routes.server_server.federation.v1.processPDU
+import config.ConfigLoader
 
 fun Application.federationV2Routes() {
 
@@ -339,6 +340,18 @@ fun Application.federationV2Routes() {
                             println("Federation invite: sending 200 OK response")
                             call.respond(HttpStatusCode.OK, response)
                             println("Federation invite: response sent successfully")
+
+                            // Check if invitee is remote and send federation invite
+                            val inviteeUserId = processedEvent[Events.stateKey]
+                            if (inviteeUserId != null && inviteeUserId.contains(":")) {
+                                val inviteeServer = inviteeUserId.substringAfter(":")
+                                val config = ConfigLoader.loadConfig()
+                                if (inviteeServer != config.federation.serverName) {
+                                    // Send the signed event to the invitee's server
+                                    println("Federation invite: sending invite to remote invitee server $inviteeServer")
+                                    MatrixAuth.sendFederationInvite(inviteeServer, roomId, eventObject, config)
+                                }
+                            }
                         } catch (e: Exception) {
                             println("Invite v2 error: ${e.message}")
                             println("Invite v2 stack trace: ${e.stackTraceToString()}")
