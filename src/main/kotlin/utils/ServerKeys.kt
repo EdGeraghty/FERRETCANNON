@@ -207,7 +207,8 @@ object ServerKeys {
         signature.update(data)
         val signatureBytes = signature.sign()
         // Use unpadded Base64 as per Matrix specification appendices
-        return Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
+    // Use URL-safe Base64 without padding for signatures per Matrix spec
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(signatureBytes)
     }
 
     fun getStoredKeys(): List<Map<String, Any>> {

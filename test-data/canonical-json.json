@@ -1,0 +1,111 @@
+{
+  "description": "Matrix Specification Canonical JSON Test Cases",
+  "tests": [
+    {
+      "name": "Simple object with sorted keys",
+      "input": {
+        "one": 1,
+        "two": "Two"
+      },
+      "expected": "{\"one\":1,\"two\":\"Two\"}"
+    },
+    {
+      "name": "Nested object with sorted keys",
+      "input": {
+        "auth": {
+          "success": true,
+          "mxid": "@john.doe:example.com",
+          "profile": {
+            "display_name": "John Doe",
+            "three_pids": [
+              {
+                "medium": "email",
+                "address": "john.doe@example.org"
+              },
+              {
+                "medium": "msisdn",
+                "address": "123456789"
+              }
+            ]
+          }
+        }
+      },
+      "expected": "{\"auth\":{\"mxid\":\"@john.doe:example.com\",\"profile\":{\"display_name\":\"John Doe\",\"three_pids\":[{\"address\":\"john.doe@example.org\",\"medium\":\"email\"},{\"address\":\"123456789\",\"medium\":\"msisdn\"}]},\"success\":true}}"
+    },
+    {
+      "name": "Object with integers",
+      "input": {
+        "a": 1,
+        "b": 2
+      },
+      "expected": "{\"a\":1,\"b\":2}"
+    },
+    {
+      "name": "Object with large integers",
+      "input": {
+        "origin_server_ts": 1759753025984,
+        "depth": 1399
+      },
+      "expected": "{\"depth\":1399,\"origin_server_ts\":1759753025984}"
+    },
+    {
+      "name": "Object with boolean values",
+      "input": {
+        "enabled": true,
+        "disabled": false
+      },
+      "expected": "{\"disabled\":false,\"enabled\":true}"
+    },
+    {
+      "name": "Object with null value",
+      "input": {
+        "value": null
+      },
+      "expected": "{\"value\":null}"
+    },
+    {
+      "name": "Object with string escaping",
+      "input": {
+        "quote": "He said \"hello\"",
+        "backslash": "C:\\Users\\test",
+        "newline": "Line1\nLine2",
+        "tab": "Col1\tCol2"
+      },
+      "expected": "{\"backslash\":\"C:\\\\Users\\\\test\",\"newline\":\"Line1\\nLine2\",\"quote\":\"He said \\\"hello\\\"\",\"tab\":\"Col1\\tCol2\"}"
+    },
+    {
+      "name": "Empty object",
+      "input": {},
+      "expected": "{}"
+    },
+    {
+      "name": "Empty array",
+      "input": {
+        "items": []
+      },
+      "expected": "{\"items\":[]}"
+    },
+    {
+      "name": "Array with mixed types",
+      "input": {
+        "items": [1, "two", true, null]
+      },
+      "expected": "{\"items\":[1,\"two\",true,null]}"
+    },
+    {
+      "name": "Matrix event with typical fields",
+      "input": {
+        "auth_events": ["$event1", "$event2"],
+        "content": {"membership": "join"},
+        "depth": 100,
+        "origin_server_ts": 1234567890,
+        "prev_events": ["$event3"],
+        "room_id": "!room:example.com",
+        "sender": "@user:example.com",
+        "state_key": "@user:example.com",
+        "type": "m.room.member"
+      },
+      "expected": "{\"auth_events\":[\"$event1\",\"$event2\"],\"content\":{\"membership\":\"join\"},\"depth\":100,\"origin_server_ts\":1234567890,\"prev_events\":[\"$event3\"],\"room_id\":\"!room:example.com\",\"sender\":\"@user:example.com\",\"state_key\":\"@user:example.com\",\"type\":\"m.room.member\"}"
+    }
+  ]
+}

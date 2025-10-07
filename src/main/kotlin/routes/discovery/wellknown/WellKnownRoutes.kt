@@ -174,7 +174,7 @@ fun Application.wellKnownRoutes(config: ServerConfig) {
                                     val hashInput = "$address $pepper"
                                     val digest = MessageDigest.getInstance("SHA-256")
                                     val hashBytes = digest.digest(hashInput.toByteArray(Charsets.UTF_8))
-                                    val hash = Base64.getEncoder().encodeToString(hashBytes)
+                                        val hash = Base64.getUrlEncoder().withoutPadding().encodeToString(hashBytes)
 
                                     results[hash] = match[ThirdPartyIdentifiers.userId]
                                 }
