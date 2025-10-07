@@ -446,8 +446,9 @@ object MatrixAuth {
         
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
-    // Use URL-safe Base64 without padding for content hashes (Matrix spec expects base64url)
-    val hashResult = Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
+        // Use standard Base64 (not URL-safe) but WITHOUT padding for content hashes (Matrix spec section 27.4)
+        // Synapse sends hashes without padding, so we need to match that
+        val hashResult = Base64.getEncoder().withoutPadding().encodeToString(hash)
         logger.info("computeContentHash: computed hash: $hashResult")
         
         // Let's also log the exact bytes being hashed for deep debugging
