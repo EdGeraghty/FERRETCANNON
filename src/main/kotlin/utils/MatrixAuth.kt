@@ -831,6 +831,48 @@ object MatrixAuth {
         }
     }
 
+    suspend fun sendFederationLeave(remoteServer: String, roomId: String, leaveEvent: JsonObject, config: config.ServerConfig) {
+        println("sendFederationLeave called: remoteServer=$remoteServer, roomId=$roomId")
+        try {
+            val eventId = leaveEvent["event_id"]?.jsonPrimitive?.content ?: return
+
+            // Resolve server via .well-known
+            val serverDetails = ServerDiscovery.resolveServerName(remoteServer)
+            if (serverDetails == null) {
+                logger.error("Failed to resolve server: $remoteServer")
+                return
+            }
+
+            // Build the authorization header
+            val method = "PUT"
+            val uri = "/_matrix/federation/v2/send_leave/$roomId/$eventId"
+            val destination = remoteServer
+            val origin = config.federation.serverName
+
+            val requestBodyString = Json.encodeToString(JsonObject.serializer(), leaveEvent)
+            val authHeader = buildAuthHeader(method, uri, origin, destination, requestBodyString)
+
+            // Send the request using resolved server details
+            val fullUrl = "https://${serverDetails.host}:${serverDetails.port}$uri"
+            logger.info("Sending federation leave to: $fullUrl")
+            
+            val response = client.put(fullUrl) {
+                header("Authorization", authHeader)
+                header("Content-Type", "application/json")
+                setBody(requestBodyString)
+            }
+
+            if (response.status.value !in 200..299) {
+                val responseBody = runBlocking { response.bodyAsText() }
+                logger.error("Federation leave failed: ${response.status} - $responseBody")
+            } else {
+                logger.info("Federation leave sent successfully to $remoteServer")
+            }
+        } catch (e: Exception) {
+            logger.error("Error sending federation leave", e)
+        }
+    }
+
     /**
      * Build authorization header for federation requests according to Matrix spec
      * https://spec.matrix.org/v1.16/server-server-api/#request-authentication

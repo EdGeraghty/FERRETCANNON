@@ -29,6 +29,7 @@
 - If the project setup information has additional rules, follow them strictly.
 - Local testing has a working login as per `config.yml` with credentials: `@testuser:localhost|test_access_token`
 - This is a Windows machine using PowerShell - do not use bash commands
+- In PowerShell, `curl` is an alias for `Invoke-WebRequest`, NOT the Unix curl command - always use proper PowerShell syntax for HTTP requests
 - For all local testing, use `start-server.ps1 -NoPrompt` to start the server in background. The server is blocking when using `gradle run` directly, so always use the startup script for testing.
 - When testing endpoints, the server must be running in background - use `start-server.ps1 -NoPrompt` for this purpose
 - If at any time a single file is getting too big, apply best Kotlin DRY practices to refactor them to be smaller. Make sure there is always one single source of truth for all code paths.

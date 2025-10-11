@@ -170,9 +170,25 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
                 // Check if room already exists (race condition protection)
                 val existingRoom = Rooms.select { Rooms.roomId eq roomId }.singleOrNull()
                 if (existingRoom == null) {
+                    // Try to extract creator from m.room.create event in stripped state
+                    val createEvent = Events.select { 
+                        (Events.roomId eq roomId) and 
+                        (Events.type eq "m.room.create") and
+                        (Events.outlier eq true)
+                    }.singleOrNull()
+                    
+                    val creator = if (createEvent != null) {
+                        createEvent[Events.sender]
+                    } else {
+                        // Fallback: use the sender of the invite event
+                        event["sender"]?.jsonPrimitive?.content ?: "unknown"
+                    }
+                    
+                    println("Creating room $roomId with creator=$creator")
+                    
                     Rooms.insert {
                         it[Rooms.roomId] = roomId
-                        it[Rooms.creator] = ""  // Will be set from m.room.create event
+                        it[Rooms.creator] = creator
                         it[Rooms.name] = null
                         it[Rooms.topic] = null
                         it[Rooms.visibility] = "private"

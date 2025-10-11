@@ -74,6 +74,7 @@ import routes.client_server.client.sync.syncRoutes
 import routes.client_server.client.admin.adminRoutes
 import routes.client_server.client.thirdparty.thirdPartyRoutes
 import routes.client_server.client.filter.filterRoutes
+import routes.client_server.client.directory.roomDirectoryRoutes
 import routes.client_server.client.common.*
 
 import org.slf4j.LoggerFactory
@@ -309,6 +310,7 @@ fun Application.clientRoutes(config: ServerConfig) {
                     filterRoutes()
                     accountRoutes()
                     userDirectoryRoutes()
+                    roomDirectoryRoutes()
                     dehydratedDeviceRoutes()
                     userRoutes()
                     deviceRoutes()

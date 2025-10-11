@@ -410,9 +410,35 @@ class StateResolver {
                     it[Rooms.currentState] = Json.encodeToString(JsonObject.serializer(), JsonObject(newState))
                 }
             } else {
+                // Extract creator from m.room.create event in the new state or outlier events
+                val createStateKey = newState.keys.find { it.startsWith("m.room.create|") }
+                val creatorFromState = createStateKey?.let { 
+                    newState[it]?.get("sender")?.jsonPrimitive?.content 
+                }
+                
+                val creator = creatorFromState ?: run {
+                    // Fallback: check for m.room.create outlier event
+                    val createEvent = Events.select {
+                        (Events.roomId eq roomId) and
+                        (Events.type eq "m.room.create") and
+                        (Events.outlier eq true)
+                    }.singleOrNull()
+                    createEvent?.get(Events.sender) ?: "unknown"
+                }
+                
+                println("StateResolver.updateResolvedState: Creating room $roomId with creator=$creator")
+                
                 Rooms.insert {
                     it[Rooms.roomId] = roomId
+                    it[Rooms.creator] = creator
+                    it[Rooms.name] = null
+                    it[Rooms.topic] = null
+                    it[Rooms.visibility] = "private"
+                    it[Rooms.roomVersion] = "12"
+                    it[Rooms.isDirect] = false
                     it[Rooms.currentState] = Json.encodeToString(JsonObject.serializer(), JsonObject(newState))
+                    it[Rooms.stateGroups] = "{}"
+                    it[Rooms.published] = false
                 }
             }
         }

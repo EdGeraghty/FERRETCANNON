@@ -274,7 +274,7 @@ object LocalMembershipHandler {
     
     private fun updateResolvedState(roomId: String, stateResolver: StateResolver) {
         val allEvents = transaction {
-            Events.select { Events.roomId eq roomId }
+            Events.select { (Events.roomId eq roomId) and (Events.outlier eq false) }
                 .map { row ->
                     JsonObject(mutableMapOf(
                         "event_id" to JsonPrimitive(row[Events.eventId]),
@@ -286,8 +286,15 @@ object LocalMembershipHandler {
                     ))
                 }
         }
+        
+        // Only update resolved state if there are actual non-outlier events
+        if (allEvents.isEmpty()) {
+            println("updateResolvedState: No non-outlier events for room $roomId, skipping state resolution")
+            return
+        }
+        
         val roomVersion = transaction {
-            Rooms.select { Rooms.roomId eq roomId }.single()[Rooms.roomVersion]
+            Rooms.select { Rooms.roomId eq roomId }.singleOrNull()?.get(Rooms.roomVersion) ?: "10"
         }
         val newResolvedState = stateResolver.resolveState(allEvents, roomVersion)
         stateResolver.updateResolvedState(roomId, newResolvedState)

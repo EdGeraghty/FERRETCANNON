@@ -13,6 +13,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import models.Rooms
 import models.Events
 import utils.StateResolver
+import utils.MatrixAuth
 import routes.client_server.client.common.*
 
 /**
@@ -96,11 +97,35 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             
             // Determine if federation is needed
             val effectiveServerNames = if (membershipInfo.membership == "invite" && membershipInfo.sender != null) {
+                // Have invite with sender - use inviter's server
                 val inviterServer = membershipInfo.sender.substringAfter(":")
                 println("JOIN: User has invite from ${membershipInfo.sender} - will use make_join via $inviterServer")
                 listOf(inviterServer)
-            } else {
+            } else if (serverNames.isNotEmpty()) {
+                // Explicit server_name parameters provided
+                println("JOIN: Using provided server_name parameters: $serverNames")
                 serverNames
+            } else {
+                // No invite and no server_name - try to extract from room ID or check for outlier events
+                println("JOIN: No invite or server_name - checking for outlier events to determine origin server")
+                val originServer = transaction {
+                    // Check for any m.room.create outlier event that might have the origin server
+                    Events.select { 
+                        (Events.roomId eq roomId) and 
+                        (Events.type eq "m.room.create") and
+                        (Events.outlier eq true)
+                    }
+                    .map { it[Events.sender].substringAfter(":") }
+                    .firstOrNull()
+                }
+                
+                if (originServer != null) {
+                    println("JOIN: Found origin server from outlier m.room.create event: $originServer")
+                    listOf(originServer)
+                } else {
+                    println("JOIN: No origin server found - join will fail")
+                    emptyList()
+                }
             }
             
             // Check if room exists locally
@@ -170,32 +195,79 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // Check if room exists
+            // Check current membership - we might have invite events even without the room existing locally
+            val membershipInfo = LocalMembershipHandler.getCurrentMembership(roomId, userId)
+            val currentMembership = membershipInfo.membership
+
+            // If no membership exists, assume already left (idempotent)
+            if (currentMembership != "join" && currentMembership != "invite") {
+                println("LEAVE: User has no membership in room $roomId - assuming already left")
+                call.respondText("{}", ContentType.Application.Json)
+                return@post
+            }
+
+            // For federated invites (invited but room doesn't exist locally), just delete the invite event
             val roomExists = transaction {
                 Rooms.select { Rooms.roomId eq roomId }.count() > 0
             }
 
-            if (!roomExists) {
-                call.respond(HttpStatusCode.NotFound, mutableMapOf(
-                    "errcode" to "M_NOT_FOUND",
-                    "error" to "Room not found"
-                ))
+            if (!roomExists && currentMembership == "invite") {
+                println("LEAVE: Rejecting federated invite - creating and sending leave event")
+                
+                // Get the invite event to find the origin server
+                val inviteEvent = transaction {
+                    Events.select {
+                        (Events.roomId eq roomId) and
+                        (Events.type eq "m.room.member") and
+                        (Events.stateKey eq userId)
+                    }.singleOrNull()
+                }
+                
+                if (inviteEvent != null) {
+                    // Create a leave event to send to the remote server
+                    val currentTime = System.currentTimeMillis()
+                    val sender = inviteEvent[Events.sender]
+                    val remoteServer = sender.substringAfter(":")
+                    
+                    val leaveContent = JsonObject(mutableMapOf("membership" to JsonPrimitive("leave")))
+                    
+                    val leaveEvent = buildJsonObject {
+                        put("type", "m.room.member")
+                        put("room_id", roomId)
+                        put("sender", userId)
+                        put("content", leaveContent)
+                        put("origin_server_ts", currentTime)
+                        put("state_key", userId)
+                        put("prev_events", Json.parseToJsonElement("[]"))
+                        put("auth_events", Json.parseToJsonElement("[]"))
+                        put("depth", 1)
+                        put("hashes", Json.parseToJsonElement("{}"))
+                        put("signatures", Json.parseToJsonElement("{}"))
+                        put("origin", config.federation.serverName)
+                    }
+                    
+                    // Hash and sign the event
+                    val signedLeaveEvent = MatrixAuth.hashAndSignEvent(leaveEvent, config.federation.serverName)
+                    
+                    // Send the leave event to the remote server via federation
+                    MatrixAuth.sendFederationLeave(remoteServer, roomId, signedLeaveEvent, config)
+                }
+                
+                // Delete the local invite event
+                val deletedCount = transaction {
+                    Events.deleteWhere {
+                        (Events.roomId eq roomId) and
+                        (Events.type eq "m.room.member") and
+                        (Events.stateKey eq userId)
+                    }
+                }
+                println("LEAVE: Deleted $deletedCount invite event(s)")
+                call.respondText("{}", ContentType.Application.Json)
                 return@post
             }
 
-            // Check current membership
-            val currentMembership = LocalMembershipHandler.getCurrentMembership(roomId, userId).membership
-
-            // Allow leaving if user is joined OR invited (rejecting an invite)
-            if (currentMembership != "join" && currentMembership != "invite") {
-                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
-                    "errcode" to "M_NOT_MEMBER",
-                    "error" to "User is not a member of this room"
-                ))
-                return@post
-            }
-
-            val result = LocalMembershipHandler.createLocalLeave(userId, roomId, stateResolver)
+            // For local rooms or joined state, create a proper leave event
+            val result = LocalMembershipHandler.createLocalLeave(roomId, userId, stateResolver)
             
             if (result.success) {
                 call.respondText("{}", ContentType.Application.Json)
@@ -207,6 +279,8 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             }
 
         } catch (e: Exception) {
+            println("LEAVE: Exception caught: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error: ${e.message}"
