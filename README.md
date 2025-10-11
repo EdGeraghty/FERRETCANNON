@@ -288,4 +288,4 @@ Compliance testing helps:
 
 ## License
 
-See the LICENSE file for details.
+[#YOLO Public License (YPL) v0.12.34-hunter.2](https://github.com/YOLOSecFW/YoloSec-Framework/blob/master/YOLO%20Public%20License)
