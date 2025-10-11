@@ -1,12 +1,12 @@
 # FERRETCANNON Matrix Server
 
-A complete Kotlin/KTor implementation of a Matrix Server supporting the Matrix specification v1.16 (#YOLO!)
+A Kotlin/KTor implementation of a Matrix homeserver focused on spec compliance and federation correctness.
 
 ## Current Implementation Status
 
-**⚠️ IMPORTANT**: This document reflects the **actual tested status** of the server. Many endpoints listed as "implemented" in the codebase are either missing, incomplete, or return errors. Only endpoints that have been verified to work correctly are marked as ✅.
+**Real Talk**: This is an active development project implementing the Matrix spec v1.16. Most core functionality is in place, but there are still rough edges, particularly around edge cases and some advanced features. This README reflects what's actually implemented, not aspirational goals.
 
-### ✅ **WORKING ENDPOINTS** (Verified via Testing)
+### ✅ **IMPLEMENTED & WORKING** (Core Functionality)
 
 #### **Authentication & Registration**
 - ✅ `GET /_matrix/client/v3/login` - Returns supported login flows ([spec](https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3login))
@@ -47,113 +47,131 @@ A complete Kotlin/KTor implementation of a Matrix Server supporting the Matrix s
 - ✅ `GET /.well-known/matrix/client` - Client discovery ([spec](https://spec.matrix.org/v1.16/client-server-api/#get_well-knownmatrixclient))
 - ✅ `GET /.well-known/matrix/server` - Server discovery ([spec](https://spec.matrix.org/v1.16/server-server-api/#get_well-knownmatrixserver))
 
-### ❌ **MISSING/NON-WORKING ENDPOINTS** (Critical Gaps)
+### ⚠️ **KNOWN LIMITATIONS & ROUGH EDGES**
 
-#### **High Priority Missing Endpoints**
-- ❌ `GET /_matrix/client/v3/rooms/{roomId}/messages` - **CRITICAL**: Room message history ([spec](https://spec.matrix.org/v1.16/client-server-api/#get_matrixclientv3roomsroomidmessages)) - Returns 404
+#### **Federation**
+- ✅ Federation basics are working! Successfully federating with Synapse
+- ✅ Event hash verification fixed and working correctly
+- ✅ Invite flow, make_join, and send_join working per Matrix spec v1.16
+- 🔄 Some advanced federation endpoints have placeholder implementations (third-party lookups, etc.)
 
-#### **Content Repository**
-- ✅ `POST /_matrix/media/v3/upload` - File upload ([spec](https://spec.matrix.org/v1.16/client-server-api/#post_matrixmediav3upload))
-- ✅ `GET /_matrix/media/v3/download/{serverName}/{mediaId}` - File download ([spec](https://spec.matrix.org/v1.16/client-server-api/#get_matrixmediav3downloadservernamemediaid))
-- ✅ `GET /_matrix/media/v3/thumbnail/{serverName}/{mediaId}` - Thumbnail serving ([spec](https://spec.matrix.org/v1.16/client-server-api/#get_matrixmediav3thumbnailservernamemediaid))
+#### **Content & Media**
+- ✅ `POST /_matrix/media/v3/upload` - File upload works
+- ✅ `GET /_matrix/media/v3/download/{serverName}/{mediaId}` - File download works
+- ✅ `GET /_matrix/media/v3/thumbnail/{serverName}/{mediaId}` - Thumbnail generation works
 
 #### **OAuth 2.0**
+- ✅ OAuth 2.0 authorization flow implemented
+- ⚠️ OAuth endpoints work but may not cover all edge cases
 
-- ✅ OAuth 2.0 endpoints - Implemented and responding with proper validation (client authentication, error handling)
+#### **Other Areas**
+- 🔄 VoIP/TURN endpoints return configured server info but actual TURN integration is external
+- ⚠️ Some advanced features like spaces, third-party lookups, and dehydrated devices are implemented but may have edge cases
 
-### 📊 **COMPLIANCE ASSESSMENT**
+### 📊 **REALISTIC COMPLIANCE ASSESSMENT**
 
-**Current Compliance: ~95%**
+**Estimated Spec Compliance: ~85-90%**
 
-- ✅ **Core Authentication**: 100% working
-- ✅ **Basic Room Operations**: 100% working (including membership and messages)
-- ✅ **Advanced Room Features**: 90% working (pagination, read markers, redaction)
-- ✅ **Federation**: 100% working (full server-to-server API)
-- ✅ **Discovery**: 100% working
-- ✅ **Content Management**: 100% working
-- ✅ **OAuth 2.0**: 95% working (authorization flow, token management)
-- ✅ **VoIP/STUN/TURN**: 100% working
-- ✅ **Push Notifications**: 100% working
-- ✅ **Device Management**: 100% working
+- ✅ **Core Authentication**: Solid (login, register, tokens, logout)
+- ✅ **Basic Room Operations**: Working well (create, join, leave, send messages, sync)
+- ✅ **User Profiles**: Working (display name, avatar, presence)
+- ✅ **Device Management**: Working (list devices, device keys)
+- ✅ **Federation**: Working! (Event signing, hash verification, make_join/send_join flows)
+- ✅ **Discovery**: Working (well-known endpoints)
+- ✅ **Content Upload/Download**: Working
+- ✅ **Room Directory**: Working (alias resolution, room search)
+- ⚠️ **Advanced Features**: Many implemented but need more testing
+- 🔄 **Edge Cases**: Some rough edges remain
 
-### 🎯 **COMPLETED PRIORITIES**
+### 🎯 **CURRENT PRIORITIES**
 
-1. ✅ **Priority 1**: Full message pagination implemented in `GET /rooms/{roomId}/messages`
-2. ✅ **Priority 2**: Complete OAuth 2.0 authorization flow (client registration, token exchange)
-3. ✅ **Priority 3**: Advanced room features implemented (pagination, read markers, redaction)
-4. ✅ **Priority 4**: VoIP/STUN/TURN server support added
-5. ✅ **Priority 5**: Federation fully implemented (server-to-server API)
+1. ✅ **Priority 1**: Federation now working! Successfully joining rooms cross-server
+2. 🧪 **Priority 2**: Continue testing edge cases and advanced features
+3. 📝 **Priority 3**: Document known limitations and workarounds
+4. 🔄 **Priority 4**: Replace remaining placeholder implementations
+5. ✅ **Priority 5**: Improve test coverage
 
 ## Getting Started
 
-### Quick Start (No Manual Intervention Required)
+### Quick Start
 
-1. **Automated Server Start**: Use the provided scripts to start the server without manual prompts:
+1. **Start the server** using the provided scripts:
 
-   ```bash
-   # Windows PowerShell (Recommended)
+   ```powershell
+   # Windows PowerShell
    .\start-server.ps1
    
    # Or Windows Command Prompt
    start-server.bat
+   
+   # Or Linux/Mac
+   ./start-server.sh
    ```
 
 2. **VS Code Integration**: Use the pre-configured tasks:
    - Press `Ctrl+Shift+P` → "Tasks: Run Task" → "start-server"
-   - Or use the debug panel with "Run FERRETCANNON Server"
+   - Or use `Ctrl+Shift+B` to run the default build task
 
-3. **Test Server**: Automatically test if the server is running:
+3. **Test the server**:
 
    ```powershell
-   .\test-server.ps1
+   # Check if server is running
+   curl http://localhost:8080
+   
+   # Or use the test scripts
+   .\test-ed-message.ps1
    ```
 
-### Manual Start (if needed)
+### Manual Start
 
-1. Install Gradle if not already installed.
+If you prefer to run manually:
 
-2. Run `gradle build` to compile the project.
+1. Install Java 17 or higher and Gradle 8.5 or higher
 
-3. Run `gradle run` to start the server.
+2. Build the project:
+   ```powershell
+   gradle build
+   ```
 
-The server runs on port 8080.
+3. Run the server:
+   ```powershell
+   gradle run
+   ```
 
-## Avoiding Manual Prompts
+The server runs on port 8080 by default (configurable in `config.yml`).
 
-This project includes several automation features to minimize the need for clicking "Continue":
+## Development Workflow
+
+The project includes some conveniences to reduce friction during development:
 
 ### VS Code Settings
 
-- Auto-save enabled (saves after 1 second delay)
-- Disabled confirmation dialogs for:
-  - File deletion
-  - Terminal exit
-  - Debug session exit
-  - Window close
-- Disabled extension update prompts
-- Disabled Docker engine prompts
+- Auto-save enabled (1 second delay)
+- Reduced confirmation dialogs for common operations
+- Pre-configured tasks for building and running
 
 ### Automated Scripts
 
-- `start-server.ps1`: Automatically stops old processes and starts the server
-- `start-server.bat`: Windows batch version of the auto-start script
-- `test-server.ps1`: Automatically tests server connectivity
+- `start-server.ps1`: Stops old server processes and starts fresh
+- `start-server.bat`: Windows batch version
+- `start-server.sh`: Linux/Mac shell version
+- Various test scripts (`test-*.ps1`) for debugging specific features
 
 ### VS Code Tasks
 
-- `start-server`: Runs the server with no prompts
+- `start-server`: Runs the server in background mode
 - `build`: Compiles the project
 - `clean`: Cleans build artifacts
 - `run`: Basic server run task
 
-### Development Workflow
+### Typical Workflow
 
 1. Open the project in VS Code
 2. Press `Ctrl+Shift+P` → "Tasks: Run Task" → "start-server"
-3. The server starts automatically without any prompts
-4. Use `.\test-server.ps1` to verify it's running
-5. Make changes - auto-save handles file saving
-6. Server automatically reloads on code changes (Gradle daemon)
+3. The server starts in the background
+4. Make changes to code (auto-save handles saving)
+5. Restart the server to pick up changes
+6. Use test scripts to verify functionality
 
 ## Requirements
 
@@ -171,77 +189,67 @@ This project includes several automation features to minimize the need for click
 
 ## Compliance
 
-This implementation adheres to the Matrix Server-Server API v1.16 specification. All endpoints include proper authentication, validation, and error handling as required by the specification.
+This implementation adheres quite well to the Matrix Server-Server API v1.16 specification. Core functionality is solid, with federation working correctly against Synapse. Some advanced features may have edge cases that need addressing.
 
-### API Standards Compliance
+### API Standards
 
 - ✅ Server-server communication over HTTPS (configurable for production)
 - ✅ Proper error responses for unsupported endpoints (404 M_UNRECOGNIZED)
 - ✅ JSON content with UTF-8 encoding and application/json Content-Type
-- ✅ Support for all required HTTP methods and status codes
+- ✅ Support for required HTTP methods and status codes
 
-### Server Discovery Compliance
+### Server Discovery
 
 - ✅ `/.well-known/matrix/server` endpoint for server delegation
 - ✅ `/_matrix/key/v2/server` endpoint for publishing server keys
 - ✅ `/_matrix/key/v2/query` endpoint for querying keys from other servers
-- ✅ Proper key signing and validation as per specification
+- ✅ Key signing and validation as per specification
 
-### Authentication Compliance
+### Authentication
 
-- ✅ **Request Authentication**: All federation requests are authenticated using X-Matrix authorization headers
-  - Proper parsing and validation of Authorization headers
+- ✅ **Request Authentication**: Federation requests authenticated using X-Matrix authorization headers
+  - Authorization header parsing and validation
   - Ed25519 signature verification for incoming requests
   - Public key fetching and caching from remote servers
   - Origin and destination validation
-  - Applied to all federation endpoints requiring authentication
-- ❌ **Response Authentication**: TLS server certificate authentication (HTTPS not yet enabled for production)
-- ❌ **Client TLS Certificates**: Optional client certificate authentication not implemented
-- ✅ **Event Signing**: Complete event signing and signature validation
+- ⚠️ **Response Authentication**: TLS server certificate authentication (HTTPS not yet enabled for production)
+- ❌ **Client TLS Certificates**: Not implemented
+- ✅ **Event Signing**: Event signing and signature validation working correctly
   - SHA-256 content hashing
   - Ed25519 signature generation and verification
-  - Canonical JSON serialization for consistent signing
-  - Multi-signature support (origin + sender servers)
-- ✅ **Server ACLs**: Server access control lists implemented
-  - Room-based server access restrictions
-  - Pattern matching for server names
-  - Applied to all protected federation endpoints
+  - Canonical JSON serialization
+  - ✅ Hash verification working correctly (fixed October 2025)
+- ✅ **Server ACLs**: Room-based server access control implemented
 
-### Transactions Compliance
+### Transactions
 
-- ✅ **Transaction Processing**: Complete implementation of `PUT /_matrix/federation/v1/send/{txnId}`
-  - Transaction ID validation and extraction
-  - Origin server authentication and validation
-  - Proper transaction size limits (50 PDUs, 100 EDUs)
-  - Individual processing of PDUs and EDUs
-- ✅ **PDU Processing**: Full compliance with persistent data unit handling
-  - Per-PDU server ACL validation
-  - Individual PDU processing results returned
+- ✅ **Transaction Processing**: Implementation of `PUT /_matrix/federation/v1/send/{txnId}`
+  - Transaction ID validation
+  - Origin server authentication
+  - Transaction size limits
+  - PDU and EDU processing
+- ✅ **PDU Processing**: Persistent data unit handling
+  - Server ACL validation per PDU
+  - Individual PDU processing results
   - Transaction continues despite individual PDU failures
-  - Integration with existing event validation and storage
-- ✅ **EDU Processing**: Complete ephemeral data unit support
-  - Support for all required EDU types (m.typing, m.presence, m.receipt, m.device_list_update, m.signing_key_update, m.direct_to_device)
-  - Room-specific ACL checking for typing and receipt EDUs
-  - Proper EDU validation and broadcasting
-  - Timestamp-based tracking and cleanup (30-second expiry for typing)
+- ✅ **EDU Processing**: Ephemeral data unit support
+  - Support for common EDU types (m.typing, m.presence, m.receipt, etc.)
+  - Room-specific ACL checking
+  - Timestamp-based tracking and cleanup
 - ✅ **Transaction Response**: Specification-compliant response format
-  - 200 OK response for successful processing
-  - Proper error handling for oversized or invalid transactions
-  - PDU processing results included in response body
-- ✅ **Server ACL Integration**: ACL validation applied to transactions
-  - Per-PDU ACL checking for room-based access control
-  - Room-specific EDU ACL validation
-  - Graceful handling of ACL-denied transactions
+  - 200 OK for successful processing
+  - Error handling for oversized/invalid transactions
+  - PDU processing results in response body
 
 ## Compliance Testing
 
-FERRETCANNON includes a comprehensive compliance test suite to verify Matrix Specification v1.16 adherence. Big shoutout to the FERRETCANNON massive for making this happen! 🎆
+FERRETCANNON includes a compliance test suite to help verify Matrix Specification v1.16 adherence and debug federation issues.
 
-### Quick Start
+### Running Compliance Tests
 
 ```powershell
 # Start the server
-.\start-server.ps1 -NoPrompt
+.\start-server.ps1
 
 # Run compliance tests
 cd compliance-tests
@@ -250,34 +258,34 @@ cd compliance-tests
 
 ### Test Coverage
 
-The compliance test suite includes:
+The test suite includes:
 
-- ✅ **Canonical JSON Tests** - Verifies JSON serialisation per Matrix spec (sorted keys, proper number formatting, UTF-8 encoding)
+- ✅ **Canonical JSON Tests** - Verifies JSON serialization per Matrix spec (sorted keys, proper number formatting, UTF-8 encoding)
 - ✅ **Event Hashing Tests** - Validates SHA-256 content hash computation with proper field exclusion
-- 🔄 **Event Signing Tests** - Ed25519 signature generation and verification (test vectors in progress)
-- 📋 **Federation Protocol Tests** - make_join, send_join, and other server-server API formats (documented)
+- 🔄 **Event Signing Tests** - Ed25519 signature generation and verification (in development)
+- 📋 **Federation Protocol Tests** - Documentation of make_join, send_join, and other server-server API formats
 
 ### Test Endpoints
 
 For compliance testing, FERRETCANNON exposes internal verification endpoints:
 
-- `POST /_matrix/test/canonical-json` - Canonicalise JSON input
+- `POST /_matrix/test/canonical-json` - Canonicalize JSON input
 - `POST /_matrix/test/compute-hash` - Compute event content hash
 - `GET /_matrix/test/server-info` - Server connectivity check
 
 ### Documentation
 
-See [`compliance-tests/QUICK_START.md`](compliance-tests/QUICK_START.md) for detailed usage instructions and [`compliance-tests/STATUS.md`](compliance-tests/STATUS.md) for implementation status.
+See [`compliance-tests/QUICK_START.md`](compliance-tests/QUICK_START.md) for detailed usage instructions and [`compliance-tests/STATUS.md`](compliance-tests/STATUS.md) for current implementation status.
 
 ### Why This Matters
 
 Compliance testing helps:
+
 - ✅ Verify implementation correctness against Matrix specification
-- ✅ Debug federation issues systematically
+- ✅ Debug federation issues systematically (especially the ongoing hash mismatch problem)
 - ✅ Prevent regressions with automated testing
-- ✅ Document expected behaviour with executable specifications
-- ✅ Help the Matrix community by sharing reusable test cases
+- ✅ Document expected behavior with executable specifications
 
 ## License
 
-[#YOLO Public License (YPL) v0.12.34-hunter.2](https://github.com/YOLOSecFW/YoloSec-Framework/blob/master/YOLO%20Public%20License)
+See the LICENSE file for details.
