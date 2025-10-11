@@ -1,0 +1,88 @@
+{
+  "description": "Event signing test vectors extracted from Synapse's test suite",
+  "source": "element-hq/synapse/tests/crypto/test_event_signing.py",
+  "license": "AGPL v3 (Synapse) / Test vectors are specification examples",
+  "extracted_date": "2025-10-11",
+  "signing_key": {
+    "algorithm": "ed25519",
+    "version": "1",
+    "seed_base64": "YJDBA9Xnr2sVqXD9Vj7XVUnmFZcZrlw8Md7kMW+3XA1",
+    "note": "This is a known test key from Synapse's test suite for deterministic testing"
+  },
+  "hostname": "domain",
+  "room_version": "v1",
+  "tests": [
+    {
+      "name": "Sign minimal event",
+      "description": "Minimal event structure with only required fields",
+      "event": {
+        "event_id": "$0:domain",
+        "origin_server_ts": 1000000,
+        "signatures": {},
+        "type": "X",
+        "unsigned": {
+          "age_ts": 1000000
+        }
+      },
+      "expected_hash": {
+        "sha256": "A6Nco6sqoy18PPfPDVdYvoowfc0PVBk9g9OiyT3ncRM"
+      },
+      "expected_signature": {
+        "domain": {
+          "ed25519:1": "PBc48yDVszWB9TRaB/+CZC1B+pDAC10F8zll006j+NNfe4PEMWcVuLaG63LFTK9e4rwJE8iLZMPtCKhDTXhpAQ"
+        }
+      }
+    },
+    {
+      "name": "Sign message event",
+      "description": "Full room message event with content",
+      "event": {
+        "content": {
+          "body": "Here is the message content"
+        },
+        "event_id": "$0:domain",
+        "origin_server_ts": 1000000,
+        "type": "m.room.message",
+        "room_id": "!r:domain",
+        "sender": "@u:domain",
+        "signatures": {},
+        "unsigned": {
+          "age_ts": 1000000
+        }
+      },
+      "expected_hash": {
+        "sha256": "rDCeYBepPlI891h/RkI2/Lkf9bt7u0TxFku4tMs7WKk"
+      },
+      "expected_signature": {
+        "domain": {
+          "ed25519:1": "Ay4aj2b5oJ1k8INYZ9n3KnszCflM0emwcmQQ7vxpbdcSv9bkJxIZdWX1IJllcZLq89+D3sSabE+vqPtZs9akDw"
+        }
+      }
+    }
+  ],
+  "notes": [
+    "These test vectors are from Synapse's deterministic test suite",
+    "The signing key seed is a known value for reproducible testing",
+    "Both hash and signature must match exactly for spec compliance",
+    "The 'unsigned' field should not be included in hashes or signatures",
+    "The 'signatures' field itself is excluded when computing signatures"
+  ],
+  "usage": {
+    "description": "How to use these test vectors in FERRETCANNON",
+    "steps": [
+      "1. Remove 'signatures' and 'unsigned' fields from event",
+      "2. Compute canonical JSON of remaining fields",
+      "3. Compute SHA-256 hash, encode as unpadded base64url",
+      "4. Verify hash matches expected_hash.sha256",
+      "5. Add placeholder signatures field with empty structure",
+      "6. Sign the event with the test signing key",
+      "7. Verify signature matches expected_signature"
+    ]
+  },
+  "implementation_reference": {
+    "canonical_json": "Matrix Spec v1.16 Section 3.4.2: Canonical JSON",
+    "event_hashing": "Matrix Spec v1.16 Section 6.1.3: Event Hashes",
+    "event_signing": "Matrix Spec v1.16 Section 6.1.2: Event Signing",
+    "signature_algorithm": "Matrix Spec v1.16 Appendix 5: Signing Details"
+  }
+}

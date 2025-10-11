@@ -446,8 +446,10 @@ object MatrixAuth {
         
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(canonical.toByteArray(Charsets.UTF_8))
-        // Use standard Base64 (not URL-safe) but WITHOUT padding for content hashes (Matrix spec section 27.4)
-        // Synapse sends hashes without padding, so we need to match that
+        // Matrix spec requires unpadded Base64 for hashes
+        // NOTE: There's inconsistency in the ecosystem - Synapse uses standard Base64 (+/)
+        // but newer room versions and spec say to use URL-safe Base64 (-_)
+        // For compatibility with existing Synapse instances, we use standard Base64
         val hashResult = Base64.getEncoder().withoutPadding().encodeToString(hash)
         logger.info("computeContentHash: computed hash: $hashResult")
         
@@ -457,8 +459,13 @@ object MatrixAuth {
         return hashResult
     }
     
-    // Public wrapper for testing
+    // Public wrappers for testing
     fun computeContentHashPublic(event: JsonObject): String = computeContentHash(event)
+    
+    fun canonicalizeJsonPublic(jsonObject: JsonObject): String {
+        val nativeData = jsonElementToNative(jsonObject)
+        return canonicalizeJson(nativeData ?: emptyMap<String, Any>())
+    }
 
     fun canonicalizeJson(data: Any): String {
         return when (data) {
