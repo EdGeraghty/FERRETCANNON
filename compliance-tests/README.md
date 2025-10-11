@@ -43,10 +43,20 @@ Test data is based on:
 
 These tests can be run in CI/CD pipelines to ensure compliance on every commit.
 
+## Synapse Test Suite Integration
+
+Curious about using Synapse's test suite for compliance testing? See:
+- **[SYNAPSE_INTEGRATION.md](SYNAPSE_INTEGRATION.md)** - Comprehensive analysis and implementation plan
+- **[run-synapse-vectors.ps1](run-synapse-vectors.ps1)** - Example script for running Synapse test vectors
+- **[test-data/synapse-event-signing-vectors.json](test-data/synapse-event-signing-vectors.json)** - Extracted test vectors from Synapse
+
+Big shoutout to the Synapse team for their comprehensive test suite! 🎆
+
 ## Contributing
 
 To add new compliance tests:
 1. Add test data to the appropriate JSON file in `test-data/`
 2. Update the test runner to include your new test
 3. Document the test case and expected behavior
-4. Shoutout to the FERRETCANNON massive!
+4. Consider extracting test vectors from other Matrix implementations (Synapse, Dendrite, Conduit)
+5. Shoutout to the FERRETCANNON massive!
