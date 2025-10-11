@@ -457,8 +457,13 @@ object MatrixAuth {
         return hashResult
     }
     
-    // Public wrapper for testing
+    // Public wrappers for testing
     fun computeContentHashPublic(event: JsonObject): String = computeContentHash(event)
+    
+    fun canonicalizeJsonPublic(jsonObject: JsonObject): String {
+        val nativeData = jsonElementToNative(jsonObject)
+        return canonicalizeJson(nativeData ?: emptyMap<String, Any>())
+    }
 
     fun canonicalizeJson(data: Any): String {
         return when (data) {

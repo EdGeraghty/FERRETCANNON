@@ -14,6 +14,8 @@ repositories {
 dependencies {
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("io.ktor:ktor-server-netty:2.3.8")
     implementation("io.ktor:ktor-server-core:2.3.8")
     implementation("io.ktor:ktor-server-content-negotiation:2.3.8")
