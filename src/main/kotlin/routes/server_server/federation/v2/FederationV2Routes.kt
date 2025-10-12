@@ -170,6 +170,25 @@ fun Application.federationV2Routes() {
                                 return@put
                             }
 
+                            // Use getCurrentStateEvents to retrieve current state
+                            val currentState = getCurrentStateEvents(roomId).map { event ->
+                                buildJsonObject {
+                                    put("event_id", event["event_id"] as String)
+                                    put("type", event["type"] as String)
+                                    put("room_id", event["room_id"] as String)
+                                    put("sender", event["sender"] as String)
+                                    put("content", event["content"] as JsonObject)
+                                    put("auth_events", event["auth_events"] as JsonArray)
+                                    put("prev_events", event["prev_events"] as JsonArray)
+                                    put("depth", event["depth"] as Int)
+                                    put("hashes", event["hashes"] as JsonObject)
+                                    put("signatures", event["signatures"] as JsonObject)
+                                    put("origin_server_ts", event["origin_server_ts"] as Long)
+                                    if (event["state_key"] != null) put("state_key", event["state_key"] as String)
+                                    if (event["unsigned"] != null) put("unsigned", event["unsigned"] as JsonObject)
+                                }
+                            }
+
                             val inviteEvent = Json.parseToJsonElement(body).jsonObject
                             val nestedEvent = inviteEvent["event"]?.jsonObject ?: return@put call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                                 put("errcode", "M_BAD_JSON")
