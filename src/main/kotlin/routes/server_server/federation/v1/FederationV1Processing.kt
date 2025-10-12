@@ -226,6 +226,7 @@ fun processPDU(pdu: JsonElement, providedEventId: String? = null): JsonElement? 
         }
         
         transaction {
+            println("processPDU: Starting database transaction for event storage")
             Events.insert {
                 it[Events.eventId] = eventId
                 it[Events.roomId] = roomId
