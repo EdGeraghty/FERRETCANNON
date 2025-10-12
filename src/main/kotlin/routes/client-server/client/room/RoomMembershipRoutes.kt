@@ -6,6 +6,7 @@ import io.ktor.server.response.*
 import io.ktor.server.request.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.runBlocking
 import config.ServerConfig
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -14,171 +15,128 @@ import models.Rooms
 import models.Events
 import utils.StateResolver
 import utils.MatrixAuth
+import routes.server_server.federation.v1.broadcastEDU
 import routes.client_server.client.common.*
+import routes.client_server.client.room.LocalMembershipHandler
+import routes.client_server.client.room.FederationJoinHandler
+import org.slf4j.LoggerFactory
 
-/**
- * Room membership routes - thin routing layer that delegates to handlers
- * Complies with Matrix Specification v1.16
- */
+private val roomMembershipLogger = LoggerFactory.getLogger("routes.client_server.client.room.RoomMembershipRoutes")
+
 fun Route.roomMembershipRoutes(config: ServerConfig) {
     val stateResolver = StateResolver()
 
-    // POST /rooms/{roomId}/invite - Invite a user to a room
-    post("/rooms/{roomId}/invite") {
-        println("Invite endpoint called")
+    // Local helper to process joins so we can support both /rooms/{roomId}/join and /join/{roomId}
+    suspend fun ApplicationCall.processJoin(roomParamName: String) {
+        println("JOIN: ===== JOIN ENDPOINT CALLED =====")
         try {
-            val userId = call.validateAccessToken() ?: return@post
-            val roomId = call.parameters["roomId"]
+            val userId = this.validateAccessToken() ?: return
+            val roomId = this.parameters[roomParamName]
 
             if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                this.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing roomId parameter"
                 ))
-                return@post
+                return
             }
 
-            // Parse request body
-            val requestBody = call.receiveText()
-            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
-            val inviteeUserId = jsonBody["user_id"]?.jsonPrimitive?.content
+            println("JOIN: userId=$userId, roomId=$roomId")
 
-            if (inviteeUserId == null) {
-                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
-                    "errcode" to "M_INVALID_PARAM",
-                    "error" to "Missing user_id parameter"
-                ))
-                return@post
-            }
-
-            // Delegate to invite handler
-            val result = InviteHandler.sendInvite(userId, inviteeUserId, roomId, config, stateResolver)
-            
-            if (result.success) {
-                call.respondText("{}", ContentType.Application.Json)
+            // Parse request body for server_name (accept array or single string), and also accept query param
+            val requestBody = this.receiveText()
+            println("JOIN: Raw request body: '$requestBody'")
+            val jsonBody = if (requestBody.isNotBlank()) {
+                Json.parseToJsonElement(requestBody).jsonObject
             } else {
-                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                    "errcode" to result.errorCode,
-                    "error" to result.errorMessage
-                ))
+                JsonObject(emptyMap())
             }
+
+            val serverNamesFromBody: List<String> = jsonBody["server_name"]?.let { elem ->
+                try {
+                    when (elem) {
+                        is JsonArray -> elem.mapNotNull { it.jsonPrimitive.contentOrNull }
+                        is JsonPrimitive -> elem.jsonPrimitive.contentOrNull?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+                        else -> emptyList()
+                    }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            } ?: emptyList()
+
+            val serverNamesFromQuery: List<String> = this.request.queryParameters.getAll("server_name")
+                ?.flatMap { it.split(",") }
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() } ?: emptyList()
+
+            val serverNames = (serverNamesFromBody + serverNamesFromQuery).distinct()
+
+            println("JOIN: Parsed serverNames: $serverNames (body: $serverNamesFromBody, query: $serverNamesFromQuery)")
+
+            val roomExists = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.count() > 0
+            }
+
+            if (serverNames.isNotEmpty()) {
+                println("JOIN: Federation join requested via servers: $serverNames")
+                val result = FederationJoinHandler.performFederationJoin(
+                    userId, roomId, serverNames, config
+                )
+
+                if (result.success) {
+                    this.respond(mutableMapOf("room_id" to roomId))
+                    roomMembershipLogger.info("JOIN: Responded 200 for federation join room_id={}", roomId)
+                } else {
+                    this.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                        "errcode" to result.errorCode,
+                        "error" to result.errorMessage
+                    ))
+                    roomMembershipLogger.info("JOIN: Responded 500 for federation join room_id={} err={}", roomId, result.errorMessage)
+                }
+                return
+            }
+
+            if (roomExists) {
+                println("JOIN: Local join for existing room")
+                val result = LocalMembershipHandler.createLocalJoin(userId, roomId, config, stateResolver)
+
+                if (result.success) {
+                    this.respond(mutableMapOf("room_id" to roomId))
+                    roomMembershipLogger.info("JOIN: Responded 200 for local join room_id={}", roomId)
+                } else {
+                    this.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                        "errcode" to result.errorCode,
+                        "error" to result.errorMessage
+                    ))
+                    roomMembershipLogger.info("JOIN: Responded 500 for local join room_id={} err={}", roomId, result.errorMessage)
+                }
+                return
+            }
+
+            this.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                "errcode" to "M_MISSING_PARAM",
+                "error" to "server_name parameter is required when joining a room not known to this server"
+            ))
+            roomMembershipLogger.info("JOIN: Responded 400 missing server_name for room_id={}", roomId ?: "(null)")
 
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+            println("JOIN: Exception caught: ${e.message}")
+            e.printStackTrace()
+            this.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                 "errcode" to "M_UNKNOWN",
                 "error" to "Internal server error: ${e.message}"
             ))
         }
     }
-    
+
+    // Existing route (spec-compliant)
     post("/rooms/{roomId}/join") {
-        try {
-            val userId = call.validateAccessToken() ?: return@post
-            val roomId = call.parameters["roomId"]
-            val serverNames = call.request.queryParameters.getAll("server_name") ?: emptyList()
+        call.processJoin("roomId")
+    }
 
-            if (roomId == null) {
-                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
-                    "errcode" to "M_INVALID_PARAM",
-                    "error" to "Missing roomId parameter"
-                ))
-                return@post
-            }
-
-            // Check current membership
-            println("JOIN: Checking membership for user $userId in room $roomId")
-            val membershipInfo = LocalMembershipHandler.getCurrentMembership(roomId, userId)
-            
-            if (membershipInfo.membership == "join") {
-                println("JOIN: User already joined")
-                call.respond(mutableMapOf("room_id" to roomId))
-                return@post
-            }
-            
-            // Determine if federation is needed
-            val effectiveServerNames = if (membershipInfo.membership == "invite" && membershipInfo.sender != null) {
-                // Have invite with sender - use inviter's server
-                val inviterServer = membershipInfo.sender.substringAfter(":")
-                println("JOIN: User has invite from ${membershipInfo.sender} - will use make_join via $inviterServer")
-                listOf(inviterServer)
-            } else if (serverNames.isNotEmpty()) {
-                // Explicit server_name parameters provided
-                println("JOIN: Using provided server_name parameters: $serverNames")
-                serverNames
-            } else {
-                // No invite and no server_name - try to extract from room ID or check for outlier events
-                println("JOIN: No invite or server_name - checking for outlier events to determine origin server")
-                val originServer = transaction {
-                    // Check for any m.room.create outlier event that might have the origin server
-                    Events.select { 
-                        (Events.roomId eq roomId) and 
-                        (Events.type eq "m.room.create") and
-                        (Events.outlier eq true)
-                    }
-                    .map { it[Events.sender].substringAfter(":") }
-                    .firstOrNull()
-                }
-                
-                if (originServer != null) {
-                    println("JOIN: Found origin server from outlier m.room.create event: $originServer")
-                    listOf(originServer)
-                } else {
-                    println("JOIN: No origin server found - join will fail")
-                    emptyList()
-                }
-            }
-            
-            // Check if room exists locally
-            val roomExists = transaction {
-                Rooms.select { Rooms.roomId eq roomId }.count() > 0
-            }
-            
-            // Use federation if needed
-            if (!roomExists || effectiveServerNames.isNotEmpty()) {
-                if (effectiveServerNames.isNotEmpty()) {
-                    println("JOIN: Attempting federation join via: $effectiveServerNames")
-                    val result = FederationJoinHandler.performFederationJoin(
-                        userId, roomId, effectiveServerNames, config
-                    )
-                    
-                    if (result.success) {
-                        call.respond(mutableMapOf("room_id" to roomId))
-                    } else {
-                        call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                            "errcode" to result.errorCode,
-                            "error" to result.errorMessage
-                        ))
-                    }
-                    return@post
-                }
-                
-                call.respond(HttpStatusCode.NotFound, mutableMapOf(
-                    "errcode" to "M_NOT_FOUND",
-                    "error" to "Room not found"
-                ))
-                return@post
-            }
-
-            // Local join
-            val result = LocalMembershipHandler.createLocalJoin(userId, roomId, config, stateResolver)
-            
-            if (result.success) {
-                call.respond(mutableMapOf("room_id" to roomId))
-            } else {
-                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                    "errcode" to result.errorCode,
-                    "error" to result.errorMessage
-                ))
-            }
-
-        } catch (e: Exception) {
-            println("JOIN: Exception caught: ${e.message}")
-            e.printStackTrace()
-            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
-                "errcode" to "M_UNKNOWN",
-                "error" to "Internal server error: ${e.message}"
-            ))
-        }
+    // Support shorthand endpoint used by some clients: POST /join/{roomId}
+    post("/join/{roomId}") {
+        call.processJoin("roomId")
     }
 
     // POST /rooms/{roomId}/leave - Leave a room
@@ -213,7 +171,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
 
             if (!roomExists && currentMembership == "invite") {
                 println("LEAVE: Rejecting federated invite - creating and sending leave event")
-                
+
                 // Get the invite event to find the origin server
                 val inviteEvent = transaction {
                     Events.select {
@@ -222,15 +180,15 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                         (Events.stateKey eq userId)
                     }.singleOrNull()
                 }
-                
+
                 if (inviteEvent != null) {
                     // Create a leave event to send to the remote server
                     val currentTime = System.currentTimeMillis()
                     val sender = inviteEvent[Events.sender]
                     val remoteServer = sender.substringAfter(":")
-                    
+
                     val leaveContent = JsonObject(mutableMapOf("membership" to JsonPrimitive("leave")))
-                    
+
                     val leaveEvent = buildJsonObject {
                         put("type", "m.room.member")
                         put("room_id", roomId)
@@ -245,14 +203,14 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                         put("signatures", Json.parseToJsonElement("{}"))
                         put("origin", config.federation.serverName)
                     }
-                    
+
                     // Hash and sign the event
                     val signedLeaveEvent = MatrixAuth.hashAndSignEvent(leaveEvent, config.federation.serverName)
-                    
+
                     // Send the leave event to the remote server via federation
                     MatrixAuth.sendFederationLeave(remoteServer, roomId, signedLeaveEvent, config)
                 }
-                
+
                 // Delete the local invite event
                 val deletedCount = transaction {
                     Events.deleteWhere {
@@ -268,7 +226,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
 
             // For local rooms or joined state, create a proper leave event
             val result = LocalMembershipHandler.createLocalLeave(roomId, userId, stateResolver)
-            
+
             if (result.success) {
                 call.respondText("{}", ContentType.Application.Json)
             } else {
@@ -319,7 +277,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                             userLevel >= 50 // Default admin level
                         } ?: false
                 }
-                
+
                 if (!isAdmin) {
                     call.respond(HttpStatusCode.Forbidden, mutableMapOf(
                         "errcode" to "M_FORBIDDEN",
@@ -330,7 +288,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             }
 
             println("DEBUG: Deleting membership events for user=$targetUserId in room=$roomId")
-            
+
             val deletedCount = transaction {
                 Events.deleteWhere {
                     (Events.roomId eq roomId) and
@@ -340,8 +298,8 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             }
 
             println("DEBUG: Deleted $deletedCount membership events")
-            
-            call.respondText("""{"deleted":$deletedCount,"room_id":"$roomId","user_id":"$targetUserId"}""", ContentType.Application.Json)
+
+            call.respondText("{" + "\"deleted\":$deletedCount,\"room_id\":\"$roomId\",\"user_id\":\"$targetUserId\"}" , ContentType.Application.Json)
 
         } catch (e: Exception) {
             e.printStackTrace()

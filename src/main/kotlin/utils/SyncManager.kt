@@ -166,38 +166,49 @@ object SyncManager {
      * Get rooms that the user has joined
      */
     private fun getUserJoinedRooms(userId: String): List<String> {
-        return transaction {
-            Events.select {
-                (Events.type eq "m.room.member") and
-                (Events.stateKey eq userId) and
-                (Events.content.like("%\"membership\":\"join\"%"))
-            }.map { it[Events.roomId] }.distinct()
-        }
+    return getUserMembershipMap(userId).filterValues { it == "join" }.keys.toList()
     }
 
     /**
      * Get rooms that the user has been invited to
      */
     private fun getUserInvitedRooms(userId: String): List<String> {
-        return transaction {
-            Events.select {
-                (Events.type eq "m.room.member") and
-                (Events.stateKey eq userId) and
-                (Events.content.like("%\"membership\":\"invite\"%"))
-            }.map { it[Events.roomId] }.distinct()
-        }
+    return getUserMembershipMap(userId).filterValues { it == "invite" }.keys.toList()
     }
 
     /**
      * Get rooms that the user has left
      */
     private fun getUserLeftRooms(userId: String): List<String> {
+        return getUserMembershipMap(userId).filterValues { it == "leave" }.keys.toList()
+    }
+
+    /**
+     * Compute the latest membership for the user in each room.
+     * Returns a map of roomId -> membership ("join"|"invite"|"leave"|other)
+     */
+    private fun getUserMembershipMap(userId: String): Map<String, String> {
         return transaction {
-            Events.select {
+            // Select all member events for this user ordered by time desc so the first occurrence by room is the latest
+            val rows = Events.select {
                 (Events.type eq "m.room.member") and
-                (Events.stateKey eq userId) and
-                (Events.content.like("%\"membership\":\"leave\"%"))
-            }.map { it[Events.roomId] }.distinct()
+                (Events.stateKey eq userId)
+            }.orderBy(Events.originServerTs, SortOrder.DESC)
+                .map { it }
+
+            // Group by roomId and pick the first (latest) event per room
+            val latestByRoom = rows.groupBy { it[Events.roomId] }
+                .mapValues { entry -> entry.value.first() }
+
+            // Extract the membership string from the content JSON
+            latestByRoom.mapValues { (_, row) ->
+                try {
+                    val content = Json.parseToJsonElement(row[Events.content]).jsonObject
+                    content["membership"]?.jsonPrimitive?.content ?: ""
+                } catch (e: Exception) {
+                    ""
+                }
+            }
         }
     }
 

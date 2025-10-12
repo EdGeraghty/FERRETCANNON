@@ -247,6 +247,16 @@ fun Application.clientRoutes(config: ServerConfig) {
                         """.trimIndent(), ContentType.Application.Json)
                     }
 
+                    // DEBUG: Log all incoming requests when enabled in config
+                    if (config.development.enableDebugLogging) {
+                        intercept(ApplicationCallPipeline.Call) {
+                            val method = call.request.httpMethod.value
+                            val path = call.request.path()
+                            val query = call.request.queryString()
+                            logger.info("REQUEST: {} {}{}", method, path, if (query.isNotEmpty()) "?$query" else "")
+                        }
+                    }
+
                     // Capabilities endpoint
                     get("/capabilities") {
                         try {
