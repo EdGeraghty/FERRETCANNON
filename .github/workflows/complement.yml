@@ -43,6 +43,7 @@ jobs:
         NO_COLOR: "1"
         TERM: dumb
         COMPLEMENT_VERSION_CHECK_ITERATIONS: "100"
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "180"
       run: |
         go test -v -timeout 45m -json ./tests/... > complement-output.json 2> complement-errors.log || true
       continue-on-error: true
