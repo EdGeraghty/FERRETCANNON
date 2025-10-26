@@ -45,14 +45,16 @@ jobs:
         COMPLEMENT_VERSION_CHECK_ITERATIONS: "100"
         COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "180"
       run: |
-        go test -v -timeout 45m -json ./tests/... > complement-output.json 2> complement-errors.log || true
+        # show test output in real time while also saving JSON for later parsing
+        set -o pipefail
+        go test -v -timeout 45m -json ./tests/... 2>&1 | tee complement-output.json || true
       continue-on-error: true
       
     - name: Parse Test Results
       if: always()
       run: |
         cd complement-checkout || exit 0
-        
+
         # Check if output file exists
         if [ ! -f complement-output.json ]; then
           echo "## Complement Test Results" >> $GITHUB_STEP_SUMMARY
@@ -60,27 +62,39 @@ jobs:
           echo "⚠️ No test output file found. Tests may not have run." >> $GITHUB_STEP_SUMMARY
           exit 0
         fi
-        
-        # Parse JSON output to create summary
+
+        # Ensure jq is available for robust JSON parsing
+        if ! command -v jq >/dev/null 2>&1; then
+          sudo apt-get update -y && sudo apt-get install -y jq || true
+        fi
+
         echo "## Complement Test Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        
-        # Count passed, failed, and skipped tests
-        PASSED=$(grep -c '"Action":"pass"' complement-output.json 2>/dev/null || echo "0")
-        FAILED=$(grep -c '"Action":"fail"' complement-output.json 2>/dev/null || echo "0")
-        SKIPPED=$(grep -c '"Action":"skip"' complement-output.json 2>/dev/null || echo "0")
-        
+
+        # Use jq to count actions
+        PASSED=$(jq -c 'select(.Action=="pass")' complement-output.json 2>/dev/null | wc -l || true)
+        FAILED=$(jq -c 'select(.Action=="fail")' complement-output.json 2>/dev/null | wc -l || true)
+        SKIPPED=$(jq -c 'select(.Action=="skip")' complement-output.json 2>/dev/null | wc -l || true)
+
+        PASSED=${PASSED:-0}
+        FAILED=${FAILED:-0}
+        SKIPPED=${SKIPPED:-0}
+
         echo "✅ **Passed**: $PASSED" >> $GITHUB_STEP_SUMMARY
         echo "❌ **Failed**: $FAILED" >> $GITHUB_STEP_SUMMARY
         echo "⏭️ **Skipped**: $SKIPPED" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        
-        # Show failed tests
+
+        # Show failed tests with details
         if [ "$FAILED" -gt 0 ]; then
           echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          grep '"Action":"fail"' complement-output.json 2>/dev/null | grep -o '"Test":"[^"]*"' | cut -d'"' -f4 | sort -u | while read test; do
+          jq -r 'select(.Action=="fail") | .Test' complement-output.json 2>/dev/null | sort -u | while read test; do
             echo "- ❌ $test" >> $GITHUB_STEP_SUMMARY
+            echo "  Details:" >> $GITHUB_STEP_SUMMARY
+            # Print the Output fields associated with this test failure
+            jq -r --arg T "$test" 'select(.Action=="fail" and .Test==$T) | .Output' complement-output.json 2>/dev/null | sed 's/^/    /' >> $GITHUB_STEP_SUMMARY || true
+            echo "" >> $GITHUB_STEP_SUMMARY
           done
         fi
         
