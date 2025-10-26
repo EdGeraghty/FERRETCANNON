@@ -66,7 +66,7 @@ RUN echo 'server:' > /conf/config.template.yml && \
     echo '' >> /conf/config.template.yml && \
     echo 'federation:' >> /conf/config.template.yml && \
     echo '  serverName: ${SERVER_NAME}' >> /conf/config.template.yml && \
-    echo '  federationPort: 8008' >> /conf/config.template.yml && \
+    echo '  federationPort: 8448' >> /conf/config.template.yml && \
     echo '  enableFederation: true' >> /conf/config.template.yml && \
     echo '  allowedServers:' >> /conf/config.template.yml && \
     echo '    - "*"' >> /conf/config.template.yml && \
@@ -142,14 +142,18 @@ RUN apk add --no-cache gettext
 # Expose the Matrix client-server API port (Complement expects 8008)
 EXPOSE 8008
 
+# Expose the Matrix federation API port (Complement expects 8448)
+EXPOSE 8448
+
 # Health check for Complement to verify server is ready
-# Complement uses this to wait for the server to be ready before running tests
+# Use a GET-based check (curl) rather than a HEAD/--spider check, because the
+# server may return 405 for HEAD. A successful GET with a 2xx/3xx response
+# is considered healthy.
 HEALTHCHECK --interval=5s --timeout=3s --retries=20 \
-    CMD wget -q --spider http://localhost:8008/_matrix/client/versions || exit 1
+    CMD curl -fsS http://localhost:8008/_matrix/client/versions > /dev/null || exit 1
 
 # Set environment variables
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
-ENV SERVER_NAME="localhost"
 
 # Use the entrypoint script
 ENTRYPOINT ["/app/entrypoint.sh"]
