@@ -12,6 +12,11 @@ jobs:
     name: Run Complement Compliance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # Give Complement more time to spawn the homeserver in CI
+      COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      # Force Complement to use the loopback host IP for port binding lookups
+      HSPortBindingIP: "127.0.0.1"
     
     steps:
     - name: Checkout FERRETCANNON
