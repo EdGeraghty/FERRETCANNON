@@ -40,8 +40,9 @@ jobs:
       working-directory: complement-checkout
       env:
         COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: 1
       run: |
-        go test -v -timeout 45m -json ./tests/... 2>&1 | tee complement-output.json
+        go test -v -timeout 45m -json ./tests/... > complement-output.json 2> complement-errors.log || true
       continue-on-error: true
       
     - name: Parse Test Results
