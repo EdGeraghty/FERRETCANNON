@@ -82,7 +82,6 @@ RUN echo 'server:' > /conf/config.template.yml && \
     echo '  disableRegistration: false' >> /conf/config.template.yml && \
     echo '' >> /conf/config.template.yml && \
     echo 'media:' >> /conf/config.template.yml && \
-    echo '  basePath: /data/media' >> /conf/config.template.yml && \
     echo '  maxUploadSize: 10485760' >> /conf/config.template.yml && \
     echo '  maxImageSize: 10485760' >> /conf/config.template.yml && \
     echo '  maxAvatarSize: 1048576' >> /conf/config.template.yml && \
