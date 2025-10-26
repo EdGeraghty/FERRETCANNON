@@ -94,7 +94,7 @@ RUN echo 'server:' > /conf/config.template.yml && \
 
 # Create entrypoint script for Complement
 RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
-    echo 'set -e' >> /app/entrypoint.sh && \
+    echo 'set -x' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo '# Set default server name if not provided' >> /app/entrypoint.sh && \
     echo 'export SERVER_NAME=${SERVER_NAME:-localhost}' >> /app/entrypoint.sh && \
@@ -105,13 +105,25 @@ RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
     echo 'echo "🚀 Starting FERRETCANNON Matrix Server for Complement testing"' >> /app/entrypoint.sh && \
     echo 'echo "Server Name: ${SERVER_NAME}"' >> /app/entrypoint.sh && \
     echo 'echo "Port: 8008"' >> /app/entrypoint.sh && \
-    echo 'echo "Config file contents:"' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Config file contents ==="' >> /app/entrypoint.sh && \
     echo 'cat /app/config.yml' >> /app/entrypoint.sh && \
     echo 'echo ""' >> /app/entrypoint.sh && \
-    echo 'echo "Starting server binary..."' >> /app/entrypoint.sh && \
+    echo 'echo "=== Checking application files ==="' >> /app/entrypoint.sh && \
+    echo 'ls -la /app/bin/ || echo "No bin directory"' >> /app/entrypoint.sh && \
+    echo 'ls -la /app/lib/ | head -20 || echo "No lib directory"' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Java version ==="' >> /app/entrypoint.sh && \
+    echo 'java -version' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Starting server binary ==="' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo '# Start the server and redirect all output to stdout/stderr' >> /app/entrypoint.sh && \
-    echo 'exec ./bin/FERRETCANNON 2>&1' >> /app/entrypoint.sh && \
+    echo '# Start the server - dont use exec so we can see errors' >> /app/entrypoint.sh && \
+    echo '/app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo 'EXIT_CODE=$?' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Server exited with code: ${EXIT_CODE} ==="' >> /app/entrypoint.sh && \
+    echo 'exit ${EXIT_CODE}' >> /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
 # Install envsubst for environment variable substitution
