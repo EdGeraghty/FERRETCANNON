@@ -40,7 +40,9 @@ jobs:
       working-directory: complement-checkout
       env:
         COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
-        NO_COLOR: 1
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_VERSION_CHECK_ITERATIONS: "100"
       run: |
         go test -v -timeout 45m -json ./tests/... > complement-output.json 2> complement-errors.log || true
       continue-on-error: true

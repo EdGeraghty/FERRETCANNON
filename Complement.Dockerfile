@@ -52,17 +52,41 @@ RUN mkdir -p /data /conf
 # Create a Complement-specific configuration template
 # This will be populated by the entrypoint script based on environment variables
 RUN echo 'server:' > /conf/config.template.yml && \
-    echo '  serverName: ${SERVER_NAME}' >> /conf/config.template.yml && \
     echo '  host: 0.0.0.0' >> /conf/config.template.yml && \
     echo '  port: 8008' >> /conf/config.template.yml && \
+    echo '  maxRequestSize: 10485760' >> /conf/config.template.yml && \
+    echo '  corsAllowedOrigins:' >> /conf/config.template.yml && \
+    echo '    - "*"' >> /conf/config.template.yml && \
     echo '' >> /conf/config.template.yml && \
     echo 'database:' >> /conf/config.template.yml && \
     echo '  url: jdbc:sqlite:/data/ferretcannon.db' >> /conf/config.template.yml && \
     echo '  driver: org.sqlite.JDBC' >> /conf/config.template.yml && \
+    echo '  maxConnections: 10' >> /conf/config.template.yml && \
+    echo '  connectionTimeout: 30000' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'federation:' >> /conf/config.template.yml && \
+    echo '  serverName: ${SERVER_NAME}' >> /conf/config.template.yml && \
+    echo '  federationPort: 8008' >> /conf/config.template.yml && \
+    echo '  enableFederation: true' >> /conf/config.template.yml && \
+    echo '  allowedServers:' >> /conf/config.template.yml && \
+    echo '    - "*"' >> /conf/config.template.yml && \
+    echo '  keyValidityPeriod: 86400000' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'security:' >> /conf/config.template.yml && \
+    echo '  jwtSecret: complement-test-secret-key-do-not-use-in-production' >> /conf/config.template.yml && \
+    echo '  tokenExpirationHours: 24' >> /conf/config.template.yml && \
+    echo '  bcryptRounds: 4' >> /conf/config.template.yml && \
+    echo '  rateLimitRequests: 300' >> /conf/config.template.yml && \
+    echo '  rateLimitPeriodMinutes: 1' >> /conf/config.template.yml && \
+    echo '  enableRateLimiting: false' >> /conf/config.template.yml && \
+    echo '  disableRegistration: false' >> /conf/config.template.yml && \
     echo '' >> /conf/config.template.yml && \
     echo 'media:' >> /conf/config.template.yml && \
     echo '  basePath: /data/media' >> /conf/config.template.yml && \
-    echo '  maxUploadSize: 52428800' >> /conf/config.template.yml && \
+    echo '  maxUploadSize: 10485760' >> /conf/config.template.yml && \
+    echo '  maxImageSize: 10485760' >> /conf/config.template.yml && \
+    echo '  maxAvatarSize: 1048576' >> /conf/config.template.yml && \
+    echo '  maxThumbnailSize: 1048576' >> /conf/config.template.yml && \
     echo '' >> /conf/config.template.yml && \
     echo 'development:' >> /conf/config.template.yml && \
     echo '  enableDebugLogging: false' >> /conf/config.template.yml && \
