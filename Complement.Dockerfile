@@ -105,9 +105,13 @@ RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
     echo 'echo "🚀 Starting FERRETCANNON Matrix Server for Complement testing"' >> /app/entrypoint.sh && \
     echo 'echo "Server Name: ${SERVER_NAME}"' >> /app/entrypoint.sh && \
     echo 'echo "Port: 8008"' >> /app/entrypoint.sh && \
+    echo 'echo "Config file contents:"' >> /app/entrypoint.sh && \
+    echo 'cat /app/config.yml' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "Starting server binary..."' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo '# Start the server' >> /app/entrypoint.sh && \
-    echo 'exec ./bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo '# Start the server and redirect all output to stdout/stderr' >> /app/entrypoint.sh && \
+    echo 'exec ./bin/FERRETCANNON 2>&1' >> /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
 # Install envsubst for environment variable substitution
