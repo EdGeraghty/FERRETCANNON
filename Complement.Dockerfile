@@ -8,7 +8,7 @@
 # Big shoutout to the FERRETCANNON massive for spec compliance! 🎆
 
 # Stage 1: Build stage
-FROM eclipse-temurin:17-jdk-alpine AS builder
+FROM openjdk:17-alpine AS builder
 
 WORKDIR /app
 
@@ -33,13 +33,13 @@ COPY src/ src/
 RUN gradle installDist --no-daemon -x test --no-configuration-cache
 
 # Stage 2: Runtime stage for Complement testing
-FROM eclipse-temurin:17-jdk-alpine
+FROM openjdk:17-alpine
 
 WORKDIR /app
 
-# Install required packages for Complement
+# Update Alpine and install required packages for Complement
 RUN apk update && \
-    apk upgrade && \
+    apk upgrade --available && \
     apk add --no-cache sqlite wget curl file && \
     rm -rf /var/cache/apk/*
 
