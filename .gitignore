@@ -57,3 +57,7 @@ config.prod.yml
 fly.toml
 
 media/
+
+# Complement test suite checkout
+complement-checkout/
+complement/complement-checkout/
