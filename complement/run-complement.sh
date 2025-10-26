@@ -157,8 +157,11 @@ if [ -n "$TEST_PATTERN" ]; then
 fi
 TEST_CMD="${TEST_CMD} ./tests/..."
 
-# Export environment variable and run tests
+# Export environment variables and run tests
 export COMPLEMENT_BASE_IMAGE="${IMAGE_NAME}:latest"
+export NO_COLOR="1"
+export TERM=dumb
+export COMPLEMENT_VERSION_CHECK_ITERATIONS="100"
 eval $TEST_CMD
 
 TEST_EXIT_CODE=$?

@@ -111,15 +111,26 @@ RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
     echo 'echo ""' >> /app/entrypoint.sh && \
     echo 'echo "=== Checking application files ==="' >> /app/entrypoint.sh && \
     echo 'ls -la /app/bin/ || echo "No bin directory"' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'if [ -f /app/bin/FERRETCANNON ]; then' >> /app/entrypoint.sh && \
+    echo '  echo "FERRETCANNON binary exists"' >> /app/entrypoint.sh && \
+    echo '  file /app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo '  head -5 /app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo 'else' >> /app/entrypoint.sh && \
+    echo '  echo "ERROR: FERRETCANNON binary not found!"' >> /app/entrypoint.sh && \
+    echo '  exit 1' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
     echo 'ls -la /app/lib/ | head -20 || echo "No lib directory"' >> /app/entrypoint.sh && \
     echo 'echo ""' >> /app/entrypoint.sh && \
     echo 'echo "=== Java version ==="' >> /app/entrypoint.sh && \
     echo 'java -version' >> /app/entrypoint.sh && \
     echo 'echo ""' >> /app/entrypoint.sh && \
-    echo 'echo "=== Starting server binary ==="' >> /app/entrypoint.sh && \
+    echo 'echo "=== Starting server binary with sh ==="' >> /app/entrypoint.sh && \
+    echo 'cd /app' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo '# Start the server - dont use exec so we can see errors' >> /app/entrypoint.sh && \
-    echo '/app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo '# Start the server with explicit sh' >> /app/entrypoint.sh && \
+    echo 'sh /app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
     echo 'EXIT_CODE=$?' >> /app/entrypoint.sh && \
     echo 'echo ""' >> /app/entrypoint.sh && \
     echo 'echo "=== Server exited with code: ${EXIT_CODE} ==="' >> /app/entrypoint.sh && \
