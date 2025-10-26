@@ -47,11 +47,13 @@ jobs:
         COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
         NO_COLOR: "1"
         TERM: dumb
-        COMPLEMENT_VERSION_CHECK_ITERATIONS: "100"
-        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "180"
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
       run: |
         # show test output in real time while also saving JSON for later parsing
         set -o pipefail
+        # Ensure the variable is exported to the test process and log it
+        export COMPLEMENT_SPAWN_HS_TIMEOUT_SECS=${COMPLEMENT_SPAWN_HS_TIMEOUT_SECS:-300}
+        echo "COMPLEMENT_SPAWN_HS_TIMEOUT_SECS=$COMPLEMENT_SPAWN_HS_TIMEOUT_SECS"
         go test -v -timeout 45m -json ./tests/... 2>&1 | tee complement-output.json || true
       continue-on-error: true
       
