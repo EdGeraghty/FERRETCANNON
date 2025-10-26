@@ -40,7 +40,7 @@ WORKDIR /app
 # Install required packages for Complement
 RUN apk update && \
     apk upgrade && \
-    apk add --no-cache sqlite wget curl && \
+    apk add --no-cache sqlite wget curl file && \
     rm -rf /var/cache/apk/*
 
 # Copy the built application from the builder stage
