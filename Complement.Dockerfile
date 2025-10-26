@@ -89,8 +89,8 @@ RUN echo 'server:' > /conf/config.template.yml && \
     echo '  maxThumbnailSize: 1048576' >> /conf/config.template.yml && \
     echo '' >> /conf/config.template.yml && \
     echo 'development:' >> /conf/config.template.yml && \
-    echo '  enableDebugLogging: false' >> /conf/config.template.yml && \
-    echo '  isDebug: false' >> /conf/config.template.yml
+    echo '  enableDebugLogging: true' >> /conf/config.template.yml && \
+    echo '  isDebug: true' >> /conf/config.template.yml
 
 # Create entrypoint script for Complement
 RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
