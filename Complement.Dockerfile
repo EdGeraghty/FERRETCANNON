@@ -8,22 +8,29 @@
 # Big shoutout to the FERRETCANNON massive for spec compliance! 🎆
 
 # Stage 1: Build stage
-FROM eclipse-temurin:17-jdk-alpine as builder
+FROM eclipse-temurin:17-jdk-alpine AS builder
 
 WORKDIR /app
 
-# Copy the Gradle wrapper and build files
-COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties* ./
-COPY gradle/ gradle/
+# Install required build tools
+RUN apk add --no-cache wget unzip
+
+# Download and install Gradle
+RUN wget https://services.gradle.org/distributions/gradle-9.0.0-bin.zip -P /tmp && \
+    unzip -d /opt/gradle /tmp/gradle-9.0.0-bin.zip && \
+    rm /tmp/gradle-9.0.0-bin.zip
+
+ENV GRADLE_HOME=/opt/gradle/gradle-9.0.0
+ENV PATH=${GRADLE_HOME}/bin:${PATH}
+
+# Copy build files
+COPY build.gradle.kts settings.gradle.kts gradle.properties* ./
 
 # Copy the source code
 COPY src/ src/
 
-# Make the Gradle wrapper executable
-RUN chmod +x gradlew
-
 # Build the application without running tests
-RUN ./gradlew installDist --no-daemon -x test --no-configuration-cache
+RUN gradle installDist --no-daemon -x test --no-configuration-cache
 
 # Stage 2: Runtime stage for Complement testing
 FROM eclipse-temurin:17-jdk-alpine
