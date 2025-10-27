@@ -77,7 +77,16 @@ object ServerNameResolver {
      * Determine the server name using multiple strategies
      */
     private fun determineServerName(): String {
-        // Strategy 1: Environment variable (highest priority)
+        // Strategy 1: Environment variables (highest priority)
+        // Complement and other runtimes may set SERVER_NAME; accept that first.
+        System.getenv("SERVER_NAME")?.let { envName ->
+            if (envName.isNotBlank()) {
+                println("Using server name from SERVER_NAME: $envName")
+                return envName
+            }
+        }
+
+        // Backwards-compatible: support MATRIX_SERVER_NAME too
         System.getenv("MATRIX_SERVER_NAME")?.let { envName ->
             if (envName.isNotBlank()) {
                 println("Using server name from MATRIX_SERVER_NAME: $envName")
@@ -200,7 +209,8 @@ object ServerNameResolver {
                 "serverBaseUrl" to getServerBaseUrl(),
                 "localHostname" to (try { InetAddress.getLocalHost().hostName } catch (e: Exception) { "unknown" }),
                 "canonicalHostname" to (try { InetAddress.getLocalHost().canonicalHostName } catch (e: Exception) { "unknown" }),
-                "matrixServerNameEnv" to (System.getenv("MATRIX_SERVER_NAME") ?: "not set")
+                "matrixServerNameEnv" to (System.getenv("MATRIX_SERVER_NAME") ?: "not set"),
+                "serverNameEnv" to (System.getenv("SERVER_NAME") ?: "not set")
             )
         } catch (e: Exception) {
             // Fallback response if anything goes wrong
