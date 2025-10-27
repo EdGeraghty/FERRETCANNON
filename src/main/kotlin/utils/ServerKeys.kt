@@ -124,6 +124,34 @@ object ServerKeys {
         }
     }
 
+    /**
+     * Initialize an in-memory keypair for tests or environments without DB access.
+     * This avoids calling the database and is intended for unit tests only.
+     */
+    fun initKeysForTests(seed: ByteArray? = null) {
+        if (keysLoaded) return
+        try {
+            val random = java.security.SecureRandom()
+            val seedBytes = seed ?: ByteArray(32).also { random.nextBytes(it) }
+            privateKeySeed = seedBytes
+
+            val privateKeySpec = EdDSAPrivateKeySpec(seedBytes, spec)
+            privateKey = EdDSAPrivateKey(privateKeySpec)
+
+            val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
+            publicKey = EdDSAPublicKey(publicKeySpec)
+
+            publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+            keyId = "ed25519:YOLO420-${System.currentTimeMillis() / 1000}"
+
+            keysLoaded = true
+            logger.debug("Initialized in-memory test keypair for server: $serverName, keyId=$keyId")
+        } catch (e: Exception) {
+            logger.error("Failed to initialize test keys", e)
+            throw e
+        }
+    }
+
     private fun updateStoredKey() {
         // NOTE: Must be called within a transaction block
         val currentKeyId = keyId
@@ -437,5 +465,11 @@ object ServerKeys {
         canonical.append("}")
 
         return canonical.toString()
+    }
+
+    // Public wrapper for tests and external verification. Returns the canonical JSON
+    // used when signing the /_matrix/key/v2/server response.
+    fun getServerKeysCanonicalJsonPublic(serverName: String, verifyKeys: Map<String, Map<String, Any>>, oldVerifyKeys: Map<String, Map<String, Any>>, validUntilTs: Long): String {
+        return getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs)
     }
 }

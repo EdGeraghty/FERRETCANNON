@@ -262,6 +262,10 @@ This will:
 - ✅ Clone the Complement test suite
 - ✅ Run all compliance tests
 
+Note: The `TestInboundFederationKeys` Complement test has been validated locally and passes with the current
+`complement-ferretcannon:latest` image. A unit test `ServerKeysTest` was also added to validate server key
+signing and verification logic during CI/local development.
+
 #### What Gets Tested
 
 - ✅ **Client-Server API** - Registration, authentication, rooms, messages, profiles, devices
