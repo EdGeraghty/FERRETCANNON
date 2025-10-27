@@ -243,48 +243,69 @@ This implementation adheres quite well to the Matrix Server-Server API v1.16 spe
 
 ## Compliance Testing
 
-FERRETCANNON includes a compliance test suite to help verify Matrix Specification v1.16 adherence and debug federation issues.
+FERRETCANNON supports comprehensive Matrix Specification v1.16 compliance testing using the industry-standard Complement test suite.
 
-### Running Compliance Tests
+### Official Complement Integration
+
+**Complement** is the official Matrix compliance test suite - a black-box integration testing framework that validates homeserver implementations against the Matrix Specification. It's used by Synapse, Dendrite, Conduit, and other Matrix implementations.
+
+#### Quick Start
+
+```bash
+# From the FERRETCANNON repository root
+cd complement
+./run-complement.sh
+```
+
+This will:
+- ✅ Build the Complement Docker image
+- ✅ Clone the Complement test suite
+- ✅ Run all compliance tests
+
+#### What Gets Tested
+
+- ✅ **Client-Server API** - Registration, authentication, rooms, messages, profiles, devices
+- ✅ **Server-Server API** - Federation, event distribution, state resolution, backfill
+- ✅ **Security & Crypto** - Event signing, key exchange, content hashing
+- ✅ **Room Versions** - Support for room versions v1-v12
+
+#### Documentation
+
+See [`complement/README.md`](complement/README.md) for full documentation and [`complement/QUICK_START.md`](complement/QUICK_START.md) for a 5-minute quick start guide.
+
+### Internal Compliance Tests
+
+FERRETCANNON also includes internal compliance tests for development and debugging:
 
 ```powershell
 # Start the server
 .\start-server.ps1
 
-# Run compliance tests
+# Run internal compliance tests
 cd compliance-tests
 .\run-compliance-tests.ps1
 ```
 
-### Test Coverage
+These internal tests include:
 
-The test suite includes:
+- ✅ **Canonical JSON Tests** - Verifies JSON serialisation per Matrix spec
+- ✅ **Event Hashing Tests** - Validates SHA-256 content hash computation
+- 🔄 **Event Signing Tests** - Ed25519 signature generation and verification
+- 📋 **Federation Protocol Tests** - Server-server API format documentation
 
-- ✅ **Canonical JSON Tests** - Verifies JSON serialization per Matrix spec (sorted keys, proper number formatting, UTF-8 encoding)
-- ✅ **Event Hashing Tests** - Validates SHA-256 content hash computation with proper field exclusion
-- 🔄 **Event Signing Tests** - Ed25519 signature generation and verification (in development)
-- 📋 **Federation Protocol Tests** - Documentation of make_join, send_join, and other server-server API formats
-
-### Test Endpoints
-
-For compliance testing, FERRETCANNON exposes internal verification endpoints:
-
-- `POST /_matrix/test/canonical-json` - Canonicalize JSON input
-- `POST /_matrix/test/compute-hash` - Compute event content hash
-- `GET /_matrix/test/server-info` - Server connectivity check
-
-### Documentation
-
-See [`compliance-tests/QUICK_START.md`](compliance-tests/QUICK_START.md) for detailed usage instructions and [`compliance-tests/STATUS.md`](compliance-tests/STATUS.md) for current implementation status.
+See [`compliance-tests/QUICK_START.md`](compliance-tests/QUICK_START.md) for internal test documentation.
 
 ### Why This Matters
 
 Compliance testing helps:
 
 - ✅ Verify implementation correctness against Matrix specification
-- ✅ Debug federation issues systematically (especially the ongoing hash mismatch problem)
+- ✅ Ensure interoperability with other Matrix implementations
+- ✅ Debug federation issues systematically
 - ✅ Prevent regressions with automated testing
-- ✅ Document expected behavior with executable specifications
+- ✅ Document expected behaviour with executable specifications
+
+Big shoutout to the Matrix.org team for creating Complement! 🎆
 
 ## License
 

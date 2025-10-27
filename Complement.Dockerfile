@@ -1,0 +1,159 @@
+# Complement.Dockerfile for FERRETCANNON Matrix Server
+# This Dockerfile is specifically designed for running Complement integration tests
+# against the FERRETCANNON Matrix homeserver implementation.
+#
+# Complement is the official Matrix compliance test suite that validates
+# homeserver implementations against the Matrix Specification v1.16.
+#
+# Big shoutout to the FERRETCANNON massive for spec compliance! 🎆
+
+# Stage 1: Build stage
+FROM openjdk:17-alpine AS builder
+
+WORKDIR /app
+
+# Install required build tools
+RUN apk add --no-cache wget unzip
+
+# Download and install Gradle
+RUN wget https://services.gradle.org/distributions/gradle-9.0.0-bin.zip -P /tmp && \
+    unzip -d /opt/gradle /tmp/gradle-9.0.0-bin.zip && \
+    rm /tmp/gradle-9.0.0-bin.zip
+
+ENV GRADLE_HOME=/opt/gradle/gradle-9.0.0
+ENV PATH=${GRADLE_HOME}/bin:${PATH}
+
+# Copy build files
+COPY build.gradle.kts settings.gradle.kts gradle.properties* ./
+
+# Copy the source code
+COPY src/ src/
+
+# Build the application without running tests
+RUN gradle installDist --no-daemon -x test --no-configuration-cache
+
+# Stage 2: Runtime stage for Complement testing
+FROM openjdk:17-alpine
+
+WORKDIR /app
+
+# Update Alpine and install required packages for Complement
+RUN apk update && \
+    apk upgrade --available && \
+    apk add --no-cache sqlite wget curl file && \
+    rm -rf /var/cache/apk/*
+
+# Copy the built application from the builder stage
+COPY --from=builder /app/build/install/FERRETCANNON/ /app/
+
+# Create directories for data and configuration
+RUN mkdir -p /data /conf
+
+# Create a Complement-specific configuration template
+# This will be populated by the entrypoint script based on environment variables
+RUN echo 'server:' > /conf/config.template.yml && \
+    echo '  host: 0.0.0.0' >> /conf/config.template.yml && \
+    echo '  port: 8008' >> /conf/config.template.yml && \
+    echo '  maxRequestSize: 10485760' >> /conf/config.template.yml && \
+    echo '  corsAllowedOrigins:' >> /conf/config.template.yml && \
+    echo '    - "*"' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'database:' >> /conf/config.template.yml && \
+    echo '  url: jdbc:sqlite:/data/ferretcannon.db' >> /conf/config.template.yml && \
+    echo '  driver: org.sqlite.JDBC' >> /conf/config.template.yml && \
+    echo '  maxConnections: 10' >> /conf/config.template.yml && \
+    echo '  connectionTimeout: 30000' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'federation:' >> /conf/config.template.yml && \
+    echo '  serverName: ${SERVER_NAME}' >> /conf/config.template.yml && \
+    echo '  federationPort: 8448' >> /conf/config.template.yml && \
+    echo '  enableFederation: true' >> /conf/config.template.yml && \
+    echo '  allowedServers:' >> /conf/config.template.yml && \
+    echo '    - "*"' >> /conf/config.template.yml && \
+    echo '  keyValidityPeriod: 86400000' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'security:' >> /conf/config.template.yml && \
+    echo '  jwtSecret: complement-test-secret-key-do-not-use-in-production' >> /conf/config.template.yml && \
+    echo '  tokenExpirationHours: 24' >> /conf/config.template.yml && \
+    echo '  bcryptRounds: 4' >> /conf/config.template.yml && \
+    echo '  rateLimitRequests: 300' >> /conf/config.template.yml && \
+    echo '  rateLimitPeriodMinutes: 1' >> /conf/config.template.yml && \
+    echo '  enableRateLimiting: false' >> /conf/config.template.yml && \
+    echo '  disableRegistration: false' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'media:' >> /conf/config.template.yml && \
+    echo '  maxUploadSize: 10485760' >> /conf/config.template.yml && \
+    echo '  maxImageSize: 10485760' >> /conf/config.template.yml && \
+    echo '  maxAvatarSize: 1048576' >> /conf/config.template.yml && \
+    echo '  maxThumbnailSize: 1048576' >> /conf/config.template.yml && \
+    echo '' >> /conf/config.template.yml && \
+    echo 'development:' >> /conf/config.template.yml && \
+    echo '  enableDebugLogging: true' >> /conf/config.template.yml && \
+    echo '  isDebug: true' >> /conf/config.template.yml
+
+# Create entrypoint script for Complement
+RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
+    echo 'set -x' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Set default server name if not provided' >> /app/entrypoint.sh && \
+    echo 'export SERVER_NAME=${SERVER_NAME:-localhost}' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Generate configuration from template with environment variables' >> /app/entrypoint.sh && \
+    echo 'envsubst < /conf/config.template.yml > /app/config.yml' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo 'echo "🚀 Starting FERRETCANNON Matrix Server for Complement testing"' >> /app/entrypoint.sh && \
+    echo 'echo "Server Name: ${SERVER_NAME}"' >> /app/entrypoint.sh && \
+    echo 'echo "Port: 8008"' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Config file contents ==="' >> /app/entrypoint.sh && \
+    echo 'cat /app/config.yml' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Checking application files ==="' >> /app/entrypoint.sh && \
+    echo 'ls -la /app/bin/ || echo "No bin directory"' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'if [ -f /app/bin/FERRETCANNON ]; then' >> /app/entrypoint.sh && \
+    echo '  echo "FERRETCANNON binary exists"' >> /app/entrypoint.sh && \
+    echo '  file /app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo '  head -5 /app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo 'else' >> /app/entrypoint.sh && \
+    echo '  echo "ERROR: FERRETCANNON binary not found!"' >> /app/entrypoint.sh && \
+    echo '  exit 1' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'ls -la /app/lib/ | head -20 || echo "No lib directory"' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Java version ==="' >> /app/entrypoint.sh && \
+    echo 'java -version' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Starting server binary with sh ==="' >> /app/entrypoint.sh && \
+    echo 'cd /app' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Start the server with explicit sh' >> /app/entrypoint.sh && \
+    echo 'sh /app/bin/FERRETCANNON' >> /app/entrypoint.sh && \
+    echo 'EXIT_CODE=$?' >> /app/entrypoint.sh && \
+    echo 'echo ""' >> /app/entrypoint.sh && \
+    echo 'echo "=== Server exited with code: ${EXIT_CODE} ==="' >> /app/entrypoint.sh && \
+    echo 'exit ${EXIT_CODE}' >> /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
+
+# Install envsubst for environment variable substitution
+RUN apk add --no-cache gettext
+
+# Expose the Matrix client-server API port (Complement expects 8008)
+EXPOSE 8008
+
+# Expose the Matrix federation API port (Complement expects 8448)
+EXPOSE 8448
+
+# Health check for Complement to verify server is ready
+# Use a GET-based check (curl) rather than a HEAD/--spider check, because the
+# server may return 405 for HEAD. A successful GET with a 2xx/3xx response
+# is considered healthy.
+HEALTHCHECK --interval=5s --timeout=3s --retries=20 \
+    CMD curl -fsS http://localhost:8008/_matrix/client/versions > /dev/null || exit 1
+
+# Set environment variables
+ENV JAVA_OPTS="-Xmx512m -Xms256m"
+
+# Use the entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]

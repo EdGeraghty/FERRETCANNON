@@ -1,0 +1,117 @@
+name: Complement Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  complement:
+    name: Run Complement Compliance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Give Complement more time to spawn the homeserver in CI
+      COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      # Force Complement to use the loopback host IP for port binding lookups
+      HSPortBindingIP: "127.0.0.1"
+    
+    steps:
+    - name: Checkout FERRETCANNON
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Complement Docker Image
+      run: |
+        docker build -t complement-ferretcannon:latest -f Complement.Dockerfile .
+        
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: false
+        
+    - name: Checkout Complement
+      uses: actions/checkout@v4
+      with:
+        repository: matrix-org/complement
+        path: complement-checkout
+        
+    - name: Run Complement Tests
+      working-directory: complement-checkout
+      env:
+        COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      run: |
+        go test -v -timeout 45m -json ./tests/... 2>&1 | tee complement-output.json || true
+      continue-on-error: true
+      
+    - name: Parse Test Results
+      if: always()
+      run: |
+        cd complement-checkout || exit 0
+        
+        # Check if output file exists
+        if [ ! -f complement-output.json ]; then
+          echo "## Complement Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ No test output file found. Tests may not have run." >> $GITHUB_STEP_SUMMARY
+          exit 0
+        fi
+        
+        # Parse JSON output to create summary
+        echo "## Complement Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Count passed, failed, and skipped tests
+        PASSED=$(grep -c '"Action":"pass"' complement-output.json 2>/dev/null || echo "0")
+        FAILED=$(grep -c '"Action":"fail"' complement-output.json 2>/dev/null || echo "0")
+        SKIPPED=$(grep -c '"Action":"skip"' complement-output.json 2>/dev/null || echo "0")
+        
+        echo "✅ **Passed**: $PASSED" >> $GITHUB_STEP_SUMMARY
+        echo "❌ **Failed**: $FAILED" >> $GITHUB_STEP_SUMMARY
+        echo "⏭️ **Skipped**: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Show failed tests
+        if [ "$FAILED" -gt 0 ]; then
+          echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          grep '"Action":"fail"' complement-output.json 2>/dev/null | grep -o '"Test":"[^"]*"' | cut -d'"' -f4 | sort -u | while read test; do
+            echo "- ❌ $test" >> $GITHUB_STEP_SUMMARY
+          done
+        fi
+        
+    - name: Upload Test Output
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-results
+        path: |
+          complement-checkout/complement-output.json
+          complement-checkout/*.log
+        retention-days: 30
+        if-no-files-found: ignore
+        
+    - name: Check Test Status
+      if: always()
+      run: |
+        cd complement-checkout || exit 0
+        
+        # Check if output file exists
+        if [ ! -f complement-output.json ]; then
+          echo "::warning::No test output file found. Tests may not have run."
+          exit 0
+        fi
+        
+        FAILED=$(grep -c '"Action":"fail"' complement-output.json 2>/dev/null || echo "0")
+        if [ "$FAILED" -gt 0 ]; then
+          echo "::error::$FAILED Complement tests failed"
+          exit 1
+        fi
