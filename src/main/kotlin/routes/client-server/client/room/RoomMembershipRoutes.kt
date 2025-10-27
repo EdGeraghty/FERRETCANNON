@@ -139,6 +139,59 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
         call.processJoin("roomId")
     }
 
+    // POST /rooms/{roomId}/invite - Invite a user to a room
+    post("/rooms/{roomId}/invite") {
+        try {
+            val userId = call.validateAccessToken() ?: return@post
+            val roomId = call.parameters["roomId"]
+
+            if (roomId == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing roomId parameter"
+                ))
+                return@post
+            }
+
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+            val inviteeUserId = jsonBody["user_id"]?.jsonPrimitive?.content
+
+            if (inviteeUserId == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing user_id parameter"
+                ))
+                return@post
+            }
+
+            println("INVITE: userId=$userId, roomId=$roomId, invitee=$inviteeUserId")
+
+            val result = runBlocking {
+                InviteHandler.sendInvite(userId, inviteeUserId, roomId, config, stateResolver)
+            }
+
+            if (result.success) {
+                call.respondText("{}", ContentType.Application.Json)
+                roomMembershipLogger.info("INVITE: Successfully invited user {} to room {}", inviteeUserId, roomId)
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                    "errcode" to result.errorCode,
+                    "error" to result.errorMessage
+                ))
+                roomMembershipLogger.error("INVITE: Failed to invite user {} to room {}: {}", inviteeUserId, roomId, result.errorMessage)
+            }
+
+        } catch (e: Exception) {
+            println("INVITE: Exception caught: ${e.message}")
+            e.printStackTrace()
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
+            ))
+        }
+    }
+
     // POST /rooms/{roomId}/leave - Leave a room
     post("/rooms/{roomId}/leave") {
         try {

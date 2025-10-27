@@ -49,12 +49,17 @@ fun Route.syncRoutes() {
 
             logger.debug("SyncRoutes - performing sync for user: $userId, useStateAfter: $useStateAfter")
             // Perform sync
-            val syncResponse = SyncManager.performSync(
-                userId = userId,
-                since = since?.let { MatrixPagination.parseSyncToken(it) },
-                fullState = false,
-                useStateAfter = useStateAfter
-            )
+            val syncResponse = try {
+                SyncManager.performSync(
+                    userId = userId,
+                    since = since?.let { MatrixPagination.parseSyncToken(it) },
+                    fullState = false,
+                    useStateAfter = useStateAfter
+                )
+            } catch (e: Exception) {
+                logger.error("SyncRoutes - Exception in SyncManager.performSync: ${e.message}", e)
+                throw e
+            }
 
             logger.debug("SyncRoutes - sync completed, responding")
             call.respond(syncResponse)

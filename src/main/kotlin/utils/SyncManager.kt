@@ -14,11 +14,15 @@ import utils.*
 import utils.MatrixPagination
 import utils.typingMap
 
+import org.slf4j.LoggerFactory
+
 /**
  * Enhanced Sync Implementation
  * Provides full state and incremental sync functionality according to Matrix Client-Server API v1.15
  */
 object SyncManager {
+
+    private val logger = LoggerFactory.getLogger("utils.SyncManager")
 
     private val json = Json { encodeDefaults = true }
 
@@ -44,12 +48,15 @@ object SyncManager {
         fullState: Boolean = false,
         useStateAfter: Boolean = false
     ): JsonObject {
+        logger.info("performSync called for userId=$userId, since=$since, fullState=$fullState")
         val currentTime = System.currentTimeMillis()
 
         // Get user's joined rooms
         val joinedRoomIds = getUserJoinedRooms(userId)
         val invitedRoomIds = getUserInvitedRooms(userId)
         val leftRoomIds = getUserLeftRooms(userId)
+
+        logger.info("performSync - userId=$userId, joinedRooms=${joinedRoomIds.size}, invitedRooms=${invitedRoomIds.size}, leftRooms=${leftRoomIds.size}")
 
         // Determine if this is a full state sync
         val isFullState = fullState || since == null
@@ -82,7 +89,9 @@ object SyncManager {
         }
 
         for (roomId in invitedRoomIds) {
+            logger.info("Processing invited room: $roomId for user: $userId")
             val strippedState = getStrippedState(roomId, userId)
+            logger.info("Got ${strippedState.size} stripped state events for room $roomId")
             inviteRooms[roomId] = buildJsonObject {
                 put("invite_state", buildJsonObject {
                     put("events", JsonArray(strippedState))
@@ -173,7 +182,9 @@ object SyncManager {
      * Get rooms that the user has been invited to
      */
     private fun getUserInvitedRooms(userId: String): List<String> {
-    return getUserMembershipMap(userId).filterValues { it == "invite" }.keys.toList()
+        val invitedRooms = getUserMembershipMap(userId).filterValues { it == "invite" }.keys.toList()
+        logger.info("getUserInvitedRooms for $userId: $invitedRooms")
+        return invitedRooms
     }
 
     /**
@@ -188,13 +199,24 @@ object SyncManager {
      * Returns a map of roomId -> membership ("join"|"invite"|"leave"|other)
      */
     private fun getUserMembershipMap(userId: String): Map<String, String> {
-        return transaction {
+        val membershipMap = transaction {
             // Select all member events for this user ordered by time desc so the first occurrence by room is the latest
             val rows = Events.select {
                 (Events.type eq "m.room.member") and
                 (Events.stateKey eq userId)
             }.orderBy(Events.originServerTs, SortOrder.DESC)
                 .map { it }
+
+            logger.debug("Query executed: SELECT * FROM events WHERE type='m.room.member' AND state_key='$userId' ORDER BY origin_server_ts DESC")
+            logger.debug("Found ${rows.size} member events for $userId")
+            rows.forEach { row ->
+                val roomId = row[Events.roomId]
+                val content = row[Events.content]
+                val eventId = row[Events.eventId]
+                val sender = row[Events.sender]
+                val stateKey = row[Events.stateKey]
+                logger.debug("Member event: eventId=$eventId, roomId=$roomId, sender=$sender, stateKey=$stateKey, content=$content")
+            }
 
             // Group by roomId and pick the first (latest) event per room
             val latestByRoom = rows.groupBy { it[Events.roomId] }
@@ -210,6 +232,8 @@ object SyncManager {
                 }
             }
         }
+        logger.debug("getUserMembershipMap for $userId: $membershipMap")
+        return membershipMap
     }
 
     /**
@@ -217,6 +241,7 @@ object SyncManager {
      * Per Matrix spec, this should include the invite event itself plus invite_room_state context
      */
     private fun getStrippedState(roomId: String, userId: String): List<JsonElement> {
+        logger.debug("getStrippedState called for roomId=$roomId, userId=$userId")
         return transaction {
             val strippedEvents = mutableListOf<JsonElement>()
 
@@ -224,18 +249,35 @@ object SyncManager {
             val inviteEvent = Events.select {
                 (Events.roomId eq roomId) and
                 (Events.type eq "m.room.member") and
-                (Events.stateKey eq userId) and
-                (Events.content.like("%\"membership\":\"invite\"%"))
-            }.orderBy(Events.originServerTs, SortOrder.DESC).limit(1).singleOrNull()
-            
+                (Events.stateKey eq userId)
+            }.orderBy(Events.originServerTs, SortOrder.DESC)
+                .map { row ->
+                    try {
+                        val content = Json.parseToJsonElement(row[Events.content]).jsonObject
+                        val membership = content["membership"]?.jsonPrimitive?.content
+                        logger.debug("Found member event for $userId in $roomId with membership=$membership")
+                        if (membership == "invite") {
+                            buildJsonObject {
+                                put("type", row[Events.type])
+                                put("sender", row[Events.sender])
+                                put("origin_server_ts", row[Events.originServerTs])
+                                put("content", content)
+                                row[Events.stateKey]?.let { put("state_key", it) }
+                            }
+                        } else null
+                    } catch (e: Exception) {
+                        logger.debug("Error parsing member event content: $e")
+                        null
+                    }
+                }
+                .filterNotNull()
+                .firstOrNull()
+
             if (inviteEvent != null) {
-                strippedEvents.add(buildJsonObject {
-                    put("type", inviteEvent[Events.type])
-                    put("sender", inviteEvent[Events.sender])
-                    put("origin_server_ts", inviteEvent[Events.originServerTs])
-                    put("content", Json.parseToJsonElement(inviteEvent[Events.content]).jsonObject)
-                    inviteEvent[Events.stateKey]?.let { put("state_key", it) }
-                })
+                logger.debug("Added invite event to stripped state")
+                strippedEvents.add(inviteEvent)
+            } else {
+                logger.debug("No invite event found for $userId in $roomId")
             }
 
             // Then get ALL outlier events for this room (these are the invite_room_state events)
@@ -251,10 +293,12 @@ object SyncManager {
                     row[Events.stateKey]?.let { put("state_key", it) }
                 }
             }
+            logger.debug("Found ${outlierEvents.size} outlier events")
             strippedEvents.addAll(outlierEvents)
 
             // If no outliers exist, fall back to basic state (shouldn't happen with proper federation)
             if (strippedEvents.isEmpty()) {
+                logger.debug("No stripped events found, using fallback")
                 // Always include m.room.create
                 val createEvent = Events.select {
                     (Events.roomId eq roomId) and
@@ -287,6 +331,7 @@ object SyncManager {
                 strippedEvents.addAll(otherEvents)
             }
 
+            logger.debug("Returning ${strippedEvents.size} stripped events")
             strippedEvents
         }
     }
