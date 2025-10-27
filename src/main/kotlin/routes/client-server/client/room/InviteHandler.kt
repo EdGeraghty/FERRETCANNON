@@ -121,6 +121,7 @@ object InviteHandler {
                 it[Events.hashes] = "{}"
                 it[Events.signatures] = "{}"
             }
+            println("INVITE: Stored invite event: eventId=$inviteEventId, roomId=$roomId, invitee=$inviteeUserId")
         }
         
         // Update resolved state
