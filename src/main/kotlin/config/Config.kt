@@ -12,7 +12,8 @@ data class ServerConfig(
     val security: SecuritySettings = SecuritySettings(),
     val media: MediaSettings = MediaSettings(),
     val development: DevelopmentSettings = DevelopmentSettings(),
-    val voip: VoIPSettings = VoIPSettings()
+    val voip: VoIPSettings = VoIPSettings(),
+    val ssl: SSLSettings = SSLSettings()
 )
 
 @Serializable
@@ -89,6 +90,21 @@ data class VoIPSettings(
     val turnServers: List<TurnServer> = emptyList(),
     val stunServers: List<StunServer> = emptyList()
 )
+
+@Serializable
+data class SSLSettings(
+    val mode: SSLMode = SSLMode.SNAKEOIL,
+    val certificatePath: String? = null,
+    val privateKeyPath: String? = null,
+    val certificateChainPath: String? = null
+)
+
+@Serializable
+enum class SSLMode {
+    DISABLED,    // No SSL (for upstream SSL terminating proxies)
+    SNAKEOIL,    // Self-signed certificates for development/testing
+    CUSTOM       // Custom certificates from files
+}
 
 @Serializable
 data class TurnServer(

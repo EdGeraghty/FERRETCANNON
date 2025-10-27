@@ -1,5 +1,7 @@
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
+import io.ktor.server.engine.applicationEngineEnvironment
+import io.ktor.server.engine.EngineConnectorBuilder
 import io.ktor.server.netty.*
 import io.ktor.server.routing.*
 import io.ktor.server.response.*
@@ -58,6 +60,7 @@ import routes.discovery.wellknown.wellKnownRoutes
 import routes.testEndpoints
 import config.ConfigLoader
 import config.ServerConfig
+import config.SSLMode
 import utils.ServerNameResolver
 import org.slf4j.LoggerFactory
 import kotlinx.serialization.KSerializer
@@ -70,8 +73,148 @@ import kotlinx.serialization.modules.contextual
 import java.io.File
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.Level
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import java.io.FileInputStream
+import java.security.KeyFactory
+import java.security.spec.PKCS8EncodedKeySpec
+import java.security.PrivateKey
+import java.security.cert.Certificate
+import java.security.KeyPairGenerator
+import java.security.KeyPair
+import java.security.SecureRandom
+import java.util.Date
+import java.math.BigInteger
+import org.bouncycastle.cert.X509v3CertificateBuilder
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
+import org.bouncycastle.asn1.x500.X500Name
 
 private val logger = LoggerFactory.getLogger("Main")
+
+fun Application.configureFederationServer(config: ServerConfig) {
+    logger.debug("Configuring federation server plugins and routes...")
+
+    logger.trace("Installing ContentNegotiation plugin...")
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = false
+            isLenient = true
+            ignoreUnknownKeys = true
+            allowStructuredMapKeys = true
+            encodeDefaults = false
+            coerceInputValues = true
+        })
+    }
+    logger.debug("✅ ContentNegotiation plugin installed")
+
+    logger.trace("Installing Authentication plugin...")
+    install(Authentication) {
+    }
+    logger.debug("✅ Authentication plugin installed")
+    
+    // Federation routes
+    logger.debug("Setting up federation routes...")
+    federationRoutes()
+    logger.info("✅ Federation routes configured")
+
+    // Key routes (federation endpoints)
+    logger.debug("Setting up key routes...")
+    keyRoutes()
+    logger.info("✅ Key routes configured")
+
+    logger.info("✅ Federation server configuration complete")
+}
+
+fun createSelfSignedCertificate(): Pair<KeyStore, String> {
+    val keyPairGenerator = KeyPairGenerator.getInstance("RSA")
+    keyPairGenerator.initialize(2048, SecureRandom())
+    val keyPair = keyPairGenerator.generateKeyPair()
+
+    val subject = X500Name("CN=localhost")
+    val serialNumber = BigInteger(64, SecureRandom())
+    val notBefore = Date(System.currentTimeMillis() - 1000L * 60 * 60 * 24)
+    val notAfter = Date(System.currentTimeMillis() + 1000L * 60 * 60 * 24 * 365)
+
+    val certificateBuilder = JcaX509v3CertificateBuilder(
+        subject,
+        serialNumber,
+        notBefore,
+        notAfter,
+        subject,
+        keyPair.public
+    )
+
+    val signer = JcaContentSignerBuilder("SHA256WithRSAEncryption").build(keyPair.private)
+    val certificateHolder = certificateBuilder.build(signer)
+    val certificate = JcaX509CertificateConverter().getCertificate(certificateHolder)
+
+    val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+    keyStore.load(null, null)
+    keyStore.setKeyEntry("key", keyPair.private, "password".toCharArray(), arrayOf<Certificate>(certificate))
+
+    return Pair(keyStore, "password")
+}
+
+fun loadKeyStoreFromFiles(certificatePath: String, privateKeyPath: String, certificateChainPath: String? = null): KeyStore {
+    val certificateFactory = CertificateFactory.getInstance("X.509")
+    
+    // Load the certificate
+    val certificateFile = File(certificatePath)
+    if (!certificateFile.exists()) {
+        throw IllegalArgumentException("Certificate file not found: $certificatePath")
+    }
+    
+    val certificate = certificateFile.inputStream().use { inputStream ->
+        certificateFactory.generateCertificate(inputStream) as X509Certificate
+    }
+    
+    // Load certificate chain if provided
+    val certificateChain = if (certificateChainPath != null) {
+        val chainFile = File(certificateChainPath)
+        if (chainFile.exists()) {
+            chainFile.inputStream().use { inputStream ->
+                certificateFactory.generateCertificates(inputStream).toTypedArray()
+            }
+        } else {
+            arrayOf<Certificate>(certificate)
+        }
+    } else {
+        arrayOf<Certificate>(certificate)
+    }
+    
+    // Load the private key
+    val privateKeyFile = File(privateKeyPath)
+    if (!privateKeyFile.exists()) {
+        throw IllegalArgumentException("Private key file not found: $privateKeyPath")
+    }
+    
+    val privateKey = privateKeyFile.readText().let { keyText ->
+        // Remove PEM headers/footers if present
+        val cleanKey = keyText
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace("-----BEGIN RSA PRIVATE KEY-----", "")
+            .replace("-----END RSA PRIVATE KEY-----", "")
+            .replace("-----BEGIN EC PRIVATE KEY-----", "")
+            .replace("-----END EC PRIVATE KEY-----", "")
+            .replace("\\s".toRegex(), "")
+        
+        val keyBytes = java.util.Base64.getDecoder().decode(cleanKey)
+        val keySpec = PKCS8EncodedKeySpec(keyBytes)
+        val keyFactory = KeyFactory.getInstance("RSA") // Assume RSA for now
+        keyFactory.generatePrivate(keySpec)
+    }
+    
+    // Create KeyStore
+    val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+    keyStore.load(null, null)
+    keyStore.setKeyEntry("key", privateKey, "password".toCharArray(), certificateChain)
+    
+    return keyStore
+}
 
 fun main() {
     println("FERRETCANNON MAIN STARTED - NEW CODE VERSION")
@@ -197,9 +340,9 @@ fun main() {
     logger.info("✅ Server name resolver initialized")
 
     try {
-        logger.debug("Creating embedded server instance...")
-        val server = embeddedServer(Netty, port = config.server.port, host = config.server.host) {
-            logger.debug("Configuring server plugins and routes...")
+        logger.debug("Creating embedded client server instance...")
+        val clientServer = embeddedServer(Netty, port = config.server.port, host = config.server.host) {
+            logger.debug("Configuring client server plugins and routes...")
 
             // Install CORS for client-server API with configurable origins
             logger.trace("Installing CORS plugin...")
@@ -262,14 +405,6 @@ fun main() {
             logger.debug("Setting up client routes...")
             clientRoutes(config)
             logger.info("✅ Client routes configured")
-            
-            logger.debug("Setting up federation routes...")
-            federationRoutes()
-            logger.info("✅ Federation routes configured")
-
-            logger.debug("Setting up key routes...")
-            keyRoutes()
-            logger.info("✅ Key routes configured")
 
             logger.debug("Setting up well-known routes...")
             wellKnownRoutes(config)
@@ -345,27 +480,103 @@ fun main() {
                 }
                 logger.debug("✅ Basic routes configured")
             }
-            logger.info("✅ Server configuration complete")
+            logger.info("✅ Client server configuration complete")
+        }
+
+        logger.debug("Creating embedded federation server instance...")
+        // Configure federation server with TLS when requested in config
+        val federationServer = try {
+            when (config.ssl.mode) {
+                SSLMode.DISABLED -> {
+                    logger.info("SSL mode DISABLED - starting federation over HTTP")
+                    embeddedServer(Netty, port = config.federation.federationPort, host = config.server.host) {
+                        configureFederationServer(config)
+                    }
+                }
+                SSLMode.SNAKEOIL -> {
+                    logger.info("SSL mode SNAKEOIL - generating self-signed certificate")
+                    val (keyStore, keyPassword) = createSelfSignedCertificate()
+                    // Use applicationEngineEnvironment to add an sslConnector for Netty
+                    val environment = applicationEngineEnvironment {
+                        module {
+                            configureFederationServer(config)
+                        }
+                        sslConnector(
+                            keyStore = keyStore,
+                            keyAlias = "key",
+                            keyStorePassword = { keyPassword.toCharArray() },
+                            privateKeyPassword = { keyPassword.toCharArray() }
+                        ) {
+                            this.host = config.server.host
+                            this.port = config.federation.federationPort
+                        }
+                    }
+                    embeddedServer(Netty, environment)
+                }
+                SSLMode.CUSTOM -> {
+                    logger.info("SSL mode CUSTOM - loading certificate and key from files")
+                    val certPath = config.ssl.certificatePath
+                    val keyPath = config.ssl.privateKeyPath
+                    val chainPath = config.ssl.certificateChainPath
+                    if (certPath == null || keyPath == null) {
+                        throw IllegalArgumentException("Custom SSL mode selected but certificate or key path missing in config")
+                    }
+                    val keyStore = loadKeyStoreFromFiles(certPath, keyPath, chainPath)
+                    // Use applicationEngineEnvironment to add an sslConnector for Netty
+                    val environment = applicationEngineEnvironment {
+                        module {
+                            configureFederationServer(config)
+                        }
+                        sslConnector(
+                            keyStore = keyStore,
+                            keyAlias = "key",
+                            keyStorePassword = { "password".toCharArray() },
+                            privateKeyPassword = { "password".toCharArray() }
+                        ) {
+                            this.host = config.server.host
+                            this.port = config.federation.federationPort
+                        }
+                    }
+                    embeddedServer(Netty, environment)
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to start federation server with SSL, falling back to HTTP", e)
+            embeddedServer(Netty, port = config.federation.federationPort, host = config.server.host) {
+                configureFederationServer(config)
+            }
         }
         
-        logger.debug("Starting server...")
-        server.start(wait = false)
-        logger.info("🎉 Server started successfully!")
-        logger.info("🌐 Server is running on ${config.server.host}:${config.server.port}")
+        logger.debug("Starting client server...")
+        clientServer.start(wait = false)
+        logger.info("🎉 Client server started successfully!")
+        logger.info("🌐 Client server is running on ${config.server.host}:${config.server.port}")
+        
+        logger.debug("Starting federation server...")
+        federationServer.start(wait = false)
+        logger.info("🎉 Federation server started successfully!")
+        logger.info("🌐 Federation server is running on ${config.server.host}:${config.federation.federationPort}")
+        if (config.ssl.mode == SSLMode.DISABLED) {
+            logger.warn("⚠️  Federation server is currently running over HTTP (SSL mode DISABLED)")
+        } else {
+            logger.info("🔒 Federation server is running with TLS (mode=${config.ssl.mode})")
+        }
+        
         logger.info("📋 Available endpoints:")
         logger.info("   - Client API: http://${config.server.host}:${config.server.port}/_matrix/client/")
-        logger.info("   - Federation API: http://${config.server.host}:${config.server.port}/_matrix/federation/")
-        logger.info("   - Key API: http://${config.server.host}:${config.server.port}/_matrix/key/")
+        logger.info("   - Federation API: http://${config.server.host}:${config.federation.federationPort}/_matrix/federation/")
+        logger.info("   - Key API: http://${config.server.host}:${config.federation.federationPort}/_matrix/key/")
         logger.info("   - Well-known: http://${config.server.host}:${config.server.port}/.well-known/matrix/")
         logger.info("   - Server Info: http://${config.server.host}:${config.server.port}/_matrix/server-info")
         logger.info("   - WebSocket: ws://${config.server.host}:${config.server.port}/ws/room/{roomId}")
-        logger.info("🛑 Press Ctrl+C to stop the server")
+        logger.info("🛑 Press Ctrl+C to stop the servers")
         
         // Keep the main thread alive
         Runtime.getRuntime().addShutdownHook(Thread {
-            logger.info("🛑 Shutting down server...")
-            server.stop(1000, 1000)
-            logger.info("✅ Server shutdown complete")
+            logger.info("🛑 Shutting down servers...")
+            clientServer.stop(1000, 1000)
+            federationServer.stop(1000, 1000)
+            logger.info("✅ Servers shutdown complete")
         })
         
         // Wait indefinitely
