@@ -17,6 +17,7 @@ import utils.StateResolver
 import utils.MatrixAuth
 import routes.server_server.federation.v1.broadcastEDU
 import routes.client_server.client.common.*
+import routes.client_server.client.room.InviteHandler
 
 fun Route.roomCreationRoutes(config: ServerConfig) {
     // POST /createRoom - Create a new room
@@ -34,6 +35,8 @@ fun Route.roomCreationRoutes(config: ServerConfig) {
             val preset = jsonBody["preset"]?.jsonPrimitive?.content ?: "private_chat"
             val visibility = jsonBody["visibility"]?.jsonPrimitive?.content ?: "private"
             val initialState = jsonBody["initial_state"]?.jsonArray
+            val inviteList = jsonBody["invite"]?.jsonArray
+            val isDirect = jsonBody["is_direct"]?.jsonPrimitive?.boolean ?: false
 
             // Determine join rule based on preset
             val joinRule = when (preset) {
@@ -56,6 +59,7 @@ fun Route.roomCreationRoutes(config: ServerConfig) {
                 visibility = visibility,
                 joinRule = joinRule,
                 initialState = initialState,
+                isDirect = isDirect,
                 currentTime = currentTime,
                 config = config
             )
@@ -64,6 +68,22 @@ fun Route.roomCreationRoutes(config: ServerConfig) {
             runBlocking {
                 broadcastEDU(roomId, roomCreationResult.createEvent)
                 broadcastEDU(roomId, roomCreationResult.memberEvent)
+            }
+
+            // Send invites if specified
+            if (inviteList != null) {
+                val stateResolver = StateResolver()
+                for (inviteUserIdElement in inviteList) {
+                    val inviteUserId = inviteUserIdElement.jsonPrimitive.content
+                    try {
+                        runBlocking {
+                            InviteHandler.sendInvite(userId, inviteUserId, roomId, config, stateResolver)
+                        }
+                    } catch (e: Exception) {
+                        // Log error but don't fail room creation
+                        println("Failed to send invite to $inviteUserId: ${e.message}")
+                    }
+                }
             }
 
             call.respond(mutableMapOf(

@@ -101,9 +101,18 @@ object InviteHandler {
         
         val (prevEvents, depth, authEvents) = getEventMetadata(roomId)
         
+        // Check if room is direct messaging room
+        val isDirectRoom = transaction {
+            Rooms.select { Rooms.roomId eq roomId }.singleOrNull()?.get(Rooms.isDirect) ?: false
+        }
+        
         val inviteContent = JsonObject(mutableMapOf(
             "membership" to JsonPrimitive("invite")
-        ))
+        ).apply {
+            if (isDirectRoom) {
+                put("is_direct", JsonPrimitive(true))
+            }
+        })
         
         // Store invite event
         transaction {
@@ -158,9 +167,18 @@ object InviteHandler {
         val inviteEventId = "\$${currentTime}_invite_${inviteeUserId.hashCode()}"
         val roomServer = roomId.substringAfter(":")
         
+        // Check if room is direct messaging room
+        val isDirectRoom = transaction {
+            Rooms.select { Rooms.roomId eq roomId }.singleOrNull()?.get(Rooms.isDirect) ?: false
+        }
+        
         val inviteContent = JsonObject(mutableMapOf(
             "membership" to JsonPrimitive("invite")
-        ))
+        ).apply {
+            if (isDirectRoom) {
+                put("is_direct", JsonPrimitive(true))
+            }
+        })
         
         val inviteEvent = buildJsonObject {
             put("type", "m.room.member")
@@ -199,7 +217,19 @@ object InviteHandler {
     ) {
         try {
             val inviteeServer = inviteeUserId.substringAfter(":")
-            val inviteContent = JsonObject(mutableMapOf("membership" to JsonPrimitive("invite")))
+            
+            // Check if room is direct messaging room
+            val isDirectRoom = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.singleOrNull()?.get(Rooms.isDirect) ?: false
+            }
+            
+            val inviteContent = JsonObject(mutableMapOf(
+                "membership" to JsonPrimitive("invite")
+            ).apply {
+                if (isDirectRoom) {
+                    put("is_direct", JsonPrimitive(true))
+                }
+            })
             
             val inviteEvent = buildJsonObject {
                 put("type", "m.room.member")

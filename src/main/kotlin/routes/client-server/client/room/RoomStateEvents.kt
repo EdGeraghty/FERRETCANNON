@@ -32,6 +32,7 @@ fun createRoomWithStateEvents(
     visibility: String,
     joinRule: String,
     initialState: JsonArray?,
+    isDirect: Boolean,
     currentTime: Long,
     config: ServerConfig
 ): RoomCreationResult {
@@ -47,7 +48,7 @@ fun createRoomWithStateEvents(
             it[Rooms.topic] = roomTopic
             it[Rooms.visibility] = visibility
             it[Rooms.roomVersion] = "12"
-            it[Rooms.isDirect] = preset == "trusted_private_chat"
+            it[Rooms.isDirect] = isDirect
             it[Rooms.currentState] = Json.encodeToString(JsonObject.serializer(), JsonObject(mutableMapOf())) // Initialize with empty JSON object
             it[Rooms.stateGroups] = Json.encodeToString(JsonObject.serializer(), JsonObject(mutableMapOf())) // Initialize with empty JSON object
         }
