@@ -429,7 +429,7 @@ class SyncEndpointTest {
                     it[sender] = "@creator6:localhost"
                     it[stateKey] = "@invitee6:localhost"
                     it[content] = """{"membership":"invite"}"""
-                    it[originServerTs] = System.currentTimeMillis() + i
+                    it[originServerTs] = System.currentTimeMillis() + ((i - 6) * 1000L)
                     it[prevEvents] = "[]"
                     it[authEvents] = "[]"
                     it[depth] = 1
