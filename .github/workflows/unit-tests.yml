@@ -7,6 +7,12 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
+# Add permissions for the publish action
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   unit-tests:
     name: Run Unit Tests
@@ -98,6 +104,7 @@ jobs:
     - name: Publish test results
       if: always()
       uses: EnricoMi/publish-unit-test-result-action@v2
+      continue-on-error: true
       with:
         files: |
           build/test-results/test/*.xml
