@@ -1,0 +1,130 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Run unit tests
+      run: ./gradlew test --console=plain --no-daemon
+      
+    - name: Parse test results
+      if: always()
+      run: |
+        echo "## Unit Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if test results exist
+        if [ ! -d "build/test-results/test" ]; then
+          echo "⚠️ No test results found. Tests may not have run." >> $GITHUB_STEP_SUMMARY
+          exit 0
+        fi
+        
+        # Count test results from XML files
+        TOTAL=0
+        PASSED=0
+        FAILED=0
+        SKIPPED=0
+        
+        for file in build/test-results/test/*.xml; do
+          if [ -f "$file" ]; then
+            TESTS=$(grep -o 'tests="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+            FAILURES=$(grep -o 'failures="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+            ERRORS=$(grep -o 'errors="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+            SKIPS=$(grep -o 'skipped="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+            
+            TOTAL=$((TOTAL + TESTS))
+            FAILED=$((FAILED + FAILURES + ERRORS))
+            SKIPPED=$((SKIPPED + SKIPS))
+          fi
+        done
+        
+        PASSED=$((TOTAL - FAILED - SKIPPED))
+        
+        echo "📊 **Test Summary**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Passed**: $PASSED" >> $GITHUB_STEP_SUMMARY
+        echo "- ❌ **Failed**: $FAILED" >> $GITHUB_STEP_SUMMARY
+        echo "- ⏭️ **Skipped**: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+        echo "- 📈 **Total**: $TOTAL" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Show failed tests if any
+        if [ "$FAILED" -gt 0 ]; then
+          echo "### ❌ Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for file in build/test-results/test/*.xml; do
+            if [ -f "$file" ]; then
+              grep -o '<testcase.*name="[^"]*".*>' "$file" | grep 'failure\|error' | grep -o 'name="[^"]*"' | cut -d'"' -f2 | while read test; do
+                echo "- ❌ $test" >> $GITHUB_STEP_SUMMARY
+              done
+            fi
+          done
+        fi
+        
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-reports
+        path: |
+          build/reports/tests/test/
+          build/test-results/test/
+        retention-days: 30
+        if-no-files-found: ignore
+        
+    - name: Publish test results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        files: |
+          build/test-results/test/*.xml
+        check_name: Unit Test Results
+        comment_mode: off
+        
+    - name: Check test status
+      if: always()
+      run: |
+        if [ ! -d "build/test-results/test" ]; then
+          echo "::warning::No test results found. Tests may not have run."
+          exit 0
+        fi
+        
+        # Check for failures
+        FAILED=0
+        for file in build/test-results/test/*.xml; do
+          if [ -f "$file" ]; then
+            FAILURES=$(grep -o 'failures="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+            ERRORS=$(grep -o 'errors="[0-9]*"' "$file" | cut -d'"' -f2 || echo "0")
+            FAILED=$((FAILED + FAILURES + ERRORS))
+          fi
+        done
+        
+        if [ "$FAILED" -gt 0 ]; then
+          echo "::error::$FAILED unit tests failed"
+          exit 1
+        fi
+        
+        echo "::notice::All unit tests passed! 🎉"
