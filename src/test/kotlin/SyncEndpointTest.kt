@@ -30,13 +30,14 @@ class SyncEndpointTest {
     
     companion object {
         private lateinit var database: Database
+        private const val TEST_DB_FILE = "test_sync_endpoint.db"
         
         @BeforeAll
         @JvmStatic
         fun setupDatabase() {
             // Create file-based test database
-            java.io.File("test.db").delete() // Clean up any existing test database
-            database = Database.connect("jdbc:sqlite:test.db", "org.sqlite.JDBC")
+            java.io.File(TEST_DB_FILE).delete() // Clean up any existing test database
+            database = Database.connect("jdbc:sqlite:$TEST_DB_FILE", "org.sqlite.JDBC")
             
             transaction {
                 SchemaUtils.create(Events, Rooms, Users, AccessTokens, Devices, AccountData, StateGroups, Presence, RoomAliases)
@@ -50,7 +51,7 @@ class SyncEndpointTest {
                 SchemaUtils.drop(Events, Rooms, Users, AccessTokens, Devices, AccountData, StateGroups, Presence, RoomAliases)
             }
             // Clean up the test database file
-            java.io.File("test.db").delete()
+            java.io.File(TEST_DB_FILE).delete()
         }
     }
     
