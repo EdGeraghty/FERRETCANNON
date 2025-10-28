@@ -1,11 +1,9 @@
 name: Complement Tests
 
 on:
-  # Run after unit tests complete successfully
-  workflow_run:
-    workflows: ["Unit Tests"]
-    types:
-      - completed
+  push:
+    branches: [ main, develop ]
+  pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
 
@@ -14,8 +12,6 @@ jobs:
     name: Run Complement Compliance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Only run if unit tests passed (or if manually triggered)
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     env:
       # Give Complement more time to spawn the homeserver in CI
       COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
