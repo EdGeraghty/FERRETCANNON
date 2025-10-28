@@ -18,6 +18,7 @@ gradle-app.setting
 *.zip
 *.tar.gz
 *.rar
+.kotlin/
 
 # IDEs
 .idea/
