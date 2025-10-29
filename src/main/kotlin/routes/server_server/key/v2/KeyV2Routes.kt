@@ -44,56 +44,63 @@ fun Application.keyV2Routes() {
                             val body = call.receiveText()
                             logger.debug("Key query request body length: ${body.length}")
                             val requestBody = Json.parseToJsonElement(body).jsonObject
-                            val serverKeys = requestBody["server_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
+                            val serverKeysRequested = requestBody["server_keys"]?.jsonObject ?: JsonObject(mutableMapOf())
 
-                            val response = buildJsonObject {
-                                // Process server keys
-                                putJsonObject("server_keys") {
-                                    for (serverName in serverKeys.keys) {
-                                        logger.debug("Processing key query for server: $serverName")
-                                        val requestedKeysJson = serverKeys[serverName]
-                                        val globalServerKeys = ServerKeysStorage.getServerKeys(serverName).associate { keyData ->
-                                            // Convert the map to the expected format
-                                            val keyId = keyData["key_id"] as? String ?: ""
-                                            keyId to keyData
+                            val localServerName = utils.ServerNameResolver.getServerName()
+
+                            val client = HttpClient(CIO)
+                            try {
+                                // First, collect responses per-server (we can call suspend functions here)
+                                val perServerResponses = mutableMapOf<String, JsonElement>()
+                                for (serverName in serverKeysRequested.keys) {
+                                    logger.debug("Processing key query for server: $serverName")
+
+                                    // If querying ourselves, return our canonical /server response
+                                    if (serverName == localServerName) {
+                                        perServerResponses[serverName] = ServerKeys.getServerKeys(serverName)
+                                        continue
+                                    }
+
+                                    // Try to fetch remote server's published keys
+                                    val remote = fetchRemoteServerKeys(serverName, client)
+                                    if (remote != null) {
+                                        perServerResponses[serverName] = remote
+                                        continue
+                                    }
+
+                                    // Fall back to any locally stored key records (best-effort)
+                                    val stored = ServerKeysStorage.getServerKeys(serverName)
+                                    if (stored.isNotEmpty()) {
+                                        val built = buildJsonObject {
+                                            putJsonObject("verify_keys") {
+                                                stored.forEach { keyData ->
+                                                    val keyId = keyData["key_id"] as? String ?: return@forEach
+                                                    val publicKey = keyData["public_key"] as? String ?: return@forEach
+                                                    putJsonObject(keyId) {
+                                                        put("key", publicKey)
+                                                    }
+                                                }
+                                            }
+                                            putJsonObject("old_verify_keys") { }
                                         }
+                                        perServerResponses[serverName] = built
+                                    }
+                                }
 
-                                        if (requestedKeysJson is JsonNull) {
-                                            // Return all keys for this server
-                                            logger.trace("Returning all keys for server: $serverName")
-                                            if (globalServerKeys.isNotEmpty()) {
-                                                putJsonObject(serverName) {
-                                                    globalServerKeys.forEach { (keyId, keyInfo) ->
-                                                        put(keyId, Json.encodeToJsonElement(keyInfo))
-                                                    }
-                                                }
-                                            }
-                                        } else if (requestedKeysJson is JsonObject) {
-                                            val keyList = requestedKeysJson["key_ids"]?.jsonArray ?: JsonArray(emptyList())
-                                            logger.trace("Returning specific keys for server $serverName: ${keyList.map { it.jsonPrimitive.content }}")
-                                            // Return only requested keys
-                                            val serverKeyData = mutableMapOf<String, Map<String, Any?>>()
-                                            for (keyElement in keyList) {
-                                                val keyId = keyElement.jsonPrimitive.content
-                                                val keyInfo = globalServerKeys[keyId]
-                                                if (keyInfo != null) {
-                                                    serverKeyData[keyId] = keyInfo
-                                                }
-                                            }
-                                            if (serverKeyData.isNotEmpty()) {
-                                                putJsonObject(serverName) {
-                                                    serverKeyData.forEach { (keyId, keyInfo) ->
-                                                        put(keyId, Json.encodeToJsonElement(keyInfo))
-                                                    }
-                                                }
-                                            }
+                                // Now assemble final response without suspension
+                                val response = buildJsonObject {
+                                    putJsonObject("server_keys") {
+                                        for ((serverName, json) in perServerResponses) {
+                                            put(serverName, json)
                                         }
                                     }
                                 }
-                            }
 
-                            logger.debug("Key query response built successfully")
-                            call.respond(response)
+                                logger.debug("Key query response built successfully")
+                                call.respond(response)
+                            } finally {
+                                client.close()
+                            }
                         } catch (e: Exception) {
                             logger.error("Key query error", e)
                             call.respond(HttpStatusCode.BadRequest, buildJsonObject {
@@ -111,12 +118,30 @@ fun Application.keyV2Routes() {
 
                         logger.trace("GET /_matrix/key/v2/query/$serverName request")
 
-                        // Key query endpoint is public - no authentication required per Matrix spec
+                        val localServerName = utils.ServerNameResolver.getServerName()
                         try {
-                            // Get server's keys from database
+                            if (serverName == localServerName) {
+                                // Return our canonical, signed server keys response
+                                val serverKeysResponse = ServerKeys.getServerKeys(serverName)
+                                call.respond(serverKeysResponse)
+                                return@get
+                            }
+
+                            // Try to fetch remote server keys live
+                            val client = HttpClient(CIO)
+                            try {
+                                val remote = fetchRemoteServerKeys(serverName, client)
+                                if (remote != null) {
+                                    call.respond(remote)
+                                    return@get
+                                }
+                            } finally {
+                                client.close()
+                            }
+
+                            // Fall back to locally stored keys if available
                             val serverKeyData = ServerKeysStorage.getServerKeys(serverName)
                             if (serverKeyData.isNotEmpty()) {
-                                // Convert to the expected response format
                                 val response = buildJsonObject {
                                     put("server_name", serverName)
                                     put("valid_until_ts", System.currentTimeMillis() + (365 * 24 * 60 * 60 * 1000L)) // 1 year
@@ -129,11 +154,7 @@ fun Application.keyV2Routes() {
                                             }
                                         }
                                     }
-                                    putJsonObject("signatures") {
-                                        putJsonObject(serverName) {
-                                            // Add signature if available
-                                        }
-                                    }
+                                    putJsonObject("old_verify_keys") { }
                                 }
                                 call.respond(response)
                             } else {
@@ -156,21 +177,21 @@ fun Application.keyV2Routes() {
     }
 }
 
-suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<String, Any?>? {
+suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): JsonObject? {
     return try {
         logger.debug("Fetching server keys from remote server: $serverName")
         val response = client.get("https://$serverName/_matrix/key/v2/server")
-        
+
         // Check if the response is successful
         if (!response.status.isSuccess()) {
             logger.warn("Failed to fetch keys from $serverName: HTTP ${response.status}")
             return null
         }
-        
+
         val json = response.body<String>()
         val data = Json.parseToJsonElement(json).jsonObject
 
-        // Validate the response has required fields
+        // Validate required fields are present
         val serverNameResponse = data["server_name"]?.jsonPrimitive?.content
         val verifyKeys = data["verify_keys"]?.jsonObject
         val validUntilTs = data["valid_until_ts"]?.jsonPrimitive?.long
@@ -180,15 +201,8 @@ suspend fun fetchRemoteServerKeys(serverName: String, client: HttpClient): Map<S
             return null
         }
 
-        // Cache the keys
-        val keyData = mutableMapOf<String, Any?>()
-        keyData["server_name"] = serverNameResponse
-        keyData["verify_keys"] = verifyKeys
-        keyData["valid_until_ts"] = validUntilTs
-        keyData["signatures"] = data["signatures"]?.jsonObject ?: mapOf<String, Any>()
-
         logger.debug("Successfully parsed server keys for $serverName")
-        keyData
+        data
     } catch (e: Exception) {
         logger.error("Failed to fetch keys from $serverName", e)
         null

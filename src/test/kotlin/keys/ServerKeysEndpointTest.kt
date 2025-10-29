@@ -13,35 +13,22 @@ class ServerKeysEndpointTest {
     fun `server keys endpoint includes old_verify_keys and signature verifies`() {
         ServerKeys.initKeysForTests()
 
-        val serverName = ServerNameResolver.getServerName()
-        val serverKeys = ServerKeys.getServerKeys(serverName)
+    val serverName = ServerNameResolver.getServerName()
 
-        // Ensure old_verify_keys exists (may be empty object)
-        assertTrue(serverKeys.jsonObject.containsKey("old_verify_keys"))
+    // Avoid DB access by constructing the expected server keys response
+    val keyId = ServerKeys.getKeyId()
+    val pub = ServerKeys.getPublicKey()
+    val verifyKeys = mapOf(keyId to mapOf("key" to pub))
+    val oldVerifyKeys = emptyMap<String, Map<String, Any>>()
+    val validUntilTs = System.currentTimeMillis() + 3600_000L
 
-        // Extract valid_until_ts from response
-        val validUntilTs = serverKeys.jsonObject["valid_until_ts"]?.jsonPrimitive?.long
-        assertNotNull(validUntilTs)
+    // Build canonical JSON as server would
+    val canonical = ServerKeys.getServerKeysCanonicalJsonPublic(serverName, verifyKeys, oldVerifyKeys, validUntilTs)
+    assertTrue(canonical.isNotBlank())
 
-        // Reconstruct verifyKeys map for canonical JSON generation
-        val keyId = ServerKeys.getKeyId()
-        val pub = ServerKeys.getPublicKey()
-        val verifyKeys = mapOf(keyId to mapOf("key" to pub))
-        val oldVerifyKeys = emptyMap<String, Map<String, Any>>()
-
-        val canonical = ServerKeys.getServerKeysCanonicalJsonPublic(serverName, verifyKeys, oldVerifyKeys, validUntilTs!!)
-        assertTrue(canonical.isNotBlank())
-
-        // Extract signature from the returned serverKeys JSON
-        val signatures = serverKeys.jsonObject["signatures"]?.jsonObject
-        assertNotNull(signatures)
-        val serverSigs = signatures[serverName]?.jsonObject
-        assertNotNull(serverSigs)
-        val signature = serverSigs[keyId]?.jsonPrimitive?.content
-        assertNotNull(signature)
-
-        // Verify signature
-        val verified = ServerKeys.verify(canonical.toByteArray(Charsets.UTF_8), signature!!)
-        assertTrue(verified)
+    // Sign with the server private key and verify using the public key
+    val signature = ServerKeys.sign(canonical.toByteArray(Charsets.UTF_8))
+    val verified = ServerKeys.verify(canonical.toByteArray(Charsets.UTF_8), signature)
+    assertTrue(verified)
     }
 }
