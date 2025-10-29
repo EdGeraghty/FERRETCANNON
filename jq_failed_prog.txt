@@ -1,0 +1,1 @@
+split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | .[] | .Test

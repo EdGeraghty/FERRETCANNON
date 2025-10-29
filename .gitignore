@@ -73,3 +73,6 @@ media/
 # Complement test suite checkout
 complement-checkout/
 complement/complement-checkout/
+
+# Local CI artifact dumps (do not commit)
+ci-artifacts/
