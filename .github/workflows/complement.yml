@@ -74,9 +74,11 @@ jobs:
         # Install jq on the runner
         sudo apt-get update && sudo apt-get install -y jq
 
-        PASSED=$(jq -s 'map(select(.Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
-        FAILED=$(jq -s 'map(select(.Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
-        SKIPPED=$(jq -s 'map(select(.Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
+        # Read line-delimited output but ignore non-JSON lines (some runners or tools
+        # may interleave non-JSON text). Use fromjson with catch to skip invalid lines.
+        PASSED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
+        FAILED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
+        SKIPPED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
 
         echo "✅ **Passed**: $PASSED" >> $GITHUB_STEP_SUMMARY
         echo "❌ **Failed**: $FAILED" >> $GITHUB_STEP_SUMMARY
@@ -86,7 +88,7 @@ jobs:
         if [ "$FAILED" -gt 0 ]; then
           echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          jq -s 'map(select(.Test != null)) | group_by(.Test) | map(.[-1]) | .[] | select(.Action=="fail") | .Test' complement-output.json \
+          jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | .[] | select(.Action=="fail") | .Test' complement-output.json \
             | sed 's/^"//;s/"$//' | sort -u | while read test; do
               echo "- ❌ $test" >> $GITHUB_STEP_SUMMARY
             done
