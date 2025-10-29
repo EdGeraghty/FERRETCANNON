@@ -7,6 +7,7 @@ set -euo pipefail
 WORKDIR="${1:-.}"
 INPUT="$WORKDIR/complement-output.json"
 OUT="$WORKDIR/complement-summary.json"
+OUTTXT="$WORKDIR/complement-summary.txt"
 
 if [ ! -f "$INPUT" ]; then
   echo "{}" > "$OUT"
@@ -40,4 +41,16 @@ if [ -f "$OUT" ]; then
 else
   echo "Failed to write summary" >&2
   exit 3
+fi
+
+# Produce a compact text file for quick human scanning
+jq -r '
+  "Passed: \(.pass)\nFailed: \(.fail)\nSkipped: \(.skip)\n\nFailed tests:\n" + ( .failed_tests | map("- " + .) | join("\n") )
+' "$OUT" > "$OUTTXT"
+
+if [ -f "$OUTTXT" ]; then
+  echo "Wrote $OUTTXT"
+else
+  echo "Failed to write text summary" >&2
+  exit 4
 fi
