@@ -11,6 +11,9 @@ jobs:
   complement:
     name: Run Complement Compliance Tests
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     timeout-minutes: 60
     env:
       # Give Complement more time to spawn the homeserver in CI
@@ -121,6 +124,85 @@ jobs:
           echo "## Complement Summary" >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           sed -n '1,200p' complement-summary.txt >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Compare with previous run summary and post delta
+      if: always()
+      working-directory: complement-checkout
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      run: |
+        set -euo pipefail
+        sudo apt-get update && sudo apt-get install -y jq unzip curl
+
+        # Determine branch name (works for push and PR events)
+        BRANCH="${{ github.ref_name }}"
+
+        echo "Looking for previous complement workflow runs for branch: $BRANCH"
+
+        # Find previous completed run for the complement workflow (exclude current run)
+        runs_url="https://api.github.com/repos/$REPO/actions/workflows/complement.yml/runs?per_page=10&branch=$BRANCH"
+        prev_run_id=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$runs_url" \
+          | jq -r --argjson cur $RUN_ID '.workflow_runs[] | select(.id != ($cur|tonumber) and .conclusion != null) | .id' | head -n1)
+
+        if [ -z "$prev_run_id" ]; then
+          echo "No previous completed run found; skipping delta computation.";
+          exit 0
+        fi
+
+        echo "Found previous run id: $prev_run_id"
+
+        # Get artifacts for previous run
+        artifacts_url="https://api.github.com/repos/$REPO/actions/runs/$prev_run_id/artifacts"
+        artifact_info=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$artifacts_url")
+
+        artifact_id=$(echo "$artifact_info" | jq -r '.artifacts[] | select(.name=="complement-summary") | .id' || true)
+        if [ -z "$artifact_id" ] || [ "$artifact_id" = "null" ]; then
+          echo "No complement-summary artifact found for previous run; skipping delta computation.";
+          exit 0
+        fi
+
+        echo "Found artifact id: $artifact_id; downloading..."
+
+        download_url="https://api.github.com/repos/$REPO/actions/artifacts/$artifact_id/zip"
+        curl -s -L -H "Authorization: token $GITHUB_TOKEN" -o prev_artifact.zip "$download_url"
+        unzip -o prev_artifact.zip -d prev_artifact
+
+        if [ ! -f prev_artifact/complement-summary.json ]; then
+          echo "previous summary missing; skipping";
+          exit 0
+        fi
+
+        # Compare previous summary with current
+        if [ ! -f complement-summary.json ]; then
+          echo "current summary missing; skipping";
+          exit 0
+        fi
+
+        jq -s '{prev: .[0], curr: .[1]} | {
+          prev_counts: {pass: .prev.pass, fail: .prev.fail, skip: .prev.skip},
+          curr_counts: {pass: .curr.pass, fail: .curr.fail, skip: .curr.skip},
+          newly_failed: (.curr.failed_tests - .prev.failed_tests),
+          newly_fixed: (.prev.failed_tests - .curr.failed_tests)
+        }' prev_artifact/complement-summary.json complement-summary.json > complement-delta.json
+
+        echo "Delta written to complement-delta.json"
+
+        # Append human delta to job summary
+        echo "## Complement Delta vs previous run" >> $GITHUB_STEP_SUMMARY
+        echo '' >> $GITHUB_STEP_SUMMARY
+        jq -r '"Previous: pass=\(.prev_counts.pass) fail=\(.prev_counts.fail) skip=\(.prev_counts.skip)\nCurrent: pass=\(.curr_counts.pass) fail=\(.curr_counts.fail) skip=\(.curr_counts.skip)\n\nNew failures:\n" + ( .newly_failed | map("- " + .) | join("\n") ) + "\n\nNewly fixed:\n" + ( .newly_fixed | map("- " + .) | join("\n") )' complement-delta.json >> $GITHUB_STEP_SUMMARY
+
+        # Optionally post PR comment when running on a pull_request
+        if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
+          echo "Posting delta comment to PR #$PR_NUMBER"
+          body=$(jq -r '"### Complement delta\n\nPrevious: pass=\(.prev_counts.pass) fail=\(.prev_counts.fail) skip=\(.prev_counts.skip)\nCurrent: pass=\(.curr_counts.pass) fail=\(.curr_counts.fail) skip=\(.curr_counts.skip)\n\n**New failures:**\n" + ( .newly_failed | map("- " + .) | join("\n") ) + "\n\n**Newly fixed:**\n" + ( .newly_fixed | map("- " + .) | join("\n") )' complement-delta.json)
+          comments_url="https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
+          curl -s -H "Authorization: token $GITHUB_TOKEN" -X POST -d "$({ echo -n '{"body":'; jq -Rs . <<<"$body"; echo '}')" "$comments_url" || true
         fi
         
     - name: Upload Test Output
