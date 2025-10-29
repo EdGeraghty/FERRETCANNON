@@ -24,19 +24,45 @@ jobs:
     steps:
     - name: Checkout FERRETCANNON
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
       
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+
+    - name: Cache Docker buildx layers
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/buildx
+          ~/.docker/cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
       
     - name: Build Complement Docker Image
       run: |
-        docker build -t complement-ferretcannon:latest -f Complement.Dockerfile .
+        # Use docker buildx with local cache to speed up repeated builds
+        mkdir -p ~/.cache/buildx
+        docker buildx build --progress=plain --load --cache-to=type=local,dest=~/.cache/buildx --cache-from=type=local,src=~/.cache/buildx -t complement-ferretcannon:latest -f Complement.Dockerfile .
         
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: '1.21'
         cache: false
+
+    - name: Cache Go modules
+      env:
+        GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ${{ env.GOMODCACHE }}
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
         
     - name: Checkout Complement
       uses: actions/checkout@v4
