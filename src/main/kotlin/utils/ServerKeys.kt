@@ -68,7 +68,8 @@ object ServerKeys {
                     // Derive public key from private key
                     val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
                     publicKey = EdDSAPublicKey(publicKeySpec)
-                    publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
+                    // Use standard Base64 (RFC4648) without padding for stored public keys
+                    publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
                     keyId = storedKeyId
 
                     // Verify the stored public key matches
@@ -111,14 +112,42 @@ object ServerKeys {
             val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
             publicKey = EdDSAPublicKey(publicKeySpec)
 
-            // Use unpadded URL-safe Base64 as per Matrix specification appendices
-            publicKeyBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
+            // Use unpadded standard Base64 (RFC4648) for public keys
+            publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
             keyId = "ed25519:YOLO420-${System.currentTimeMillis() / 1000}"
 
             logger.info("✅ Generated server key pair with ID: $keyId")
             logger.debug("Public key (first 32 chars): ${publicKeyBase64.take(32)}...")
         } catch (e: Exception) {
             logger.error("Failed to generate key pair", e)
+            throw e
+        }
+    }
+
+    /**
+     * Initialize an in-memory keypair for tests or environments without DB access.
+     * This avoids calling the database and is intended for unit tests only.
+     */
+    fun initKeysForTests(seed: ByteArray? = null) {
+        if (keysLoaded) return
+        try {
+            val random = java.security.SecureRandom()
+            val seedBytes = seed ?: ByteArray(32).also { random.nextBytes(it) }
+            privateKeySeed = seedBytes
+
+            val privateKeySpec = EdDSAPrivateKeySpec(seedBytes, spec)
+            privateKey = EdDSAPrivateKey(privateKeySpec)
+
+            val publicKeySpec = EdDSAPublicKeySpec(privateKey.a, spec)
+            publicKey = EdDSAPublicKey(publicKeySpec)
+
+            publicKeyBase64 = Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
+            keyId = "ed25519:YOLO420-${System.currentTimeMillis() / 1000}"
+
+            keysLoaded = true
+            logger.debug("Initialized in-memory test keypair for server: $serverName, keyId=$keyId")
+        } catch (e: Exception) {
+            logger.error("Failed to initialize test keys", e)
             throw e
         }
     }
@@ -207,8 +236,8 @@ object ServerKeys {
         signature.update(data)
         val signatureBytes = signature.sign()
         // Use unpadded Base64 as per Matrix specification appendices
-    // Use URL-safe Base64 without padding for signatures per Matrix spec
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(signatureBytes)
+        // Use unpadded standard Base64 (RFC4648) for signatures per Matrix spec
+    return Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
     }
 
     fun getStoredKeys(): List<Map<String, Any>> {
@@ -260,7 +289,7 @@ object ServerKeys {
     }
 
     fun encodeEd25519PublicKey(publicKey: EdDSAPublicKey): String {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.abyte)
+        return Base64.getEncoder().withoutPadding().encodeToString(publicKey.abyte)
     }
 
     fun generateKeyId(): String {
@@ -296,8 +325,8 @@ object ServerKeys {
             signature.initSign(privateKey)
             signature.update(data)
             val signatureBytes = signature.sign()
-            // Use unpadded base64url as per Matrix specification
-            val signatureBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(signatureBytes)
+            // Use unpadded standard Base64 (RFC4648) for signatures to match Complement expectations
+            val signatureBase64 = Base64.getEncoder().withoutPadding().encodeToString(signatureBytes)
             logger.trace("Generated signature: ${signatureBase64.take(32)}...")
             return signatureBase64
         } catch (e: Exception) {
@@ -310,8 +339,8 @@ object ServerKeys {
         ensureKeysLoaded()
         logger.trace("Verifying signature for ${data.size} bytes of data")
         return try {
-            // Use base64url decoding as per Matrix specification
-            val signatureBytes = Base64.getUrlDecoder().decode(signature)
+            // Use standard Base64 decoding (no padding) for signatures
+            val signatureBytes = Base64.getDecoder().decode(signature)
 
             val sig = EdDSAEngine()
             sig.initVerify(publicKey)
@@ -376,8 +405,10 @@ object ServerKeys {
                     }
                 }
             }
-            if (oldVerifyKeys.isNotEmpty()) {
-                putJsonObject("old_verify_keys") {
+            // Always include old_verify_keys (empty object when there are none) because Complement
+            // expects the field to exist in the /_matrix/key/v2/server response.
+            putJsonObject("old_verify_keys") {
+                if (oldVerifyKeys.isNotEmpty()) {
                     oldVerifyKeys.forEach { (keyId, keyData) ->
                         putJsonObject(keyId) {
                             put("key", keyData["key"] as String)
@@ -410,24 +441,35 @@ object ServerKeys {
     }
 
     private fun getServerKeysCanonicalJson(serverName: String, verifyKeys: Map<String, Map<String, Any>>, oldVerifyKeys: Map<String, Map<String, Any>>, validUntilTs: Long): String {
-        // Create canonical JSON string with top-level keys in lexicographical order, sub-keys sorted
+        // Create canonical JSON string following conventional ordering used by many homeservers:
+        // server_name, valid_until_ts, verify_keys, old_verify_keys
         val verifyKeysJson = verifyKeys.entries.sortedBy { it.key }.joinToString(",") { (keyId, keyData) ->
             "\"$keyId\":{\"key\":\"${keyData["key"]}\"}"
         }
 
-        val oldVerifyKeysJson = oldVerifyKeys.entries.sortedBy { it.key }.joinToString(",") { (keyId, keyData) ->
-            "\"$keyId\":{\"expired_ts\":${keyData["expired_ts"]},\"key\":\"${keyData["key"]}\"}"
+        val oldVerifyKeysJson = if (oldVerifyKeys.isNotEmpty()) {
+            oldVerifyKeys.entries.sortedBy { it.key }.joinToString(",") { (keyId, keyData) ->
+                "\"$keyId\":{\"expired_ts\":${keyData["expired_ts"]},\"key\":\"${keyData["key"]}\"}"
+            }
+        } else {
+            ""
         }
 
-        // Collect parts in a map to sort keys
-        val parts = mutableMapOf<String, String>()
-        parts["server_name"] = "\"server_name\":\"$serverName\""
-        parts["valid_until_ts"] = "\"valid_until_ts\":$validUntilTs"
-        parts["verify_keys"] = "\"verify_keys\":{$verifyKeysJson}"
-        if (oldVerifyKeys.isNotEmpty()) {
-            parts["old_verify_keys"] = "\"old_verify_keys\":{$oldVerifyKeysJson}"
-        }
+        // Build canonical JSON with explicit ordering to match common implementations
+        val canonical = StringBuilder()
+        canonical.append("{")
+        canonical.append("\"server_name\":\"$serverName\",")
+        canonical.append("\"valid_until_ts\":$validUntilTs,")
+        canonical.append("\"verify_keys\":{$verifyKeysJson},")
+        canonical.append("\"old_verify_keys\":{${oldVerifyKeysJson}}")
+        canonical.append("}")
 
-        return "{${parts.entries.sortedBy { it.key }.joinToString(",") { it.value }}}"
+        return canonical.toString()
+    }
+
+    // Public wrapper for tests and external verification. Returns the canonical JSON
+    // used when signing the /_matrix/key/v2/server response.
+    fun getServerKeysCanonicalJsonPublic(serverName: String, verifyKeys: Map<String, Map<String, Any>>, oldVerifyKeys: Map<String, Map<String, Any>>, validUntilTs: Long): String {
+        return getServerKeysCanonicalJson(serverName, verifyKeys, oldVerifyKeys, validUntilTs)
     }
 }

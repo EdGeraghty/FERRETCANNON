@@ -1,4 +1,15 @@
-# Database files
+# Ignore Kotlin compiler session files
+.kotlin/
+
+# Ignore complement checkout and test artifacts
+complement-src/
+complement-test-keys.txt
+complement-full-test-output.txt
+
+# OS and editor files
+.DS_Store
+*.log
+*.tmp# Database files
 *.db
 *.sqlite
 *.sqlite3

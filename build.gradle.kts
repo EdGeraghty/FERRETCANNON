@@ -43,6 +43,7 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2") // For Kotlin support
     implementation("at.favre.lib:bcrypt:0.10.2") // For password hashing
     implementation("org.bouncycastle:bcprov-jdk18on:1.76") // For cryptographic operations
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.76") // For X.509 certificate operations
     // Logging dependencies
     implementation("org.slf4j:slf4j-api:2.0.9")
     implementation("ch.qos.logback:logback-classic:1.4.14")

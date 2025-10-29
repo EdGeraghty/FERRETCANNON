@@ -7,8 +7,8 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import utils.ServerKeys
 import utils.ServerNameResolver
+import utils.MatrixAuth
 import java.time.Instant
-import java.time.format.DateTimeFormatter
 
 fun Route.keyV2Routes() {
     route("/_matrix/key/v2") {
@@ -19,24 +19,45 @@ fun Route.keyV2Routes() {
                 val publicKey = ServerKeys.getPublicKey()
                 val validUntilTs = Instant.now().plusSeconds(86400).epochSecond // 24 hours from now
 
-                val response = JsonObject(mutableMapOf(
-                    "server_name" to JsonPrimitive(serverName),
-                    "valid_until_ts" to JsonPrimitive(validUntilTs),
-                    "verify_keys" to JsonObject(mutableMapOf(
-                        keyId to JsonObject(mutableMapOf(
-                            "key" to JsonPrimitive(publicKey)
-                        ))
-                    )),
-                    "old_verify_keys" to JsonObject(mutableMapOf())
-                ))
+                // Build the response without signatures first
+                val responseWithoutSigs = buildJsonObject {
+                    put("server_name", serverName)
+                    put("valid_until_ts", validUntilTs)
+                    put("verify_keys", buildJsonObject {
+                        put(keyId, buildJsonObject {
+                            put("key", publicKey)
+                        })
+                    })
+                    put("old_verify_keys", buildJsonObject { })
+                }
+
+                // Sign the response
+                val signature = MatrixAuth.signJson(responseWithoutSigs)
+
+                // Add signatures to the response
+                val response = buildJsonObject {
+                    put("server_name", serverName)
+                    put("valid_until_ts", validUntilTs)
+                    put("verify_keys", buildJsonObject {
+                        put(keyId, buildJsonObject {
+                            put("key", publicKey)
+                        })
+                    })
+                    put("old_verify_keys", buildJsonObject { })
+                    put("signatures", buildJsonObject {
+                        put(serverName, buildJsonObject {
+                            put(keyId, signature)
+                        })
+                    })
+                }
 
                 call.respondText(response.toString(), ContentType.Application.Json)
             } catch (e: Exception) {
                 call.respondText(
-                    JsonObject(mutableMapOf(
-                        "errcode" to JsonPrimitive("M_UNKNOWN"),
-                        "error" to JsonPrimitive("Internal server error")
-                    )).toString(),
+                    buildJsonObject {
+                        put("errcode", "M_UNKNOWN")
+                        put("error", "Internal server error")
+                    }.toString(),
                     ContentType.Application.Json,
                     HttpStatusCode.InternalServerError
                 )
@@ -51,10 +72,10 @@ fun Route.keyV2Routes() {
 
                 if (requestedKeyId != keyId) {
                     call.respondText(
-                        JsonObject(mutableMapOf(
-                            "errcode" to JsonPrimitive("M_NOT_FOUND"),
-                            "error" to JsonPrimitive("Key not found")
-                        )).toString(),
+                        buildJsonObject {
+                            put("errcode", "M_NOT_FOUND")
+                            put("error", "Key not found")
+                        }.toString(),
                         ContentType.Application.Json,
                         HttpStatusCode.NotFound
                     )
@@ -64,24 +85,45 @@ fun Route.keyV2Routes() {
                 val publicKey = ServerKeys.getPublicKey()
                 val validUntilTs = Instant.now().plusSeconds(86400).epochSecond
 
-                val response = JsonObject(mutableMapOf(
-                    "server_name" to JsonPrimitive(serverName),
-                    "valid_until_ts" to JsonPrimitive(validUntilTs),
-                    "verify_keys" to JsonObject(mutableMapOf(
-                        keyId to JsonObject(mutableMapOf(
-                            "key" to JsonPrimitive(publicKey)
-                        ))
-                    )),
-                    "old_verify_keys" to JsonObject(mutableMapOf())
-                ))
+                // Build the response without signatures first
+                val responseWithoutSigs = buildJsonObject {
+                    put("server_name", serverName)
+                    put("valid_until_ts", validUntilTs)
+                    put("verify_keys", buildJsonObject {
+                        put(keyId, buildJsonObject {
+                            put("key", publicKey)
+                        })
+                    })
+                    put("old_verify_keys", buildJsonObject { })
+                }
+
+                // Sign the response
+                val signature = MatrixAuth.signJson(responseWithoutSigs)
+
+                // Add signatures to the response
+                val response = buildJsonObject {
+                    put("server_name", serverName)
+                    put("valid_until_ts", validUntilTs)
+                    put("verify_keys", buildJsonObject {
+                        put(keyId, buildJsonObject {
+                            put("key", publicKey)
+                        })
+                    })
+                    put("old_verify_keys", buildJsonObject { })
+                    put("signatures", buildJsonObject {
+                        put(serverName, buildJsonObject {
+                            put(keyId, signature)
+                        })
+                    })
+                }
 
                 call.respondText(response.toString(), ContentType.Application.Json)
             } catch (e: Exception) {
                 call.respondText(
-                    JsonObject(mutableMapOf(
-                        "errcode" to JsonPrimitive("M_UNKNOWN"),
-                        "error" to JsonPrimitive("Internal server error")
-                    )).toString(),
+                    buildJsonObject {
+                        put("errcode", "M_UNKNOWN")
+                        put("error", "Internal server error")
+                    }.toString(),
                     ContentType.Application.Json,
                     HttpStatusCode.InternalServerError
                 )
