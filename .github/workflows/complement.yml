@@ -109,8 +109,19 @@ jobs:
         name: complement-summary
         path: |
           complement-checkout/complement-summary.json
+          complement-checkout/complement-summary.txt
         retention-days: 30
         if-no-files-found: ignore
+
+    - name: Append human summary to job summary
+      if: always()
+      working-directory: complement-checkout
+      run: |
+        if [ -f complement-summary.txt ]; then
+          echo "## Complement Summary" >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          sed -n '1,200p' complement-summary.txt >> $GITHUB_STEP_SUMMARY
+        fi
         
     - name: Upload Test Output
       if: always()
