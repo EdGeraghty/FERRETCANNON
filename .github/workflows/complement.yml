@@ -93,6 +93,24 @@ jobs:
               echo "- ❌ $test" >> $GITHUB_STEP_SUMMARY
             done
         fi
+      
+    - name: Produce compact JSON summary
+      if: always()
+      working-directory: complement-checkout
+      run: |
+        sudo apt-get update && sudo apt-get install -y jq
+        chmod +x ../scripts/summarize_complement.sh
+        ../scripts/summarize_complement.sh .
+
+    - name: Upload compact summary
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-summary
+        path: |
+          complement-checkout/complement-summary.json
+        retention-days: 30
+        if-no-files-found: ignore
         
     - name: Upload Test Output
       if: always()
