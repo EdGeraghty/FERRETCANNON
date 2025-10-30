@@ -15,6 +15,50 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import routes.client_server.client.common.*
 
 fun Route.profileAvatarRoutes() {
+    // GET /profile/{userId}/avatar_url - Get avatar URL only
+    get("/profile/{userId}/avatar_url") {
+        try {
+            val userId = call.parameters["userId"]
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing userId parameter")
+                })
+                return@get
+            }
+
+            // Get user profile from database
+            val profile = transaction {
+                Users.select { Users.userId eq userId }.singleOrNull()
+            }
+
+            if (profile == null) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "User not found")
+                })
+                return@get
+            }
+
+            // Return avatar URL if set
+            val avatarUrl = profile[Users.avatarUrl]
+            call.respond(buildJsonObject {
+                if (avatarUrl != null) {
+                    put("avatar_url", avatarUrl)
+                }
+            })
+
+        } catch (e: Exception) {
+            println("ERROR: Exception in GET /profile/{userId}/avatar_url: ${e.message}")
+            e.printStackTrace()
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
     // PUT /profile/{userId}/avatar_url - Set avatar URL
     put("/profile/{userId}/avatar_url") {
         try {

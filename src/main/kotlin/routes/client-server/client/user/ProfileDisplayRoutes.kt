@@ -103,6 +103,50 @@ fun Route.profileDisplayRoutes() {
         }
     }
 
+    // GET /profile/{userId}/displayname - Get display name only
+    get("/profile/{userId}/displayname") {
+        try {
+            val userId = call.parameters["userId"]
+
+            if (userId == null) {
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_INVALID_PARAM")
+                    put("error", "Missing userId parameter")
+                })
+                return@get
+            }
+
+            // Get user profile from database
+            val profile = transaction {
+                Users.select { Users.userId eq userId }.singleOrNull()
+            }
+
+            if (profile == null) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "User not found")
+                })
+                return@get
+            }
+
+            // Return display name if set
+            val displayName = profile[Users.displayName]
+            call.respond(buildJsonObject {
+                if (displayName != null) {
+                    put("displayname", displayName)
+                }
+            })
+
+        } catch (e: Exception) {
+            println("ERROR: Exception in GET /profile/{userId}/displayname: ${e.message}")
+            e.printStackTrace()
+            call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
+                put("errcode", "M_UNKNOWN")
+                put("error", "Internal server error")
+            })
+        }
+    }
+
     // PUT /profile/{userId}/displayname - Set display name
     put("/profile/{userId}/displayname") {
         try {
