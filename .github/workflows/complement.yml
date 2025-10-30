@@ -228,7 +228,7 @@ jobs:
           echo "Posting delta comment to PR #$PR_NUMBER"
           body=$(jq -r '"### Complement delta\n\nPrevious: pass=\(.prev_counts.pass) fail=\(.prev_counts.fail) skip=\(.prev_counts.skip)\nCurrent: pass=\(.curr_counts.pass) fail=\(.curr_counts.fail) skip=\(.curr_counts.skip)\n\n**New failures:**\n" + ( .newly_failed | map("- " + .) | join("\n") ) + "\n\n**Newly fixed:**\n" + ( .newly_fixed | map("- " + .) | join("\n") )' complement-delta.json)
           comments_url="https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
-          curl -s -H "Authorization: token $GITHUB_TOKEN" -X POST -d "$({ echo -n '{"body":'; jq -Rs . <<<"$body"; echo '}')" "$comments_url" || true
+          curl -s -H "Authorization: token $GITHUB_TOKEN" -X POST -d "$({ echo -n '{"body":'; jq -Rs . <<<"$body"; echo '}'; })" "$comments_url" || true
         fi
         
     - name: Upload Test Output
