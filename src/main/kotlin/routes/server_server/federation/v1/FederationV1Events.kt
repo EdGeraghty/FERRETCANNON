@@ -227,8 +227,13 @@ fun Route.federationV1Events() {
             // Find missing events using a breadth-first search
             val missingEvents = findMissingEvents(roomId, earliestEvents, latestEvents, limit)
 
+            // Per spec, include origin and origin_server_ts and return PDUs
             call.respond(buildJsonObject {
-                put("events", Json.encodeToJsonElement(missingEvents))
+                put("origin", utils.ServerNameResolver.getServerName())
+                put("origin_server_ts", System.currentTimeMillis())
+                putJsonArray("pdus") {
+                    missingEvents.forEach { add(Json.encodeToJsonElement(it)) }
+                }
             })
         } catch (e: Exception) {
             call.respond(HttpStatusCode.BadRequest, buildJsonObject {

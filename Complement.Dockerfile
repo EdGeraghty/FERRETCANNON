@@ -8,12 +8,15 @@
 # Big shoutout to the FERRETCANNON massive for spec compliance! 🎆
 
 # Stage 1: Build stage
-FROM openjdk:17-alpine AS builder
+FROM openjdk:17-slim AS builder
 
 WORKDIR /app
 
-# Install required build tools
-RUN apk add --no-cache wget unzip
+# Use Debian-slim based image for better TLS support during Gradle dependency downloads
+# Install required build tools and TLS/CA support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget unzip ca-certificates openssl gnupg2 curl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Download and install Gradle
 RUN wget https://services.gradle.org/distributions/gradle-9.0.0-bin.zip -P /tmp && \
