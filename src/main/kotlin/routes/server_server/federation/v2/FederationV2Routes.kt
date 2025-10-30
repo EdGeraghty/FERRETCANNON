@@ -135,7 +135,27 @@ fun Application.federationV2Routes() {
                                     if (processedEvent[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(processedEvent[Events.unsigned]!!).jsonObject)
                                 }
                                 put("state", JsonArray(currentState.map { Json.encodeToJsonElement(it) }))
-                                put("auth_chain", JsonArray(emptyList<JsonElement>()))
+                                // If we have auth chain events for the processed event, include them; otherwise return empty array
+                                val authChainEvents = transaction {
+                                    val authEventIds = Json.parseToJsonElement(processedEvent[Events.authEvents]).jsonArray.map { it.jsonPrimitive.content }
+                                    Events.select { Events.eventId inList authEventIds }
+                                        .map { row -> Json.encodeToJsonElement(buildJsonObject {
+                                            put("event_id", row[Events.eventId])
+                                            put("type", row[Events.type])
+                                            put("room_id", row[Events.roomId])
+                                            put("sender", row[Events.sender])
+                                            put("content", Json.parseToJsonElement(row[Events.content]).jsonObject)
+                                            put("auth_events", Json.parseToJsonElement(row[Events.authEvents]).jsonArray)
+                                            put("prev_events", Json.parseToJsonElement(row[Events.prevEvents]).jsonArray)
+                                            put("depth", row[Events.depth])
+                                            put("hashes", Json.parseToJsonElement(row[Events.hashes]).jsonObject)
+                                            put("signatures", Json.parseToJsonElement(row[Events.signatures]).jsonObject)
+                                            put("origin_server_ts", row[Events.originServerTs])
+                                            if (row[Events.stateKey] != null) put("state_key", row[Events.stateKey])
+                                            if (row[Events.unsigned] != null) put("unsigned", Json.parseToJsonElement(row[Events.unsigned]!!).jsonObject)
+                                        }) }
+                                }
+                                put("auth_chain", JsonArray(authChainEvents))
                             }
 
                             call.respond(response)

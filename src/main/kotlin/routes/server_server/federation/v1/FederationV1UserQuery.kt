@@ -129,8 +129,15 @@ fun Route.federationV1UserQuery() {
             println("DEBUG: query/profile for userId=$userId, field=$field, profile=$profile")
             
             if (profile != null) {
+                // Ensure displayname and avatar_url keys are always present (may be null)
+                val display = profile["displayname"] as? String
+                val avatar = profile["avatar_url"] as? String
                 call.respond(buildJsonObject {
+                    put("displayname", display?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("avatar_url", avatar?.let { JsonPrimitive(it) } ?: JsonNull)
+                    // Include any other profile keys present
                     profile.forEach { (key, value) ->
+                        if (key == "displayname" || key == "avatar_url") return@forEach
                         when (value) {
                             is String -> put(key, JsonPrimitive(value))
                             null -> put(key, JsonNull)
