@@ -285,15 +285,167 @@ fun Route.roomRoutes() {
         }
     }
 
-    // PUT /rooms/{roomId}/state/{eventType}/{stateKey} - Send state event
-    put("/rooms/{roomId}/state/{eventType}/{stateKey}") {
+    // PUT /rooms/{roomId}/state/{eventType}/{stateKey?} - Send state event
+    // Note: stateKey is optional in the client API (empty state_key is represented by a trailing slash),
+    // so accept an optional parameter and treat missing as empty string.
+    put("/rooms/{roomId}/state/{eventType}/{stateKey?}") {
         try {
             val userId = call.validateAccessToken() ?: return@put
             val roomId = call.parameters["roomId"]
             val eventType = call.parameters["eventType"]
-            val stateKey = call.parameters["stateKey"]
+            // Treat a missing stateKey as the empty string (state_key == "")
+            val stateKey = call.parameters["stateKey"] ?: ""
 
-            if (roomId == null || eventType == null || stateKey == null) {
+            if (roomId == null || eventType == null) {
+                call.respond(HttpStatusCode.BadRequest, mutableMapOf(
+                    "errcode" to "M_INVALID_PARAM",
+                    "error" to "Missing required parameters"
+                ))
+                return@put
+            }
+
+            // Check if user is joined to the room
+            val currentMembership = transaction {
+                Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.member") and
+                    (Events.stateKey eq userId)
+                }.mapNotNull { row ->
+                    Json.parseToJsonElement(row[Events.content]).jsonObject["membership"]?.jsonPrimitive?.content
+                }.firstOrNull()
+            }
+
+            if (currentMembership != "join") {
+                call.respond(HttpStatusCode.Forbidden, mutableMapOf(
+                    "errcode" to "M_FORBIDDEN",
+                    "error" to "User is not joined to this room"
+                ))
+                return@put
+            }
+
+            // Parse request body
+            val requestBody = call.receiveText()
+            val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
+
+            val currentTime = System.currentTimeMillis()
+
+            // Get latest event for prev_events
+            val latestEvent = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+            }
+
+            val prevEvents = if (latestEvent != null) {
+                "[[\"${latestEvent[Events.eventId]}\",{}]]"
+            } else {
+                "[]"
+            }
+
+            val depth = if (latestEvent != null) {
+                latestEvent[Events.depth] + 1
+            } else {
+                1
+            }
+
+            // Get auth events (create and power levels)
+            val authEvents = transaction {
+                val createEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.create")
+                }.singleOrNull()
+
+                val powerLevelsEvent = Events.select {
+                    (Events.roomId eq roomId) and
+                    (Events.type eq "m.room.power_levels")
+                }.orderBy(Events.originServerTs, SortOrder.DESC)
+                    .limit(1)
+                    .singleOrNull()
+
+                val authList = mutableListOf<String>()
+                createEvent?.let { authList.add("\"${it[Events.eventId]}\"") }
+                powerLevelsEvent?.let { authList.add("\"${it[Events.eventId]}\"") }
+                "[${authList.joinToString(",")}]"
+            }
+
+            // Generate event ID
+            val eventId = "\$${currentTime}_${stateKey.hashCode()}"
+
+            // Store state event
+            transaction {
+                Events.insert {
+                    it[Events.eventId] = eventId
+                    it[Events.roomId] = roomId
+                    it[Events.type] = eventType
+                    it[Events.sender] = userId
+                    it[Events.content] = Json.encodeToString(JsonObject.serializer(), jsonBody)
+                    it[Events.originServerTs] = currentTime
+                    it[Events.stateKey] = stateKey
+                    it[Events.prevEvents] = prevEvents
+                    it[Events.authEvents] = authEvents
+                    it[Events.depth] = depth
+                    it[Events.hashes] = "{}"
+                    it[Events.signatures] = "{}"
+                }
+            }
+
+            // Update resolved state
+            val allEvents = transaction {
+                Events.select { Events.roomId eq roomId }
+                    .map { row ->
+                        JsonObject(mutableMapOf(
+                            "event_id" to JsonPrimitive(row[Events.eventId]),
+                            "type" to JsonPrimitive(row[Events.type]),
+                            "sender" to JsonPrimitive(row[Events.sender]),
+                            "origin_server_ts" to JsonPrimitive(row[Events.originServerTs]),
+                            "content" to Json.parseToJsonElement(row[Events.content]).jsonObject,
+                            "state_key" to JsonPrimitive(row[Events.stateKey] ?: "")
+                        ))
+                    }
+            }
+            val roomVersion = transaction {
+                Rooms.select { Rooms.roomId eq roomId }.single()[Rooms.roomVersion]
+            }
+            val newResolvedState = stateResolver.resolveState(allEvents, roomVersion)
+            stateResolver.updateResolvedState(roomId, newResolvedState)
+
+            // Broadcast state event
+            runBlocking {
+                val eventJson = JsonObject(mutableMapOf(
+                    "event_id" to JsonPrimitive(eventId),
+                    "type" to JsonPrimitive(eventType),
+                    "sender" to JsonPrimitive(userId),
+                    "room_id" to JsonPrimitive(roomId),
+                    "origin_server_ts" to JsonPrimitive(currentTime),
+                    "content" to jsonBody,
+                    "state_key" to JsonPrimitive(stateKey)
+                ))
+                broadcastEDU(roomId, eventJson)
+            }
+
+            call.respond(mutableMapOf(
+                "event_id" to eventId
+            ))
+
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, mutableMapOf(
+                "errcode" to "M_UNKNOWN",
+                "error" to "Internal server error: ${e.message}"
+            ))
+        }
+    }
+
+    // Also accept PUT /rooms/{roomId}/state/{eventType} to handle requests that omit the final segment
+    // (some clients send a trailing slash which is interpreted as an empty state_key). Treat stateKey as empty string.
+    put("/rooms/{roomId}/state/{eventType}") {
+        try {
+            val userId = call.validateAccessToken() ?: return@put
+            val roomId = call.parameters["roomId"]
+            val eventType = call.parameters["eventType"]
+            val stateKey = "" // explicit empty state key for this route
+
+            if (roomId == null || eventType == null) {
                 call.respond(HttpStatusCode.BadRequest, mutableMapOf(
                     "errcode" to "M_INVALID_PARAM",
                     "error" to "Missing required parameters"

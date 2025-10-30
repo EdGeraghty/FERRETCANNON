@@ -18,6 +18,9 @@ import java.security.MessageDigest
 import java.security.Signature
 import java.util.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlin.math.min
+import kotlin.random.Random
 import javax.net.ssl.*
 import java.security.cert.X509Certificate
 import java.security.KeyStore
@@ -53,6 +56,8 @@ object MatrixAuth {
     fun verifyAuth(call: ApplicationCall, authHeader: String?, body: String?): Boolean {
         if (authHeader == null) return false
         try {
+            logger.info("verifyAuth: incoming authHeader=${authHeader}")
+            logger.info("verifyAuth: method=${call.request.httpMethod.value}, uri=${call.request.uri}")
             val method = call.request.httpMethod.value
             val uri = call.request.uri
             val destination = ServerNameResolver.getServerName() // This server's name
@@ -65,6 +70,7 @@ object MatrixAuth {
                 verifyRequest(method, uri, origin, destination, body, authHeader)
             }
         } catch (e: Exception) {
+            logger.error("verifyAuth: exception while verifying auth", e)
             return false
         }
     }
@@ -98,8 +104,23 @@ object MatrixAuth {
 
         if (authOrigin != origin || authDestination != destination) return false
 
-        // Fetch public key
-        val publicKey = fetchPublicKey(origin, keyId) ?: return false
+        // Fetch public key, but bound the operation so a slow/misbehaving remote
+        // server does not cause our make_join handler to hang for too long.
+        // Use a short timeout to fail fast and return M_UNAUTHORIZED rather than
+        // blocking the federation flow for a long time.
+        val publicKey = try {
+            // 3000ms bound for public key fetch
+            kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                fetchPublicKey(origin, keyId)
+            }
+        } catch (e: Exception) {
+            logger.warn("fetchPublicKey timed out or failed: ${e.message}")
+            null
+        }
+        if (publicKey == null) {
+            logger.warn("verifyRequest: unable to fetch public key for $origin/$keyId within timeout")
+            return false
+        }
 
         println("verifyRequest: public key fetched successfully")
 
@@ -143,54 +164,77 @@ object MatrixAuth {
     }
 
     private suspend fun fetchPublicKey(serverName: String, keyId: String): EdDSAPublicKey? {
-        return try {
-            println("fetchPublicKey: fetching key $keyId from $serverName")
-            // Use server discovery to resolve the server name
-            val connectionDetails = ServerDiscovery.resolveServerName(serverName)
-            if (connectionDetails == null) {
-                logger.warn("Failed to resolve server name: $serverName")
-                return null
-            }
+        // Increase attempts to handle slow test-harness startup; use longer capped backoff
+        val maxAttempts = 12
+        var attempt = 0
+        var lastException: Exception? = null
 
-            val url = if (connectionDetails.tls) {
-                "https://${connectionDetails.host}:${connectionDetails.port}/_matrix/key/v2/server"
-            } else {
-                "http://${connectionDetails.host}:${connectionDetails.port}/_matrix/key/v2/server"
-            }
+        while (attempt < maxAttempts) {
+            attempt++
+            try {
+                logger.info("fetchPublicKey: attempt #$attempt fetching key $keyId from $serverName")
 
-            val response = client.get(url) {
-                header("Host", connectionDetails.hostHeader)
-                // Note: In a production implementation, you would configure the HTTP client
-                // with proper SSL context and certificate validation
-            }
+                // Use server discovery to resolve the server name
+                val connectionDetails = ServerDiscovery.resolveServerName(serverName)
+                if (connectionDetails == null) {
+                    logger.warn("Failed to resolve server name: $serverName")
+                    return null
+                }
 
-            // Check if the response is successful
-            if (!response.status.isSuccess()) {
-                logger.warn("Failed to fetch keys from $serverName (${connectionDetails.host}:${connectionDetails.port}): HTTP ${response.status}")
-                return null
-            }
+                val url = if (connectionDetails.tls) {
+                    "https://${connectionDetails.host}:${connectionDetails.port}/_matrix/key/v2/server"
+                } else {
+                    "http://${connectionDetails.host}:${connectionDetails.port}/_matrix/key/v2/server"
+                }
 
-            val json = response.body<String>()
-            val data = Json.parseToJsonElement(json).jsonObject
-            val verifyKeys = data["verify_keys"]?.jsonObject ?: return null
-            val keyData = verifyKeys[keyId]?.jsonObject ?: return null
-            val keyBase64 = keyData["key"]?.jsonPrimitive?.content ?: return null
-            // Matrix uses base64url encoding for keys, but some servers may use standard base64
-            val keyBytes = try {
-                Base64.getUrlDecoder().decode(keyBase64)
-            } catch (e: IllegalArgumentException) {
-                // Fallback to standard base64 decoding
-                Base64.getDecoder().decode(keyBase64)
+                val response = client.get(url) {
+                    header("Host", connectionDetails.hostHeader)
+                    // Note: In a production implementation, you would configure the HTTP client
+                    // with proper SSL context and certificate validation
+                }
+
+                // If we get a non-2xx, treat it as transient and retry rather than bail out immediately
+                if (!response.status.isSuccess()) {
+                    logger.warn("fetchPublicKey: received HTTP ${response.status} from ${connectionDetails.host}:${connectionDetails.port}, will retry (attempt $attempt)")
+                    throw RuntimeException("HTTP ${response.status}")
+                }
+
+                val json = response.body<String>()
+                val data = Json.parseToJsonElement(json).jsonObject
+                val verifyKeys = data["verify_keys"]?.jsonObject ?: return null
+                val keyData = verifyKeys[keyId]?.jsonObject ?: return null
+                val keyBase64 = keyData["key"]?.jsonPrimitive?.content ?: return null
+                // Matrix uses base64url encoding for keys, but some servers may use standard base64
+                val keyBytes = try {
+                    Base64.getUrlDecoder().decode(keyBase64)
+                } catch (e: IllegalArgumentException) {
+                    // Fallback to standard base64 decoding
+                    Base64.getDecoder().decode(keyBase64)
+                }
+                // Create EdDSA public key from raw bytes
+                val spec = net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec(keyBytes, net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable.getByName("Ed25519"))
+                val publicKey = net.i2p.crypto.eddsa.EdDSAPublicKey(spec)
+                logger.info("fetchPublicKey: successfully fetched and parsed key $keyId from $serverName on attempt #$attempt")
+                return publicKey
+            } catch (e: Exception) {
+                lastException = e
+                logger.warn("fetchPublicKey: attempt #$attempt failed for $serverName: ${e.message}")
+                // Exponential backoff with cap and small jitter to avoid thundering herd
+                val base = 100L
+                // Cap backoff to 10s so slow harness still gets several retries
+                val backoffMs = min(10_000L, base * (1L shl (attempt - 1)))
+                val jitter = Random.nextLong(0L, 500L)
+                try {
+                    delay(backoffMs + jitter)
+                } catch (_: Exception) {
+                }
             }
-            // Create EdDSA public key from raw bytes
-            val spec = net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec(keyBytes, net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable.getByName("Ed25519"))
-            val publicKey = net.i2p.crypto.eddsa.EdDSAPublicKey(spec)
-            println("fetchPublicKey: successfully fetched and parsed key $keyId from $serverName")
-            publicKey
-        } catch (e: Exception) {
-            logger.error("Error fetching public key from $serverName", e)
-            null
         }
+
+        if (lastException != null) {
+            logger.error("Error fetching public key from $serverName after $maxAttempts attempts", lastException)
+        }
+        return null
     }
 
     /**
@@ -626,9 +670,41 @@ object MatrixAuth {
      * Server names must be valid DNS names or IP addresses
      */
     fun isValidServerName(serverName: String): Boolean {
-        // Basic validation: check for valid hostname format
+        // Accept forms: hostname, hostname:port, IPv4, IPv4:port, [IPv6], [IPv6]:port
+        // Split out optional port
+        val hostPart = if (serverName.startsWith("[")) {
+            // Possibly an IPv6 literal in brackets
+            val idx = serverName.indexOf(']')
+            if (idx == -1) return false
+            serverName.substring(0, idx + 1)
+        } else {
+            serverName.substringBefore(':')
+        }
+
+        // Validate hostPart as hostname or IP
         val hostnameRegex = "^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$".toRegex()
-        return hostnameRegex.matches(serverName) && serverName.length <= 253
+        val ipv4Regex = "^\\d{1,3}(\\.\\d{1,3}){3}$".toRegex()
+        val ipv6BracketedRegex = "^\\[([0-9a-fA-F:]+)\\]$".toRegex()
+
+        val hostValid = hostnameRegex.matches(hostPart) || ipv4Regex.matches(hostPart) || ipv6BracketedRegex.matches(hostPart)
+        if (!hostValid) return false
+
+        // If there is a port, validate it
+        if (!serverName.startsWith("[") && serverName.contains(":")) {
+            val portStr = serverName.substringAfterLast(":")
+            val port = portStr.toIntOrNull() ?: return false
+            if (port <= 0 || port > 65535) return false
+    } else if (serverName.startsWith("[") && serverName.indexOf(':', serverName.indexOf(']')) >= 0) {
+            // bracketed IPv6 with port
+            val after = serverName.substring(serverName.indexOf(']') + 1)
+            if (after.startsWith(":")) {
+                val portStr = after.substring(1)
+                val port = portStr.toIntOrNull() ?: return false
+                if (port <= 0 || port > 65535) return false
+            }
+        }
+
+        return serverName.length <= 273 // allow for port and brackets
     }
 
     /**
@@ -893,6 +969,9 @@ object MatrixAuth {
         jsonMap["uri"] = uri
         jsonMap["origin"] = origin
         jsonMap["destination"] = destination
+    // Do not include timestamp by default in the signed JSON. Complement's verifier
+    // expects the canonical JSON to contain only method, uri, origin, destination,
+    // and content when present.
         
         // Content must be parsed JSON, not a string
         if (content != null && content.isNotEmpty()) {
