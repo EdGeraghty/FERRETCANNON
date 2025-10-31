@@ -281,7 +281,7 @@ fun createRoomWithStateEvents(
         var nextDepth = 6
         var lastEventId = historyVisibilityEventId
         
-        if (roomAlias != null) {
+        if (!roomAlias.isNullOrEmpty()) {
             val canonicalAliasEventId = "\$${currentTime}_canonical_alias"
             val fullAlias = "#$roomAlias:${config.federation.serverName}"
             
