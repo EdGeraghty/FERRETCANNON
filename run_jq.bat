@@ -1,1 +1,0 @@
-"C:\Program Files\GitHub CLI\jq.exe" -R -s "split(\"\\n\") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | group_by(.Action) | map({(.[0].Action): length}) | add" .\\ci-artifacts\\18918348381_retry\\complement-output.json
