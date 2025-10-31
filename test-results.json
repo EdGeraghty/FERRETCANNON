@@ -1,133 +1,21 @@
 {
   "schemaVersion": 1,
   "suites": {
-    "additional": {
-      "passed": 2,
-      "failed": 15,
-      "skipped": 0,
-      "total": 17,
-      "percentage": 11,
-      "color": "red"
-    },
     "authentication": {
-      "passed": 20,
-      "failed": 23,
+      "passed": 29,
+      "failed": 14,
       "skipped": 4,
       "total": 43,
-      "percentage": 46,
-      "color": "yellow"
-    },
-    "edge-cases": {
-      "passed": 0,
-      "failed": 19,
-      "skipped": 0,
-      "total": 19,
-      "percentage": 0,
-      "color": "red"
-    },
-    "events-history": {
-      "passed": 2,
-      "failed": 13,
-      "skipped": 0,
-      "total": 15,
-      "percentage": 13,
-      "color": "red"
-    },
-    "federation": {
-      "passed": 1,
-      "failed": 41,
-      "skipped": 0,
-      "total": 42,
-      "percentage": 2,
-      "color": "red"
-    },
-    "join-membership": {
-      "passed": 0,
-      "failed": 11,
-      "skipped": 0,
-      "total": 11,
-      "percentage": 0,
-      "color": "red"
-    },
-    "keys": {
-      "passed": 3,
-      "failed": 16,
-      "skipped": 0,
-      "total": 19,
-      "percentage": 15,
-      "color": "red"
-    },
-    "knocking-restricted": {
-      "passed": 12,
-      "failed": 22,
-      "skipped": 0,
-      "total": 34,
-      "percentage": 35,
-      "color": "orange"
-    },
-    "media": {
-      "passed": 6,
-      "failed": 28,
-      "skipped": 6,
-      "total": 34,
-      "percentage": 17,
-      "color": "red"
-    },
-    "miscellaneous": {
-      "passed": 15,
-      "failed": 50,
-      "skipped": 0,
-      "total": 65,
-      "percentage": 23,
-      "color": "orange"
-    },
-    "moderation": {
-      "passed": 1,
-      "failed": 15,
-      "skipped": 0,
-      "total": 16,
-      "percentage": 6,
-      "color": "red"
-    },
-    "msc-experimental": {
-      "passed": 7,
-      "failed": 39,
-      "skipped": 0,
-      "total": 46,
-      "percentage": 15,
-      "color": "red"
-    },
-    "relations-threads": {
-      "passed": 1,
-      "failed": 14,
-      "skipped": 0,
-      "total": 15,
-      "percentage": 6,
-      "color": "red"
-    },
-    "rooms": {
-      "passed": 19,
-      "failed": 99,
-      "skipped": 0,
-      "total": 118,
-      "percentage": 16,
-      "color": "red"
-    },
-    "sync": {
-      "passed": 8,
-      "failed": 19,
-      "skipped": 0,
-      "total": 27,
-      "percentage": 29,
-      "color": "orange"
+      "percentage": 67,
+      "color": "yellowgreen"
     }
   },
   "overall": {
-    "passed": 97,
-    "failed": 424,
-    "skipped": 10,
-    "total": 521,
-    "percentage": 18,
-    "color": "red"
+    "passed": 29,
+    "failed": 14,
+    "skipped": 4,
+    "total": 43,
+    "percentage": 67,
+    "color": "yellowgreen"
   }
 }
