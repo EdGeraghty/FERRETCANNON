@@ -30,7 +30,6 @@ fun Route.roomCreationRoutes(config: ServerConfig) {
             val jsonBody = Json.parseToJsonElement(requestBody).jsonObject
             val roomName = jsonBody["name"]?.jsonPrimitive?.content
             val roomTopic = jsonBody["topic"]?.jsonPrimitive?.content
-            @Suppress("UNUSED_VARIABLE")
             val roomAlias = jsonBody["room_alias_name"]?.jsonPrimitive?.content
             val preset = jsonBody["preset"]?.jsonPrimitive?.content ?: "private_chat"
             val visibility = jsonBody["visibility"]?.jsonPrimitive?.content ?: "private"
@@ -55,6 +54,7 @@ fun Route.roomCreationRoutes(config: ServerConfig) {
                 userId = userId,
                 roomName = roomName,
                 roomTopic = roomTopic,
+                roomAlias = roomAlias,
                 preset = preset,
                 visibility = visibility,
                 joinRule = joinRule,
