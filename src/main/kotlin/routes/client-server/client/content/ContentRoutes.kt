@@ -7,6 +7,7 @@ import io.ktor.server.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.http.content.PartData
+import io.ktor.utils.io.*
 import kotlinx.serialization.json.*
 import config.ServerConfig
 import utils.MediaStorage
@@ -25,39 +26,58 @@ fun Route.contentRoutes(config: ServerConfig) {
         try {
             val userId = call.validateAccessToken() ?: return@post
 
-            // Handle multipart upload
-            val multipart = call.receiveMultipart()
-            var fileName: String? = null
-            var contentType: String? = null
-            var fileBytes: ByteArray? = null
+            val contentType = call.request.headers["Content-Type"] ?: "application/octet-stream"
+            val fileName = call.request.queryParameters["filename"]
+            
+            // Check if it's multipart or raw body
+            val fileBytes: ByteArray
+            val actualContentType: String
+            val actualFileName: String?
+            
+            if (contentType.startsWith("multipart/")) {
+                // Handle multipart upload
+                val multipart = call.receiveMultipart()
+                var uploadedFileName: String? = null
+                var uploadedContentType: String? = null
+                var uploadedBytes: ByteArray? = null
 
-            multipart.forEachPart { part ->
-                when (part) {
-                    is PartData.FileItem -> {
-                        fileName = part.originalFileName
-                        contentType = part.contentType?.toString() ?: "application/octet-stream"
-                        fileBytes = part.streamProvider().readBytes()
+                multipart.forEachPart { part ->
+                    when (part) {
+                        is PartData.FileItem -> {
+                            uploadedFileName = part.originalFileName
+                            uploadedContentType = part.contentType?.toString() ?: "application/octet-stream"
+                            uploadedBytes = part.streamProvider().readBytes()
+                        }
+                        is PartData.FormItem -> {
+                            // Handle form fields if needed
+                        }
+                        else -> {
+                            // Ignore other part types
+                        }
                     }
-                    is PartData.FormItem -> {
-                        // Handle form fields if needed
-                    }
-                    else -> {
-                        // Ignore other part types
-                    }
+                    part.dispose()
                 }
-                part.dispose()
-            }
 
-            if (fileBytes == null) {
-                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
-                    put("errcode", "M_BAD_JSON")
-                    put("error", "No file uploaded")
-                })
-                return@post
+                if (uploadedBytes == null) {
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_BAD_JSON")
+                        put("error", "No file uploaded")
+                    })
+                    return@post
+                }
+                
+                fileBytes = uploadedBytes!!
+                actualContentType = uploadedContentType ?: "application/octet-stream"
+                actualFileName = uploadedFileName ?: fileName
+            } else {
+                // Handle raw body upload
+                fileBytes = call.receive<ByteArray>()
+                actualContentType = contentType
+                actualFileName = fileName
             }
 
             // Validate file size
-            if (fileBytes!!.size > config.media.maxUploadSize) {
+            if (fileBytes.size > config.media.maxUploadSize) {
                 call.respond(HttpStatusCode.PayloadTooLarge, buildJsonObject {
                     put("errcode", "M_TOO_LARGE")
                     put("error", "File too large")
@@ -71,7 +91,7 @@ fun Route.contentRoutes(config: ServerConfig) {
 
             // Store file using MediaStorage
             val success = runBlocking {
-                MediaStorage.storeMedia(mediaId, fileBytes!!, contentType!!, fileName, userId)
+                MediaStorage.storeMedia(mediaId, fileBytes, actualContentType, actualFileName, userId)
             }
 
             if (!success) {
@@ -87,9 +107,11 @@ fun Route.contentRoutes(config: ServerConfig) {
             })
 
         } catch (e: Exception) {
+            println("ERROR in media upload: ${e.message}")
+            e.printStackTrace()
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
-                put("error", "Internal server error")
+                put("error", "Internal server error: ${e.message}")
             })
         }
     }

@@ -228,7 +228,10 @@ object AuthUtils {
             }
 
             transaction {
-                val userRow = Users.select { Users.username eq lookupUsername }.singleOrNull()
+                // Case-insensitive username lookup per Matrix spec
+                val userRow = Users.select { 
+                    Users.username.lowerCase() eq lookupUsername.lowercase()
+                }.singleOrNull()
                     ?: return@transaction null
 
                 if (userRow[Users.deactivated]) return@transaction null
