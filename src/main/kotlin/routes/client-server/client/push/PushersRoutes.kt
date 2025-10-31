@@ -13,8 +13,8 @@ import models.Pushers
 import routes.client_server.client.common.*
 
 fun Route.pushersRoutes() {
-    // POST /pushers - Set pusher
-    post("/pushers") {
+    // POST /pushers/set - Set pusher (Matrix spec endpoint)
+    post("/pushers/set") {
         try {
             val userId = call.validateAccessToken() ?: return@post
 
