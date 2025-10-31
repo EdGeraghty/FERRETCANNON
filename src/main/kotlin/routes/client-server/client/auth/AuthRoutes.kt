@@ -199,12 +199,56 @@ fun Route.authRoutes(config: ServerConfig) {
                     return@post
                 }
 
-                // Generate a random username if not provided
-                val finalUsername = username ?: "user_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}"
-                val finalPassword = "dummy_password_${System.currentTimeMillis()}"
+                // Generate a random username if not provided, then lowercase it
+                val rawUsername = username ?: "user_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000000)}"
+                val finalUsername = rawUsername.lowercase()
+                
+                // Validate username if provided
+                if (username != null) {
+                    // Matrix spec: localpart must contain only a-z, 0-9, ., _, =, -, /
+                    if (!finalUsername.matches(Regex("^[a-z0-9._=/+-]+\$"))) {
+                        call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                            put("errcode", "M_INVALID_USERNAME")
+                            put("error", "Username contains invalid characters")
+                        })
+                        return@post
+                    }
+                    
+                    // Check if username is available (check lowercased version)
+                    if (!AuthUtils.isUsernameAvailable(finalUsername)) {
+                        call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                            put("errcode", "M_USER_IN_USE")
+                            put("error", "Username already taken")
+                        })
+                        return@post
+                    }
+                }
+                
+                // Use provided password if available, otherwise generate a dummy one
+                // This allows users registered with m.login.dummy to still login with m.login.password
+                val finalPassword = password ?: "dummy_password_${System.currentTimeMillis()}"
 
-                // Create the user
-                val userId = AuthUtils.createUser(finalUsername, finalPassword, serverName = config.federation.serverName)
+                // Create the user with lowercased username
+                // Wrap in try-catch to handle race condition where user is created between check and insert
+                val userId = try {
+                    AuthUtils.createUser(finalUsername, finalPassword, serverName = config.federation.serverName)
+                } catch (e: IllegalArgumentException) {
+                    // User was created between our availability check and now
+                    logger.error("Registration error - user already exists", e)
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_USER_IN_USE")
+                        put("error", "Username already taken")
+                    })
+                    return@post
+                } catch (e: org.jetbrains.exposed.exceptions.ExposedSQLException) {
+                    // Database lock or constraint violation - likely race condition
+                    logger.error("Database error during registration", e)
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_USER_IN_USE")
+                        put("error", "Username already taken")
+                    })
+                    return@post
+                }
 
                 // Generate device ID or use provided one
                 val deviceId = deviceIdFromRequest ?: AuthUtils.generateDeviceId()
@@ -240,17 +284,20 @@ fun Route.authRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // Validate username format
-            if (!username.matches(Regex("^[a-zA-Z0-9._-]+\$")) || username.length < 1 || username.length > 255) {
+            // Lowercase the username per Matrix spec
+            val lowercasedUsername = username.lowercase()
+            
+            // Validate username format - Matrix spec: localpart must contain only a-z, 0-9, ., _, =, -, /
+            if (!lowercasedUsername.matches(Regex("^[a-z0-9._=/+-]+\$")) || lowercasedUsername.length < 1 || lowercasedUsername.length > 255) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                     put("errcode", "M_INVALID_USERNAME")
-                    put("error", "Invalid username format")
+                    put("error", "Username contains invalid characters")
                 })
                 return@post
             }
 
-            // Check if username is available
-            if (!AuthUtils.isUsernameAvailable(username)) {
+            // Check if username is available (with lowercased version)
+            if (!AuthUtils.isUsernameAvailable(lowercasedUsername)) {
                 call.respond(HttpStatusCode.BadRequest, buildJsonObject {
                     put("errcode", "M_USER_IN_USE")
                     put("error", "Username already taken")
@@ -268,8 +315,27 @@ fun Route.authRoutes(config: ServerConfig) {
                 return@post
             }
 
-            // Create the user
-            val userId = AuthUtils.createUser(username, password, serverName = config.federation.serverName)
+            // Create the user with lowercased username
+            // Wrap in try-catch to handle race condition where user is created between check and insert
+            val userId = try {
+                AuthUtils.createUser(lowercasedUsername, password, serverName = config.federation.serverName)
+            } catch (e: IllegalArgumentException) {
+                // User was created between our availability check and now
+                logger.error("Registration error - user already exists", e)
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_USER_IN_USE")
+                    put("error", "Username already taken")
+                })
+                return@post
+            } catch (e: org.jetbrains.exposed.exceptions.ExposedSQLException) {
+                // Database lock or constraint violation - likely race condition
+                logger.error("Database error during registration", e)
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_USER_IN_USE")
+                    put("error", "Username already taken")
+                })
+                return@post
+            }
 
             // Generate device ID or use provided one
             val deviceId = deviceIdFromRequest ?: AuthUtils.generateDeviceId()
@@ -287,6 +353,7 @@ fun Route.authRoutes(config: ServerConfig) {
             call.respond(response)
 
         } catch (e: Exception) {
+            logger.error("Registration error: ${e.message}", e)
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
                 put("error", "Internal server error: ${e.message}")
@@ -362,10 +429,31 @@ fun Route.authRoutes(config: ServerConfig) {
             return@get
         }
 
-        // Check actual availability in database
-        val available = AuthUtils.isUsernameAvailable(username)
+        // Lowercase the username per Matrix spec
+        val lowercasedUsername = username.lowercase()
+        
+        // Validate username format first - Matrix spec: localpart must contain only a-z, 0-9, ., _, =, -, /
+        if (!lowercasedUsername.matches(Regex("^[a-z0-9._=/+-]+\$")) || lowercasedUsername.isEmpty() || lowercasedUsername.length > 255) {
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_INVALID_USERNAME")
+                put("error", "Username contains invalid characters")
+            })
+            return@get
+        }
+
+        // Check actual availability in database (with lowercased version)
+        val available = AuthUtils.isUsernameAvailable(lowercasedUsername)
+        
+        if (!available) {
+            call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                put("errcode", "M_USER_IN_USE")
+                put("error", "Username is already taken")
+            })
+            return@get
+        }
+        
         call.respond(buildJsonObject {
-            put("available", available)
+            put("available", true)
         })
     }
 

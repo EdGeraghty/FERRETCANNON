@@ -249,8 +249,6 @@ object AuthUtils {
                 null
             }
         } catch (e: Exception) {
-            println("Error in authenticateUser: ${e.message}")
-            e.printStackTrace()
             null
         }
     }
