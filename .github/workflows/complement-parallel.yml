@@ -1173,9 +1173,22 @@ jobs:
         ref: main
         fetch-depth: 0
     
+    - name: Download badge data artifact
+      if: always()
+      uses: actions/download-artifact@v4
+      with:
+        name: test-badges
+        path: badge-data
+    
     - name: Commit badge data to complement-badges branch
       if: always()
       run: |
+        # Check if badge-data directory exists and has files
+        if [ ! -d "badge-data" ] || [ -z "$(ls -A badge-data 2>/dev/null)" ]; then
+          echo "No badge data found, skipping badge update"
+          exit 0
+        fi
+        
         # Configure git
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -1191,11 +1204,23 @@ jobs:
         fi
         
         # Copy badge files
-        cp -r badge-data/* . || true
+        cp -r badge-data/* . 2>/dev/null || {
+          echo "Failed to copy badge files"
+          exit 1
+        }
+        
+        # Check if there are JSON files to add
+        if ! ls *.json 1> /dev/null 2>&1; then
+          echo "No JSON files found to commit"
+          exit 0
+        fi
         
         # Add and commit
         git add *.json
-        git commit -m "Update test badges from workflow run ${{ github.run_number }}" || echo "No changes to commit"
-        
-        # Push to complement-badges branch
-        git push origin complement-badges || git push --set-upstream origin complement-badges
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update test badges from workflow run ${{ github.run_number }}"
+          # Push to complement-badges branch
+          git push origin complement-badges || git push --set-upstream origin complement-badges
+        fi
