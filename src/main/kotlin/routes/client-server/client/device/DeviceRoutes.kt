@@ -171,7 +171,14 @@ fun Route.deviceRoutes() {
             val displayName = jsonBody["display_name"]?.jsonPrimitive?.content
 
             // Update device in AuthUtils
-            AuthUtils.updateDeviceDisplayName(userId, deviceId, displayName)
+            val updated = AuthUtils.updateDeviceDisplayName(userId, deviceId, displayName)
+            if (!updated) {
+                call.respond(HttpStatusCode.NotFound, buildJsonObject {
+                    put("errcode", "M_NOT_FOUND")
+                    put("error", "Device not found")
+                })
+                return@put
+            }
             call.respondText("{}", ContentType.Application.Json)
 
         } catch (e: Exception) {

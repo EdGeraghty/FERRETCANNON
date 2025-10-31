@@ -427,13 +427,14 @@ object AuthUtils {
     /**
      * Update device display name
      */
-    fun updateDeviceDisplayName(userId: String, deviceId: String, displayName: String?) {
-        transaction {
-            Devices.update({
+    fun updateDeviceDisplayName(userId: String, deviceId: String, displayName: String?): Boolean {
+        return transaction {
+            val updated = Devices.update({
                 (Devices.userId eq userId) and (Devices.deviceId eq deviceId)
             }) {
                 it[Devices.displayName] = displayName
             }
+            updated > 0 // Return true if device was found and updated
         }
     }
 
