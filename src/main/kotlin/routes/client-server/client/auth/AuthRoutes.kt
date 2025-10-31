@@ -227,7 +227,26 @@ fun Route.authRoutes(config: ServerConfig) {
                 val finalPassword = "dummy_password_${System.currentTimeMillis()}"
 
                 // Create the user with lowercased username
-                val userId = AuthUtils.createUser(finalUsername, finalPassword, serverName = config.federation.serverName)
+                // Wrap in try-catch to handle race condition where user is created between check and insert
+                val userId = try {
+                    AuthUtils.createUser(finalUsername, finalPassword, serverName = config.federation.serverName)
+                } catch (e: IllegalArgumentException) {
+                    // User was created between our availability check and now
+                    logger.error("Registration error - user already exists", e)
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_USER_IN_USE")
+                        put("error", "Username already taken")
+                    })
+                    return@post
+                } catch (e: org.jetbrains.exposed.exceptions.ExposedSQLException) {
+                    // Database lock or constraint violation - likely race condition
+                    logger.error("Database error during registration", e)
+                    call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                        put("errcode", "M_USER_IN_USE")
+                        put("error", "Username already taken")
+                    })
+                    return@post
+                }
 
                 // Generate device ID or use provided one
                 val deviceId = deviceIdFromRequest ?: AuthUtils.generateDeviceId()
@@ -295,7 +314,26 @@ fun Route.authRoutes(config: ServerConfig) {
             }
 
             // Create the user with lowercased username
-            val userId = AuthUtils.createUser(lowercasedUsername, password, serverName = config.federation.serverName)
+            // Wrap in try-catch to handle race condition where user is created between check and insert
+            val userId = try {
+                AuthUtils.createUser(lowercasedUsername, password, serverName = config.federation.serverName)
+            } catch (e: IllegalArgumentException) {
+                // User was created between our availability check and now
+                logger.error("Registration error - user already exists", e)
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_USER_IN_USE")
+                    put("error", "Username already taken")
+                })
+                return@post
+            } catch (e: org.jetbrains.exposed.exceptions.ExposedSQLException) {
+                // Database lock or constraint violation - likely race condition
+                logger.error("Database error during registration", e)
+                call.respond(HttpStatusCode.BadRequest, buildJsonObject {
+                    put("errcode", "M_USER_IN_USE")
+                    put("error", "Username already taken")
+                })
+                return@post
+            }
 
             // Generate device ID or use provided one
             val deviceId = deviceIdFromRequest ?: AuthUtils.generateDeviceId()
@@ -313,6 +351,7 @@ fun Route.authRoutes(config: ServerConfig) {
             call.respond(response)
 
         } catch (e: Exception) {
+            logger.error("Registration error: ${e.message}", e)
             call.respond(HttpStatusCode.InternalServerError, buildJsonObject {
                 put("errcode", "M_UNKNOWN")
                 put("error", "Internal server error: ${e.message}")
