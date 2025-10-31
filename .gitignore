@@ -76,3 +76,22 @@ complement/complement-checkout/
 
 # Local CI artifact dumps (do not commit)
 ci-artifacts/
+
+# Testing artifacts and temporary files (do not commit)
+# Ad-hoc testing scripts
+test-*.ps1
+check-*.ps1
+send-*.ps1
+*-test.ps1
+# SQL testing files
+*.sql
+# Python testing scripts
+fix_*.py
+# JQ programmes
+jq_*.txt
+# Test output and response dumps
+*-response.json
+*-output.txt
+complement-test-output.txt
+# Test credentials
+credentials.json
