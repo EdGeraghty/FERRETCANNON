@@ -30,8 +30,6 @@ import kotlin.test.assertFalse
  * - POST /account/password endpoint
  * - POST /account/deactivate endpoint
  * - POST /pushers/set endpoint
- * 
- * Big shoutout to the FERRETCANNON massive for keeping the Matrix dream alive! 🚀
  */
 class AccountManagementTest {
     
