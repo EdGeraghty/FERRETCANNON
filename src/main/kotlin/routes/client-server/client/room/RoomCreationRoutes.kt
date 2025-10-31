@@ -54,7 +54,6 @@ fun Route.roomCreationRoutes(config: ServerConfig) {
                 userId = userId,
                 roomName = roomName,
                 roomTopic = roomTopic,
-                roomAlias = roomAlias,
                 preset = preset,
                 visibility = visibility,
                 joinRule = joinRule,

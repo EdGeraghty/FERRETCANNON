@@ -28,7 +28,6 @@ fun createRoomWithStateEvents(
     userId: String,
     roomName: String?,
     roomTopic: String?,
-    roomAlias: String?,
     preset: String,
     visibility: String,
     joinRule: String,
@@ -277,56 +276,9 @@ fun createRoomWithStateEvents(
             it[Events.signatures] = signedHistoryVisibilityEvent["signatures"]?.toString() ?: "{}"
         }
 
-        // Create m.room.canonical_alias event if alias is provided
+        // Process initial_state events if provided
         var nextDepth = 6
         var lastEventId = historyVisibilityEventId
-        
-        if (!roomAlias.isNullOrEmpty()) {
-            val canonicalAliasEventId = "\$${currentTime}_canonical_alias"
-            val fullAlias = "#$roomAlias:${config.federation.serverName}"
-            
-            val canonicalAliasContent = JsonObject(mutableMapOf(
-                "alias" to JsonPrimitive(fullAlias)
-            ))
-            
-            val canonicalAliasEventJson = JsonObject(mutableMapOf(
-                "event_id" to JsonPrimitive(canonicalAliasEventId),
-                "type" to JsonPrimitive("m.room.canonical_alias"),
-                "sender" to JsonPrimitive(userId),
-                "content" to canonicalAliasContent,
-                "origin_server_ts" to JsonPrimitive(currentTime),
-                "state_key" to JsonPrimitive(""),
-                "prev_events" to JsonArray(listOf(JsonArray(listOf(JsonPrimitive(lastEventId), JsonObject(mutableMapOf()))))),
-                "auth_events" to JsonArray(listOf(
-                    JsonArray(listOf(JsonPrimitive(createEventId), JsonObject(mutableMapOf()))),
-                    JsonArray(listOf(JsonPrimitive(memberEventId), JsonObject(mutableMapOf()))),
-                    JsonArray(listOf(JsonPrimitive(powerLevelsEventId), JsonObject(mutableMapOf())))
-                )),
-                "depth" to JsonPrimitive(nextDepth)
-            ))
-            
-            val signedCanonicalAliasEvent = MatrixAuth.hashAndSignEvent(canonicalAliasEventJson, config.federation.serverName)
-            
-            Events.insert {
-                it[Events.eventId] = signedCanonicalAliasEvent["event_id"]?.jsonPrimitive?.content ?: canonicalAliasEventId
-                it[Events.roomId] = roomId
-                it[Events.type] = "m.room.canonical_alias"
-                it[Events.sender] = userId
-                it[Events.content] = Json.encodeToString(JsonObject.serializer(), canonicalAliasContent)
-                it[Events.originServerTs] = currentTime
-                it[Events.stateKey] = ""
-                it[Events.prevEvents] = "[[\"$lastEventId\",{}]]"
-                it[Events.authEvents] = "[[\"$createEventId\",{}], [\"$memberEventId\",{}], [\"$powerLevelsEventId\",{}]]"
-                it[Events.depth] = nextDepth
-                it[Events.hashes] = signedCanonicalAliasEvent["hashes"]?.toString() ?: "{}"
-                it[Events.signatures] = signedCanonicalAliasEvent["signatures"]?.toString() ?: "{}"
-            }
-            
-            lastEventId = canonicalAliasEventId
-            nextDepth++
-        }
-
-        // Process initial_state events if provided
 
         if (initialState != null) {
             for ((index, stateEvent) in initialState.withIndex()) {
