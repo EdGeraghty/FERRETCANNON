@@ -16,6 +16,10 @@ on:
           - federation
           - media
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   # Build the Docker image once and share across all jobs
   build:
@@ -1172,6 +1176,7 @@ jobs:
       with:
         ref: main
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Download badge data artifact
       if: always()
@@ -1182,6 +1187,8 @@ jobs:
     
     - name: Commit badge data to complement-badges branch
       if: always()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Check if badge-data directory exists and has files
         if [ ! -d "badge-data" ] || [ -z "$(ls -A badge-data 2>/dev/null)" ]; then
@@ -1191,7 +1198,7 @@ jobs:
         
         # Configure git
         git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
         # Create or switch to complement-badges branch
         git fetch origin complement-badges || true
@@ -1221,6 +1228,6 @@ jobs:
           echo "No changes to commit"
         else
           git commit -m "Update test badges from workflow run ${{ github.run_number }}"
-          # Push to complement-badges branch
-          git push origin complement-badges || git push --set-upstream origin complement-badges
+          # Push to complement-badges branch using GITHUB_TOKEN
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git complement-badges
         fi
