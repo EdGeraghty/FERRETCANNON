@@ -687,10 +687,330 @@ jobs:
         path: complement-checkout/complement-output.json
         retention-days: 7
 
+  # Test Suite 11: Event & History Tests
+  test-events-history:
+    name: Event & History Tests
+    needs: build
+    if: ${{ inputs.test_suite == 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout FERRETCANNON
+      uses: actions/checkout@v4
+      
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: complement-docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: docker load --input /tmp/complement-image.tar
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: false
+        
+    - name: Checkout Complement
+      uses: actions/checkout@v4
+      with:
+        repository: matrix-org/complement
+        path: complement-checkout
+        
+    - name: Run Event & History Tests
+      working-directory: complement-checkout
+      env:
+        COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      run: |
+        go test -v -timeout 15m -json -run 'TestEvent|TestFetch|TestArchived|TestHistor' ./tests/... 2>&1 | tee complement-output.json || true
+      continue-on-error: true
+      
+    - name: Parse Test Results
+      if: always()
+      run: |
+        cd complement-checkout
+        sudo apt-get update && sudo apt-get install -y jq
+        
+        PASSED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
+        FAILED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
+        SKIPPED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
+        
+        echo "## Event & History Tests" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Passed: $PASSED | ❌ Failed: $FAILED | ⏭️ Skipped: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+      
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-results-events-history
+        path: complement-checkout/complement-output.json
+        retention-days: 7
+
+  # Test Suite 12: Join & Membership Tests
+  test-join-membership:
+    name: Join & Membership Tests
+    needs: build
+    if: ${{ inputs.test_suite == 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout FERRETCANNON
+      uses: actions/checkout@v4
+      
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: complement-docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: docker load --input /tmp/complement-image.tar
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: false
+        
+    - name: Checkout Complement
+      uses: actions/checkout@v4
+      with:
+        repository: matrix-org/complement
+        path: complement-checkout
+        
+    - name: Run Join & Membership Tests
+      working-directory: complement-checkout
+      env:
+        COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      run: |
+        go test -v -timeout 15m -json -run 'TestJoin|TestGetRoomMembers|TestMembership' ./tests/... 2>&1 | tee complement-output.json || true
+      continue-on-error: true
+      
+    - name: Parse Test Results
+      if: always()
+      run: |
+        cd complement-checkout
+        sudo apt-get update && sudo apt-get install -y jq
+        
+        PASSED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
+        FAILED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
+        SKIPPED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
+        
+        echo "## Join & Membership Tests" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Passed: $PASSED | ❌ Failed: $FAILED | ⏭️ Skipped: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+      
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-results-join-membership
+        path: complement-checkout/complement-output.json
+        retention-days: 7
+
+  # Test Suite 13: Edge Cases & Validation Tests
+  test-edge-cases:
+    name: Edge Cases & Validation Tests
+    needs: build
+    if: ${{ inputs.test_suite == 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout FERRETCANNON
+      uses: actions/checkout@v4
+      
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: complement-docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: docker load --input /tmp/complement-image.tar
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: false
+        
+    - name: Checkout Complement
+      uses: actions/checkout@v4
+      with:
+        repository: matrix-org/complement
+        path: complement-checkout
+        
+    - name: Run Edge Cases & Validation Tests
+      working-directory: complement-checkout
+      env:
+        COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      run: |
+        go test -v -timeout 15m -json -run 'TestCannot|TestCorrupted|TestJson|TestInvalid|TestUnknown' ./tests/... 2>&1 | tee complement-output.json || true
+      continue-on-error: true
+      
+    - name: Parse Test Results
+      if: always()
+      run: |
+        cd complement-checkout
+        sudo apt-get update && sudo apt-get install -y jq
+        
+        PASSED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
+        FAILED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
+        SKIPPED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
+        
+        echo "## Edge Cases & Validation Tests" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Passed: $PASSED | ❌ Failed: $FAILED | ⏭️ Skipped: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+      
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-results-edge-cases
+        path: complement-checkout/complement-output.json
+        retention-days: 7
+
+  # Test Suite 14: MSC & Experimental Features Tests
+  test-msc-experimental:
+    name: MSC & Experimental Features Tests
+    needs: build
+    if: ${{ inputs.test_suite == 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - name: Checkout FERRETCANNON
+      uses: actions/checkout@v4
+      
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: complement-docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: docker load --input /tmp/complement-image.tar
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: false
+        
+    - name: Checkout Complement
+      uses: actions/checkout@v4
+      with:
+        repository: matrix-org/complement
+        path: complement-checkout
+        
+    - name: Run MSC & Experimental Features Tests
+      working-directory: complement-checkout
+      env:
+        COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      run: |
+        go test -v -timeout 20m -json -run 'TestMSC' ./tests/... 2>&1 | tee complement-output.json || true
+      continue-on-error: true
+      
+    - name: Parse Test Results
+      if: always()
+      run: |
+        cd complement-checkout
+        sudo apt-get update && sudo apt-get install -y jq
+        
+        PASSED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
+        FAILED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
+        SKIPPED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
+        
+        echo "## MSC & Experimental Features Tests" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Passed: $PASSED | ❌ Failed: $FAILED | ⏭️ Skipped: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+      
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-results-msc-experimental
+        path: complement-checkout/complement-output.json
+        retention-days: 7
+
+  # Test Suite 15: Miscellaneous Tests
+  test-miscellaneous:
+    name: Miscellaneous Tests
+    needs: build
+    if: ${{ inputs.test_suite == 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - name: Checkout FERRETCANNON
+      uses: actions/checkout@v4
+      
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: complement-docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: docker load --input /tmp/complement-image.tar
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        cache: false
+        
+    - name: Checkout Complement
+      uses: actions/checkout@v4
+      with:
+        repository: matrix-org/complement
+        path: complement-checkout
+        
+    - name: Run Miscellaneous Tests
+      working-directory: complement-checkout
+      env:
+        COMPLEMENT_BASE_IMAGE: complement-ferretcannon:latest
+        NO_COLOR: "1"
+        TERM: dumb
+        COMPLEMENT_SPAWN_HS_TIMEOUT_SECS: "300"
+      run: |
+        go test -v -timeout 15m -json -run 'TestAdd|TestAsync|TestAvatar|TestDelayed|TestDeleting|TestDemoting|TestDisplay|TestDirect|TestGapped|TestGet|TestIgnored|TestIs|TestLeft|TestLocal|TestLogout|TestPower|TestRedact|TestRequest|TestSend|TestState|TestTime|TestTransact|TestUnknown|TestUpgrade|TestUrl|TestUser|TestWeb' ./tests/... 2>&1 | tee complement-output.json || true
+      continue-on-error: true
+      
+    - name: Parse Test Results
+      if: always()
+      run: |
+        cd complement-checkout
+        sudo apt-get update && sudo apt-get install -y jq
+        
+        PASSED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="pass")) | length' complement-output.json)
+        FAILED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="fail")) | length' complement-output.json)
+        SKIPPED=$(jq -R -s 'split("\n") | map(try fromjson catch null) | map(select(.!=null and .Test != null)) | group_by(.Test) | map(.[-1]) | map(select(.Action=="skip")) | length' complement-output.json)
+        
+        echo "## Miscellaneous Tests" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Passed: $PASSED | ❌ Failed: $FAILED | ⏭️ Skipped: $SKIPPED" >> $GITHUB_STEP_SUMMARY
+      
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: complement-results-miscellaneous
+        path: complement-checkout/complement-output.json
+        retention-days: 7
+
   # Aggregate results from all test suites
   aggregate-results:
     name: Aggregate Test Results
-    needs: [test-authentication, test-rooms, test-sync, test-federation, test-media, test-keys, test-knocking-restricted, test-relations-threads, test-moderation, test-additional]
+    needs: [test-authentication, test-rooms, test-sync, test-federation, test-media, test-keys, test-knocking-restricted, test-relations-threads, test-moderation, test-additional, test-events-history, test-join-membership, test-edge-cases, test-msc-experimental, test-miscellaneous]
     if: always()
     runs-on: ubuntu-latest
     steps:
