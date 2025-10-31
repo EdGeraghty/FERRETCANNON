@@ -6,6 +6,8 @@ A Kotlin/KTor implementation of a Matrix homeserver focused on spec compliance a
 
 ## Complement Test Coverage
 
+📊 **[View Live Testing Dashboard](https://areweyolosynapseyet.roflcopter.wtf)** - Real-time Complement test results
+
 The following badges show the pass rate percentage for each Complement test suite in the parallel workflow:
 
 | Test Suite | Pass Rate | Status |

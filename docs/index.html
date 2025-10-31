@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Are We Yolo Synapse Yet? - FERRETCANNON Complement Testing</title>
+    <meta name="description" content="Real-time Matrix Complement compliance testing results for FERRETCANNON server">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🎯</text></svg>">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🎯 Are We Yolo Synapse Yet?</h1>
+            <p class="subtitle">FERRETCANNON Matrix Server Complement Testing Dashboard</p>
+            <div class="shoutout">Big up to the FERRETCANNON massive! 🎆</div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading latest test results...</p>
+        </section>
+
+        <section id="error" class="error hidden">
+            <h2>⚠️ Unable to Load Results</h2>
+            <p id="error-message"></p>
+        </section>
+
+        <section id="results" class="hidden">
+            <div class="overall-stats">
+                <h2>Overall Complement Compliance</h2>
+                <div id="overall-card" class="stat-card overall">
+                    <div class="percentage" id="overall-percentage">--%</div>
+                    <div class="stats-grid">
+                        <div class="stat">
+                            <span class="stat-label">Passed</span>
+                            <span class="stat-value passed" id="overall-passed">--</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Failed</span>
+                            <span class="stat-value failed" id="overall-failed">--</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Skipped</span>
+                            <span class="stat-value skipped" id="overall-skipped">--</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Total</span>
+                            <span class="stat-value" id="overall-total">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="test-suites">
+                <h2>Test Suite Results</h2>
+                <p class="suite-description">Detailed breakdown of each Complement test suite</p>
+                <div id="suites-container" class="suites-grid">
+                    <!-- Suite cards will be inserted here by JavaScript -->
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h2>About This Dashboard</h2>
+                <p>This dashboard displays real-time compliance testing results for the <a href="https://github.com/EdGeraghty/FERRETCANNON" target="_blank">FERRETCANNON</a> Matrix homeserver implementation.</p>
+                <p><strong>Complement</strong> is the official Matrix compliance test suite that validates homeserver implementations against the <a href="https://spec.matrix.org/v1.16/" target="_blank">Matrix Specification v1.16</a>.</p>
+                <p>Results are automatically updated after each workflow run. Data is sourced from the <code>complement-badges</code> branch.</p>
+                <div class="links">
+                    <a href="https://github.com/EdGeraghty/FERRETCANNON/actions/workflows/complement-parallel.yml" target="_blank" class="button">View Workflow Runs</a>
+                    <a href="https://github.com/EdGeraghty/FERRETCANNON" target="_blank" class="button">GitHub Repository</a>
+                    <a href="https://spec.matrix.org/v1.16/" target="_blank" class="button">Matrix Spec v1.16</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>FERRETCANNON Matrix Server | <a href="https://github.com/EdGeraghty/FERRETCANNON" target="_blank">GitHub</a> | Matrix Spec v1.16 Compliance</p>
+            <p class="footer-note">Last updated: <span id="last-update">Loading...</span></p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
