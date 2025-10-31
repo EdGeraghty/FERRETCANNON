@@ -1031,6 +1031,15 @@ jobs:
         total_failed=0
         total_skipped=0
         
+        # Create directory for badge data
+        mkdir -p badge-data
+        
+        # Create main badge data file
+        echo "{" > badge-data/test-results.json
+        echo '  "schemaVersion": 1,' >> badge-data/test-results.json
+        echo '  "suites": {' >> badge-data/test-results.json
+        
+        first=true
         for result_dir in test-results/complement-results-*; do
           if [ -f "$result_dir/complement-output.json" ]; then
             suite_name=$(basename "$result_dir" | sed 's/complement-results-//')
@@ -1043,20 +1052,150 @@ jobs:
             total_failed=$((total_failed + failed))
             total_skipped=$((total_skipped + skipped))
             
+            # Calculate percentage for this suite
+            total=$((passed + failed))
+            if [ $total -gt 0 ]; then
+              percentage=$((passed * 100 / total))
+            else
+              percentage=0
+            fi
+            
+            # Determine color based on percentage
+            if [ $percentage -ge 90 ]; then
+              color="brightgreen"
+            elif [ $percentage -ge 75 ]; then
+              color="green"
+            elif [ $percentage -ge 60 ]; then
+              color="yellowgreen"
+            elif [ $percentage -ge 40 ]; then
+              color="yellow"
+            elif [ $percentage -ge 20 ]; then
+              color="orange"
+            else
+              color="red"
+            fi
+            
+            # Add comma if not first entry
+            if [ "$first" = false ]; then
+              echo ',' >> badge-data/test-results.json
+            fi
+            first=false
+            
+            # Add suite data to main JSON
+            echo "    \"$suite_name\": {" >> badge-data/test-results.json
+            echo "      \"passed\": $passed," >> badge-data/test-results.json
+            echo "      \"failed\": $failed," >> badge-data/test-results.json
+            echo "      \"skipped\": $skipped," >> badge-data/test-results.json
+            echo "      \"total\": $total," >> badge-data/test-results.json
+            echo "      \"percentage\": $percentage," >> badge-data/test-results.json
+            echo "      \"color\": \"$color\"" >> badge-data/test-results.json
+            echo -n "    }" >> badge-data/test-results.json
+            
+            # Create individual badge JSON file for shields.io endpoint
+            echo "{" > "badge-data/badge-$suite_name.json"
+            echo "  \"schemaVersion\": 1," >> "badge-data/badge-$suite_name.json"
+            echo "  \"label\": \"$suite_name\"," >> "badge-data/badge-$suite_name.json"
+            echo "  \"message\": \"$percentage%\"," >> "badge-data/badge-$suite_name.json"
+            echo "  \"color\": \"$color\"" >> "badge-data/badge-$suite_name.json"
+            echo "}" >> "badge-data/badge-$suite_name.json"
+            
             echo "### $suite_name" >> $GITHUB_STEP_SUMMARY
-            echo "✅ Passed: $passed | ❌ Failed: $failed | ⏭️ Skipped: $skipped" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Passed: $passed | ❌ Failed: $failed | ⏭️ Skipped: $skipped | 📊 Pass Rate: $percentage%" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
         done
+        
+        # Close the suites object
+        echo "" >> badge-data/test-results.json
+        echo "  }," >> badge-data/test-results.json
+        
+        # Calculate overall percentage
+        total_tests=$((total_passed + total_failed))
+        if [ $total_tests -gt 0 ]; then
+          overall_percentage=$((total_passed * 100 / total_tests))
+        else
+          overall_percentage=0
+        fi
+        
+        # Determine overall color
+        if [ $overall_percentage -ge 90 ]; then
+          overall_color="brightgreen"
+        elif [ $overall_percentage -ge 75 ]; then
+          overall_color="green"
+        elif [ $overall_percentage -ge 60 ]; then
+          overall_color="yellowgreen"
+        elif [ $overall_percentage -ge 40 ]; then
+          overall_color="yellow"
+        elif [ $overall_percentage -ge 20 ]; then
+          overall_color="orange"
+        else
+          overall_color="red"
+        fi
+        
+        # Add overall stats to main JSON
+        echo "  \"overall\": {" >> badge-data/test-results.json
+        echo "    \"passed\": $total_passed," >> badge-data/test-results.json
+        echo "    \"failed\": $total_failed," >> badge-data/test-results.json
+        echo "    \"skipped\": $total_skipped," >> badge-data/test-results.json
+        echo "    \"total\": $total_tests," >> badge-data/test-results.json
+        echo "    \"percentage\": $overall_percentage," >> badge-data/test-results.json
+        echo "    \"color\": \"$overall_color\"" >> badge-data/test-results.json
+        echo "  }" >> badge-data/test-results.json
+        echo "}" >> badge-data/test-results.json
+        
+        # Create overall badge JSON
+        echo "{" > "badge-data/badge-overall.json"
+        echo "  \"schemaVersion\": 1," >> "badge-data/badge-overall.json"
+        echo "  \"label\": \"complement tests\"," >> "badge-data/badge-overall.json"
+        echo "  \"message\": \"$overall_percentage%\"," >> "badge-data/badge-overall.json"
+        echo "  \"color\": \"$overall_color\"" >> "badge-data/badge-overall.json"
+        echo "}" >> "badge-data/badge-overall.json"
         
         echo "---" >> $GITHUB_STEP_SUMMARY
         echo "### **Total Across All Suites**" >> $GITHUB_STEP_SUMMARY
         echo "✅ **Passed: $total_passed**" >> $GITHUB_STEP_SUMMARY
         echo "❌ **Failed: $total_failed**" >> $GITHUB_STEP_SUMMARY
         echo "⏭️ **Skipped: $total_skipped**" >> $GITHUB_STEP_SUMMARY
+        echo "📊 **Pass Rate: ${overall_percentage}%**" >> $GITHUB_STEP_SUMMARY
         
-        total_tests=$((total_passed + total_failed))
-        if [ $total_tests -gt 0 ]; then
-          pass_rate=$((total_passed * 100 / total_tests))
-          echo "📊 **Pass Rate: ${pass_rate}%**" >> $GITHUB_STEP_SUMMARY
+    - name: Upload badge data
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-badges
+        path: badge-data/
+        retention-days: 90
+    
+    - name: Checkout repository for badge commit
+      if: always()
+      uses: actions/checkout@v4
+      with:
+        ref: main
+        fetch-depth: 0
+    
+    - name: Commit badge data to complement-badges branch
+      if: always()
+      run: |
+        # Configure git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Create or switch to complement-badges branch
+        git fetch origin complement-badges || true
+        if git show-ref --verify --quiet refs/remotes/origin/complement-badges; then
+          git checkout complement-badges
+          git pull origin complement-badges
+        else
+          git checkout --orphan complement-badges
+          git rm -rf . || true
         fi
+        
+        # Copy badge files
+        cp -r badge-data/* . || true
+        
+        # Add and commit
+        git add *.json
+        git commit -m "Update test badges from workflow run ${{ github.run_number }}" || echo "No changes to commit"
+        
+        # Push to complement-badges branch
+        git push origin complement-badges || git push --set-upstream origin complement-badges

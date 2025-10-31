@@ -1,6 +1,33 @@
 # FERRETCANNON Matrix Server
 
+[![Complement Tests](https://img.shields.io/github/actions/workflow/status/EdGeraghty/FERRETCANNON/complement-parallel.yml?branch=main&label=complement%20tests&logo=matrix)](https://github.com/EdGeraghty/FERRETCANNON/actions/workflows/complement-parallel.yml)
+
 A Kotlin/KTor implementation of a Matrix homeserver focused on spec compliance and federation correctness.
+
+## Complement Test Coverage
+
+The following badges show the pass rate percentage for each Complement test suite in the parallel workflow:
+
+| Test Suite | Pass Rate | Status |
+|------------|-----------|--------|
+| **Overall** | ![Overall](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-overall.json&query=$.message&label=complement%20tests&color=blue) | [![Run Tests](https://img.shields.io/github/actions/workflow/status/EdGeraghty/FERRETCANNON/complement-parallel.yml?label=run)](https://github.com/EdGeraghty/FERRETCANNON/actions/workflows/complement-parallel.yml) |
+| Authentication | ![Auth](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-authentication.json&query=$.message&label=pass%20rate&color=blue) | Tests for login, registration, password changes |
+| Rooms | ![Rooms](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-rooms.json&query=$.message&label=pass%20rate&color=blue) | Room operations, profiles, device management |
+| Sync | ![Sync](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-sync.json&query=$.message&label=pass%20rate&color=blue) | Sync, presence, to-device, account data |
+| Federation | ![Federation](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-federation.json&query=$.message&label=pass%20rate&color=blue) | Server-server federation tests |
+| Media | ![Media](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-media.json&query=$.message&label=pass%20rate&color=blue) | Content upload, download, thumbnails |
+| Keys & Crypto | ![Keys](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-keys.json&query=$.message&label=pass%20rate&color=blue) | E2E encryption, key uploads, backups |
+| Knocking & Restricted | ![Knocking](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-knocking-restricted.json&query=$.message&label=pass%20rate&color=blue) | Knocking, restricted rooms, spaces |
+| Relations & Threads | ![Relations](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-relations-threads.json&query=$.message&label=pass%20rate&color=blue) | Event relations, threads |
+| Moderation | ![Moderation](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-moderation.json&query=$.message&label=pass%20rate&color=blue) | Ban, kick, invite, leave operations |
+| Additional Features | ![Additional](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-additional.json&query=$.message&label=pass%20rate&color=blue) | Typing, filters, search, ACLs, receipts |
+| Events & History | ![Events](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-events-history.json&query=$.message&label=pass%20rate&color=blue) | Event operations, history |
+| Join & Membership | ![Join](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-join-membership.json&query=$.message&label=pass%20rate&color=blue) | Join operations, membership management |
+| Edge Cases | ![Edge](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-edge-cases.json&query=$.message&label=pass%20rate&color=blue) | Edge cases, validation tests |
+| MSC Experimental | ![MSC](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-msc-experimental.json&query=$.message&label=pass%20rate&color=blue) | Matrix Spec Change proposals |
+| Miscellaneous | ![Misc](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/EdGeraghty/FERRETCANNON/complement-badges/badge-miscellaneous.json&query=$.message&label=pass%20rate&color=blue) | Other tests |
+
+> **Note**: Badges are updated automatically after each workflow run. The badge JSONs are stored in the `complement-badges` branch and updated by the workflow.
 
 ## Current Implementation Status
 
