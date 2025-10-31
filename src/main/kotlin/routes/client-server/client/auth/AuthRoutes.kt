@@ -224,7 +224,9 @@ fun Route.authRoutes(config: ServerConfig) {
                     }
                 }
                 
-                val finalPassword = "dummy_password_${System.currentTimeMillis()}"
+                // Use provided password if available, otherwise generate a dummy one
+                // This allows users registered with m.login.dummy to still login with m.login.password
+                val finalPassword = password ?: "dummy_password_${System.currentTimeMillis()}"
 
                 // Create the user with lowercased username
                 // Wrap in try-catch to handle race condition where user is created between check and insert
