@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       test_suite:
-        description: 'Specific test suite to run (leave empty for all)'
+        description: 'Specific test suite to run (select all for all suites)'
         required: false
+        default: 'all'
         type: choice
         options:
-          - ''
+          - all
           - authentication
           - rooms
           - sync
@@ -50,7 +51,7 @@ jobs:
   test-authentication:
     name: Authentication & Registration Tests
     needs: build
-    if: ${{ !inputs.test_suite || inputs.test_suite == 'authentication' }}
+    if: ${{ inputs.test_suite == 'all' || inputs.test_suite == 'authentication' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -114,7 +115,7 @@ jobs:
   test-rooms:
     name: Room Operations Tests
     needs: build
-    if: ${{ !inputs.test_suite || inputs.test_suite == 'rooms' }}
+    if: ${{ inputs.test_suite == 'all' || inputs.test_suite == 'rooms' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -178,7 +179,7 @@ jobs:
   test-sync:
     name: Sync & Presence Tests
     needs: build
-    if: ${{ !inputs.test_suite || inputs.test_suite == 'sync' }}
+    if: ${{ inputs.test_suite == 'all' || inputs.test_suite == 'sync' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -242,7 +243,7 @@ jobs:
   test-federation:
     name: Federation Tests
     needs: build
-    if: ${{ !inputs.test_suite || inputs.test_suite == 'federation' }}
+    if: ${{ inputs.test_suite == 'all' || inputs.test_suite == 'federation' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -306,7 +307,7 @@ jobs:
   test-media:
     name: Media & Content Tests
     needs: build
-    if: ${{ !inputs.test_suite || inputs.test_suite == 'media' }}
+    if: ${{ inputs.test_suite == 'all' || inputs.test_suite == 'media' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
