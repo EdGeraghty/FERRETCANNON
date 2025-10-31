@@ -227,23 +227,38 @@ object AuthUtils {
                 username
             }
 
+            println("AuthUtils.authenticateUser - Input: '$username', Lookup: '$lookupUsername'")
+
             transaction {
                 // Case-insensitive username lookup per Matrix spec
                 val userRow = Users.select { 
                     Users.username.lowerCase() eq lookupUsername.lowercase()
                 }.singleOrNull()
-                    ?: return@transaction null
+                    
+                if (userRow == null) {
+                    println("AuthUtils.authenticateUser - No user found for lookup: '$lookupUsername'")
+                    return@transaction null
+                }
 
-                if (userRow[Users.deactivated]) return@transaction null
+                if (userRow[Users.deactivated]) {
+                    println("AuthUtils.authenticateUser - User deactivated: '${userRow[Users.username]}'")
+                    return@transaction null
+                }
 
-                if (userRow[Users.isGuest]) return@transaction userRow[Users.userId]
+                if (userRow[Users.isGuest]) {
+                    println("AuthUtils.authenticateUser - Guest user: '${userRow[Users.username]}'")
+                    return@transaction userRow[Users.userId]
+                }
 
                 if (verifyPassword(password, userRow[Users.passwordHash])) {
+                    println("AuthUtils.authenticateUser - Password verified for: '${userRow[Users.username]}'")
                     // Update last seen
                     Users.update({ Users.userId eq userRow[Users.userId] }) {
                         it[lastSeen] = System.currentTimeMillis()
                     }
                     return@transaction userRow[Users.userId]
+                } else {
+                    println("AuthUtils.authenticateUser - Password verification failed for: '${userRow[Users.username]}'")
                 }
 
                 null
