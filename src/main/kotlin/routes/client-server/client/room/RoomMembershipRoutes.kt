@@ -16,7 +16,6 @@ import models.Events
 import utils.StateResolver
 import utils.MatrixAuth
 import routes.server_server.federation.v1.broadcastEDU
-import routes.server_server.federation.v1.findRoomByAlias
 import routes.client_server.client.common.*
 import routes.client_server.client.room.LocalMembershipHandler
 import routes.client_server.client.room.FederationJoinHandler
@@ -43,23 +42,6 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             }
 
             println("JOIN: userId=$userId, roomId=$roomId")
-
-            // Check if roomId is actually a room alias (starts with #)
-            val actualRoomId = if (roomId.startsWith("#")) {
-                println("JOIN: Detected room alias, resolving: $roomId")
-                val resolvedRoomId = findRoomByAlias(roomId)
-                if (resolvedRoomId == null) {
-                    this.respond(HttpStatusCode.NotFound, mutableMapOf(
-                        "errcode" to "M_NOT_FOUND",
-                        "error" to "Room alias not found"
-                    ))
-                    return
-                }
-                println("JOIN: Resolved alias $roomId to room ID $resolvedRoomId")
-                resolvedRoomId
-            } else {
-                roomId
-            }
 
             // Parse request body for server_name (accept array or single string), and also accept query param
             val requestBody = this.receiveText()
@@ -92,41 +74,41 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
             println("JOIN: Parsed serverNames: $serverNames (body: $serverNamesFromBody, query: $serverNamesFromQuery)")
 
             val roomExists = transaction {
-                Rooms.select { Rooms.roomId eq actualRoomId }.count() > 0
+                Rooms.select { Rooms.roomId eq roomId }.count() > 0
             }
 
             if (serverNames.isNotEmpty()) {
                 println("JOIN: Federation join requested via servers: $serverNames")
                 val result = FederationJoinHandler.performFederationJoin(
-                    userId, actualRoomId, serverNames, config
+                    userId, roomId, serverNames, config
                 )
 
                 if (result.success) {
-                    this.respond(mutableMapOf("room_id" to actualRoomId))
-                    roomMembershipLogger.info("JOIN: Responded 200 for federation join room_id={}", actualRoomId)
+                    this.respond(mutableMapOf("room_id" to roomId))
+                    roomMembershipLogger.info("JOIN: Responded 200 for federation join room_id={}", roomId)
                 } else {
                     this.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                         "errcode" to result.errorCode,
                         "error" to result.errorMessage
                     ))
-                    roomMembershipLogger.info("JOIN: Responded 500 for federation join room_id={} err={}", actualRoomId, result.errorMessage)
+                    roomMembershipLogger.info("JOIN: Responded 500 for federation join room_id={} err={}", roomId, result.errorMessage)
                 }
                 return
             }
 
             if (roomExists) {
                 println("JOIN: Local join for existing room")
-                val result = LocalMembershipHandler.createLocalJoin(userId, actualRoomId, config, stateResolver)
+                val result = LocalMembershipHandler.createLocalJoin(userId, roomId, config, stateResolver)
 
                 if (result.success) {
-                    this.respond(mutableMapOf("room_id" to actualRoomId))
-                    roomMembershipLogger.info("JOIN: Responded 200 for local join room_id={}", actualRoomId)
+                    this.respond(mutableMapOf("room_id" to roomId))
+                    roomMembershipLogger.info("JOIN: Responded 200 for local join room_id={}", roomId)
                 } else {
                     this.respond(HttpStatusCode.InternalServerError, mutableMapOf(
                         "errcode" to result.errorCode,
                         "error" to result.errorMessage
                     ))
-                    roomMembershipLogger.info("JOIN: Responded 500 for local join room_id={} err={}", actualRoomId, result.errorMessage)
+                    roomMembershipLogger.info("JOIN: Responded 500 for local join room_id={} err={}", roomId, result.errorMessage)
                 }
                 return
             }
@@ -135,7 +117,7 @@ fun Route.roomMembershipRoutes(config: ServerConfig) {
                 "errcode" to "M_MISSING_PARAM",
                 "error" to "server_name parameter is required when joining a room not known to this server"
             ))
-            roomMembershipLogger.info("JOIN: Responded 400 missing server_name for room_id={}", actualRoomId)
+            roomMembershipLogger.info("JOIN: Responded 400 missing server_name for room_id={}", roomId ?: "(null)")
 
         } catch (e: Exception) {
             println("JOIN: Exception caught: ${e.message}")
